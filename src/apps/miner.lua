@@ -22,11 +22,13 @@ local quarry = require("jobs.quarry")
 
 local HEARTBEAT_SECONDS = 2
 local GPS_REFRESH_SECONDS = 30
+local BASE_RECHECK_SECONDS = 60
 
 local job = quarry.load()
 local baseId = nil
 local worldPos = nil
 local lastGps = 0
+local lastLookup = 0
 
 local status = { phase = "idle", detail = "" }
 
@@ -102,16 +104,22 @@ local function heartbeat()
       worldPos = nav.worldPosition() or worldPos
     end
 
-    if not baseId then
-      baseId = net.findBase()
-      if baseId then
-        log.info("found base station " .. baseId)
-        net.send(baseId, "hello", snapshot())
+    -- rednet.send reports success as soon as the packet leaves the modem - there
+    -- is no delivery confirmation - so a send never tells us the base has gone.
+    -- Re-resolve the hostname periodically instead, which also picks up a base
+    -- station that was rebuilt with a different computer ID.
+    if not baseId or os.clock() - lastLookup > BASE_RECHECK_SECONDS then
+      lastLookup = os.clock()
+      local found = net.findBase()
+      if found and found ~= baseId then
+        log.info("base station is " .. found)
+        net.send(found, "hello", snapshot())
       end
+      baseId = found or baseId
     end
 
-    if baseId and not net.send(baseId, "status", snapshot()) then
-      baseId = nil -- lost it; look again next tick
+    if baseId then
+      net.send(baseId, "status", snapshot())
     end
 
     drawLocal()

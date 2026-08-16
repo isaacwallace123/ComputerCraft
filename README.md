@@ -59,10 +59,27 @@ would look for `apps/core/ui.lua`.
 | Base station | Advanced computer + **modem** + advanced monitor |
 | Each turtle | Advanced mining turtle + **modem** |
 
-**The modems are not optional for tracking.** Use **ender modems** (8 stone + eye of
-ender). A plain wireless modem reaches 64 blocks, and a turtle 30 blocks down a quarry
-is already out of range — you would see every turtle as permanently offline. Turtles
-still mine perfectly well without any modem; you just get no telemetry.
+**The modems are not optional for tracking.** Turtles mine perfectly well without one;
+you just get no telemetry.
+
+Two wireless modems — one on the base, one on a turtle — are enough for a working
+fleet. Range is 64 blocks, measured base-to-turtle, rising linearly above y=96 to 384
+at world height. What that means in practice:
+
+- **Put the base computer at the quarry site**, not back at your main base. Distance is
+  measured from it, so 200 blocks away means offline the whole time.
+- **Depth is what eats the budget.** A quarry from y=64 down to bedrock is ~120 blocks
+  of separation — well past 64. Depth 32 (the default) stays in range the whole way.
+- **Going out of range is not a failure.** The turtle keeps mining and the dashboard
+  shows it stale. And since every layer ends with a trip home, a deep turtle pops back
+  into range and re-syncs at each layer boundary.
+
+**Ender modems** (8 stone + eye of ender) remove all of this — unlimited range, works
+across dimensions. Worth it once you have eyes of ender.
+
+> Both turtle upgrade slots get used by this: pickaxe on one side, modem on the other.
+> A Geo Scanner upgrade won't fit on the same turtle — use the Geo Scanner *block* on
+> the base computer, or a separate scout turtle.
 
 ## Editor setup
 
