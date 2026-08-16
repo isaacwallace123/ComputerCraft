@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-16T06:23:03-04:00",
+    "generated":  "2026-08-16T06:36:44-04:00",
     "files":  [
                   "apps/equip.lua",
                   "apps/fleet.lua",
@@ -7,9 +7,13 @@
                   "apps/scan.lua",
                   "apps/swarm.lua",
                   "apps/where.lua",
+                  "core/boot.lua",
                   "core/config.lua",
+                  "core/device.lua",
+                  "core/display.lua",
                   "core/log.lua",
                   "core/net.lua",
+                  "core/sound.lua",
                   "core/ui.lua",
                   "core/util.lua",
                   "install.lua",

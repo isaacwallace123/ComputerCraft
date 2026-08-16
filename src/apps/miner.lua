@@ -23,6 +23,7 @@ local ui = require("core.ui")
 local net = require("core.net")
 local log = require("core.log")
 local util = require("core.util")
+local sound = require("core.sound")
 local config = require("core.config")
 local nav = require("turtle.nav")
 local fuel = require("turtle.fuel")
@@ -160,14 +161,16 @@ local function heartbeat()
       local found = net.findBase()
       if found and found ~= baseId then
         log.info("base station is " .. found)
-        net.send(found, "hello", snapshot())
+        net.broadcast("hello", snapshot())
       end
       baseId = found or baseId
     end
 
-    if baseId then
-      net.send(baseId, "status", snapshot())
-    end
+    -- Broadcast rather than address the base directly. It costs nothing extra
+    -- on a local network, works before the base has ever been found, and means
+    -- any number of listeners - a second monitor, a pocket computer - can watch
+    -- the fleet without the turtles knowing they exist.
+    net.broadcast("status", snapshot())
 
     drawLocal()
     sleep(HEARTBEAT_SECONDS)
@@ -241,8 +244,10 @@ local function agent()
       park("recalled - move me, then press deploy")
     elseif not ok then
       log.error("job stopped: " .. tostring(stopped))
+      sound.play("error")
       park("stopped: " .. tostring(stopped))
     else
+      sound.play("ready")
       park("job complete")
     end
   end

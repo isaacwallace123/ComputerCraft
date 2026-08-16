@@ -90,6 +90,97 @@ function ui.bar(x, y, width, fraction, fg)
   end
 end
 
+--- Truncate and pad `text` to exactly `width` characters.
+---
+--- This exists because Lua's string.format has no '*' dynamic-width specifier -
+--- "%-*s" is a C printf feature that raises at runtime and is invisible to every
+--- linter. Anywhere a column width is computed rather than literal, use this.
+function ui.pad(text, width, align)
+  text = tostring(text or "")
+  if width <= 0 then
+    return ""
+  end
+  if #text > width then
+    return text:sub(1, width)
+  end
+
+  local slack = width - #text
+  if align == "right" then
+    return string.rep(" ", slack) .. text
+  end
+  if align == "center" then
+    local left = math.floor(slack / 2)
+    return string.rep(" ", left) .. text .. string.rep(" ", slack - left)
+  end
+  return text .. string.rep(" ", slack)
+end
+
+--- Box with an optional title in the top edge.
+function ui.panel(x, y, width, height, title)
+  local horizontal = string.rep("-", math.max(0, width - 2))
+  ui.text(x, y, "+" .. horizontal .. "+", ui.theme.dim)
+  for row = 1, height - 2 do
+    ui.text(x, y + row, "|", ui.theme.dim)
+    ui.text(x + width - 1, y + row, "|", ui.theme.dim)
+  end
+  ui.text(x, y + height - 1, "+" .. horizontal .. "+", ui.theme.dim)
+
+  if title then
+    ui.text(x + 2, y, " " .. title .. " ", ui.theme.fg)
+  end
+end
+
+--- Column table with a header.
+---
+--- `specs` is a list of { title, width, align }. Columns are dropped from the
+--- right when they do not fit, so the same table degrades gracefully from a
+--- monitor wall down to a pocket computer without a pile of width branches at
+--- the call site.
+---
+--- `rows` is a list of { color = <row default>, cells = { "text", { text=, color= } } }.
+--- Returns how many rows were drawn.
+function ui.table(x, y, width, specs, rows, maxRows)
+  local columns = {}
+  local cursor = x
+
+  for index, spec in ipairs(specs) do
+    if cursor + spec.width - 1 > x + width - 1 then
+      break
+    end
+    columns[#columns + 1] = { spec = spec, x = cursor, index = index }
+    cursor = cursor + spec.width + 1
+  end
+
+  for _, column in ipairs(columns) do
+    ui.text(
+      column.x,
+      y,
+      ui.pad(column.spec.title, column.spec.width, column.spec.align),
+      ui.theme.dim
+    )
+  end
+
+  local drawn = 0
+  for rowIndex, row in ipairs(rows) do
+    if maxRows and drawn >= maxRows then
+      break
+    end
+
+    for _, column in ipairs(columns) do
+      local cell = row.cells[column.index]
+      local text, color = cell, row.color or ui.theme.fg
+      if type(cell) == "table" then
+        text, color = cell.text, cell.color or color
+      end
+      ui.text(column.x, y + rowIndex, ui.pad(text, column.spec.width, column.spec.align), color)
+    end
+
+    drawn = drawn + 1
+  end
+
+  return drawn
+end
+
 --- Arrow-key menu. Returns the chosen index, or nil if the user pressed Q.
 function ui.menu(title, items)
   local selected = 1

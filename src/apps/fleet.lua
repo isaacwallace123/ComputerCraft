@@ -14,22 +14,31 @@ local ui = require("core.ui")
 local net = require("core.net")
 local log = require("core.log")
 local util = require("core.util")
+local sound = require("core.sound")
 local config = require("core.config")
+local display = require("core.display")
 
 local ROSTER_PATH = ".fleet"
-local SETTINGS_PATH = ".fleetcfg"
 
 local LATE_AFTER = 10 -- seconds of silence before a row goes yellow
 local OFFLINE_AFTER = 60 -- ...and red
 
-local settings = config.load(SETTINGS_PATH, { textScale = 0.5 })
+-- The layout the dashboard wants. display.attach picks the largest text scale
+-- that still gives us this much room, so the wall decides the font size rather
+-- than a hardcoded guess.
+local WANT_WIDTH, WANT_HEIGHT = 55, 16
+
+local COLUMNS = {
+  { title = "NAME", width = 10 },
+  { title = "PHASE", width = 8 },
+  { title = "POSITION", width = 13 },
+  { title = "FUEL", width = 7, align = "right" },
+  { title = "DONE", width = 4, align = "right" },
+  { title = "SEEN", width = 5, align = "right" },
+}
+
 local roster = config.load(ROSTER_PATH, {})
-
-local monitor = peripheral.find("monitor")
-
-if monitor then
-  monitor.setTextScale(settings.textScale)
-end
+local monitor, scale = display.attach(WANT_WIDTH, WANT_HEIGHT)
 
 local function saveRoster()
   config.save(ROSTER_PATH, roster)
@@ -69,7 +78,7 @@ local function nodes()
 end
 
 local function totals(list)
-  local sum = { online = 0, parked = 0, digs = 0, delivered = 0, moves = 0, haul = {} }
+  local sum = { online = 0, parked = 0, digs = 0, delivered = 0, haul = {} }
 
   for _, node in ipairs(list) do
     local snap = node.snap or {}
@@ -82,7 +91,6 @@ local function totals(list)
 
     sum.digs = sum.digs + (snap.digs or 0)
     sum.delivered = sum.delivered + (snap.delivered or 0)
-    sum.moves = sum.moves + (snap.moves or 0)
 
     for name, count in pairs(snap.haul or {}) do
       sum.haul[name] = (sum.haul[name] or 0) + count
@@ -92,7 +100,6 @@ local function totals(list)
   return sum
 end
 
---- Fleet haul, most plentiful first.
 local function haulRows(haul)
   local rows = {}
   for name, count in pairs(haul) do
@@ -102,6 +109,33 @@ local function haulRows(haul)
     return a.count > b.count
   end)
   return rows
+end
+
+local function positionText(snap)
+  if snap.world then
+    return ("%d,%d,%d"):format(snap.world.x, snap.world.y, snap.world.z)
+  end
+  return ("%d,%d,%d"):format(snap.x or 0, snap.y or 0, snap.z or 0)
+end
+
+--- Fuel is shown against the walk home, not against the tank. An advanced
+--- turtle holds 100,000 and a trip costs about 1,000, so a percentage-of-tank
+--- bar reads empty forever and answers nothing.
+local function fuelCell(snap)
+  if (snap.fuel or 0) < 0 then
+    return { text = "unlim", color = ui.theme.dim }
+  end
+
+  local home = math.max(1, snap.distanceHome or 0)
+  local trips = (snap.fuel or 0) / home
+  local tone = ui.theme.good
+  if trips < 1.5 then
+    tone = ui.theme.bad
+  elseif trips < 3 then
+    tone = ui.theme.warn
+  end
+
+  return { text = util.count(snap.fuel or 0), color = tone }
 end
 
 local function drawDashboard()
@@ -122,141 +156,61 @@ local function drawDashboard()
     return
   end
 
-  -- Columns are dropped from the right as the screen narrows, rather than one
-  -- all-or-nothing "wide" layout. A 4x3 monitor at text scale 0.5 lands around
-  -- 57 columns, which is exactly the sort of width a hardcoded cutoff gets
-  -- wrong. Widths are logged at startup so you can see what you actually have.
-  local COL = { name = 2, phase = 13, pos = 22, fuel = 36, done = 44, seen = 49 }
-  local show = {
-    fuel = width >= 43,
-    done = width >= 48,
-    seen = width >= 55,
-    bar = width >= 70,
-  }
-
-  -- Reserve the bottom of the screen for the haul panel, but never so much that
-  -- the turtle rows get squeezed out on a small monitor.
   local haul = haulRows(sum.haul)
   local haulHeight = (#haul > 0 and height > 14) and math.min(6, #haul + 2) or 0
   local lastRow = height - haulHeight - 1
 
-  ui.text(COL.name, 3, "NAME", ui.theme.dim)
-  ui.text(COL.phase, 3, "PHASE", ui.theme.dim)
-  ui.text(COL.pos, 3, "POSITION", ui.theme.dim)
-  if show.fuel then
-    ui.text(COL.fuel, 3, "FUEL", ui.theme.dim)
-  end
-  if show.done then
-    ui.text(COL.done, 3, "DONE", ui.theme.dim)
-  end
-  if show.seen then
-    ui.text(COL.seen, 3, "SEEN", ui.theme.dim)
-  end
-
-  local row = 4
+  local rows = {}
   for _, node in ipairs(list) do
-    if row >= lastRow then
-      break
-    end
-
     local snap = node.snap or {}
-    local color = statusColor(node)
     local seconds = age(node)
-
-    ui.text(COL.name, row, util.fit(snap.label or ("id " .. tostring(node.id)), 10), color)
-    ui.text(
-      COL.phase,
-      row,
-      util.fit(seconds > OFFLINE_AFTER and "offline" or (snap.phase or "?"), 8),
-      color
-    )
-    ui.text(
-      COL.pos,
-      row,
-      util.fit(
-        snap.world and ("%d,%d,%d"):format(snap.world.x, snap.world.y, snap.world.z)
-          or ("%d,%d,%d"):format(snap.x or 0, snap.y or 0, snap.z or 0),
-        13
-      ),
-      ui.theme.fg
-    )
-
-    if show.fuel then
-      if (snap.fuel or 0) < 0 then
-        ui.text(COL.fuel, row, "unlim", ui.theme.dim)
-      else
-        -- Deliberately NOT a fraction of the fuel tank. An advanced turtle holds
-        -- 100,000 and a trip costs ~1,000, so that bar reads empty forever and
-        -- tells you nothing. What matters is the ratio to the walk home, so show
-        -- the real number and colour it by how many return trips it covers.
-        local home = math.max(1, snap.distanceHome or 0)
-        local trips = (snap.fuel or 0) / home
-        local tone = ui.theme.good
-        if trips < 1.5 then
-          tone = ui.theme.bad
-        elseif trips < 3 then
-          tone = ui.theme.warn
-        end
-        ui.text(COL.fuel, row, util.fit(util.count(snap.fuel or 0), 7), tone)
-      end
-    end
-    if show.done then
-      ui.text(COL.done, row, ("%3d%%"):format(math.floor((snap.progress or 0) * 100)), ui.theme.fg)
-    end
-    if show.seen then
-      ui.text(COL.seen, row, util.fit(util.duration(seconds), 5), color)
-    end
-    if show.bar then
-      ui.bar(COL.seen + 6, row, width - COL.seen - 6, snap.progress or 0, ui.theme.accent)
-    end
-
-    row = row + 1
+    rows[#rows + 1] = {
+      color = statusColor(node),
+      cells = {
+        snap.label or ("id " .. tostring(node.id)),
+        seconds > OFFLINE_AFTER and "offline" or (snap.phase or "?"),
+        { text = positionText(snap), color = ui.theme.fg },
+        fuelCell(snap),
+        ("%d%%"):format(math.floor((snap.progress or 0) * 100)),
+        util.duration(seconds),
+      },
+    }
   end
 
-  -- Haul panel: what the fleet has actually pulled out of the ground.
+  ui.table(2, 3, width - 2, COLUMNS, rows, math.max(1, lastRow - 4))
+
   if haulHeight > 0 then
     local top = height - haulHeight
     ui.text(2, top, "HAUL", ui.theme.dim)
 
     local perRow = width >= 60 and 3 or (width >= 40 and 2 or 1)
     local columnWidth = math.floor((width - 2) / perRow)
-    local index = 0
 
-    for _, entry in ipairs(haul) do
-      local line = top + 1 + math.floor(index / perRow)
+    for index, entry in ipairs(haul) do
+      local slot = index - 1
+      local line = top + 1 + math.floor(slot / perRow)
       if line >= height then
         break
       end
-      local column = 2 + (index % perRow) * columnWidth
-
-      -- Pad by hand. Lua's string.format has no '*' dynamic-width specifier -
-      -- that is a C printf feature, and "%-*s" raises at runtime rather than
-      -- being caught by any linter.
-      local label = util.fit(entry.name, columnWidth - 8)
+      local column = 2 + (slot % perRow) * columnWidth
       local amount = util.count(entry.count)
-      local gap = math.max(1, columnWidth - 1 - #label - #amount)
-      ui.text(column, line, label .. string.rep(" ", gap) .. amount, ui.theme.fg)
-
-      index = index + 1
+      ui.text(column, line, ui.pad(entry.name, columnWidth - #amount - 2) .. amount, ui.theme.fg)
     end
   end
 
   ui.footer(
-    ("dug %s  delivered %s   |  X recall   G deploy   R reset   Q quit"):format(
+    ("dug %s  delivered %s   |  X recall  G deploy  R reset  Q quit"):format(
       util.count(sum.digs),
       util.count(sum.delivered)
     )
   )
 end
 
---- Draw to the monitor if there is one, otherwise to the computer screen.
+--- Draw to the monitor if there is one, otherwise to this screen.
 local function render()
   if monitor then
-    local previous = term.redirect(monitor)
-    drawDashboard()
-    term.redirect(previous)
+    display.on(monitor, drawDashboard)
 
-    -- The computer's own screen carries the log, which is more useful there.
     ui.clear()
     ui.header("Fleet base " .. os.getComputerID(), net.isOpen() and "online" or "NO MODEM")
     local width, height = ui.size()
@@ -280,6 +234,7 @@ local function listen()
         log.info(((body and body.label) or key) .. " joined")
         roster[key] = { snap = body, lastSeen = os.epoch("utc") }
         saveRoster()
+        sound.play("ready")
       elseif kind == "status" then
         local previous = roster[key]
         roster[key] = { snap = body, lastSeen = os.epoch("utc") }
@@ -290,6 +245,7 @@ local function listen()
           local line = ("%s: %s"):format(body.label or key, body.phase)
           if body.phase == "stuck" then
             log.error(line .. " - " .. tostring(body.detail))
+            sound.play("alert")
           else
             log.info(line)
           end
@@ -300,14 +256,14 @@ local function listen()
   end
 end
 
---- Redraw on a timer as well as on traffic, so the "seen" column keeps ticking
---- upward when a turtle goes quiet.
+--- Redraw on a timer as well as on traffic, so "seen" keeps ticking upward when
+--- a turtle goes quiet.
 local function redraw()
   while true do
     -- A drawing bug must never take the base station down with it. Without this
-    -- guard an error in render() kills the coroutine, parallel unwinds, and the
+    -- an error in render() kills the coroutine, parallel unwinds, and the
     -- monitor freezes on its last good frame - which looks exactly like the
-    -- whole fleet having stopped, when in fact the turtles are still mining.
+    -- whole fleet having stopped, when the turtles are still mining.
     local ok, err = pcall(render)
     if not ok then
       log.error("draw failed: " .. tostring(err))
@@ -324,12 +280,15 @@ local function controls()
     if key == keys.q then
       return
     elseif key == keys.x then
-      -- Broadcast, not addressed: a turtle that missed a hello still hears it.
+      -- Broadcast, not addressed: a turtle that never completed a handshake
+      -- still hears it.
       net.broadcast("command", { action = "recall" })
       log.warn("RECALL sent to all turtles")
+      sound.play("alert")
     elseif key == keys.g then
       net.broadcast("command", { action = "deploy" })
       log.info("DEPLOY sent to all turtles")
+      sound.play("ready")
     elseif key == keys.r then
       roster = {}
       saveRoster()
@@ -352,25 +311,23 @@ if not net.isWireless() then
   log.warn("wired modem - turtles will not reach this")
 end
 
--- Log the real character dimensions. Monitor size depends on the block layout
--- AND the text scale, so guessing at it is how dashboards end up clipped.
 if monitor then
   local mw, mh = monitor.getSize()
-  log.info(("monitor %dx%d chars at scale %s"):format(mw, mh, tostring(settings.textScale)))
-  if mw < 43 then
-    log.warn("narrow monitor - fuel and progress columns hidden")
+  log.info(("monitor %dx%d at scale %s"):format(mw, mh, tostring(scale)))
+  if mw < WANT_WIDTH then
+    log.warn("monitor is narrow - some columns are hidden")
   end
 else
-  log.warn("no monitor attached - drawing on this screen")
+  log.warn("no monitor - drawing on this screen")
 end
 
 parallel.waitForAny(listen, redraw, controls)
 
 if monitor then
-  local previous = term.redirect(monitor)
-  ui.clear()
-  ui.center(3, "fleet offline", ui.theme.dim)
-  term.redirect(previous)
+  display.on(monitor, function()
+    ui.clear()
+    ui.center(3, "fleet offline", ui.theme.dim)
+  end)
 end
 
 ui.clear()
