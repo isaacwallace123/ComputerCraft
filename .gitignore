@@ -1,0 +1,9 @@
+# Type definitions are cloned by tools\setup.ps1, not authored here.
+types/
+
+# Per-computer runtime state written in game, not source.
+.door
+.pulse
+.update
+.settings
+*.bak-*

@@ -1,0 +1,14 @@
+{
+  "files.associations": {
+    "*.lua": "lua"
+  },
+  "[lua]": {
+    "editor.defaultFormatter": "johnnymorganz.stylua",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2
+  },
+  "files.eol": "\n",
+  "search.exclude": {
+    "types/**": true
+  }
+}

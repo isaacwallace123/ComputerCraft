@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "sumneko.lua",
+    "johnnymorganz.stylua",
+    "usernamehw.errorlens",
+    "editorconfig.editorconfig"
+  ],
+  "unwantedRecommendations": ["johnnymorganz.luau-lsp"]
+}

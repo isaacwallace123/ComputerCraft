@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.3",
+  "workspace.library": ["types/cc-tweaked/library"],
+  "workspace.checkThirdParty": false,
+  "workspace.ignoreDir": [".vscode", "types"],
+  "diagnostics.globals": [
+    "sleep",
+    "write",
+    "print",
+    "printError",
+    "read",
+    "_HOST",
+    "_CC_DEFAULT_SETTINGS"
+  ],
+  "diagnostics.disable": ["duplicate-set-field"],
+  "hint.enable": true,
+  "telemetry.enable": false
+}
