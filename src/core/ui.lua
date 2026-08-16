@@ -199,15 +199,21 @@ function ui.menu(title, items)
     end
     ui.footer("up/down + enter    Q to quit")
 
-    local _, key = os.pullEvent("key")
-    if key == keys.up then
+    local event = { os.pullEvent() }
+    local kind, key = event[1], event[2]
+    if kind == "key" and key == keys.up then
       selected = selected > 1 and selected - 1 or #items
-    elseif key == keys.down then
+    elseif kind == "key" and key == keys.down then
       selected = selected < #items and selected + 1 or 1
-    elseif key == keys.enter then
+    elseif kind == "key" and key == keys.enter then
       return selected
-    elseif key == keys.q then
+    elseif kind == "key" and key == keys.q then
       return nil
+    elseif kind == "mouse_click" then
+      local clicked = event[4] - 2
+      if clicked >= 1 and clicked <= #items then
+        return clicked
+      end
     end
   end
 end

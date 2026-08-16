@@ -13,7 +13,7 @@ local sound = require("core.sound")
 
 local boot = {}
 
-boot.NAME = "FleetOS"
+boot.NAME = "ICOS"
 boot.VERSION = "1.0"
 
 local function centreX(text)

@@ -57,7 +57,7 @@ local private = cfg.token ~= ""
 --- GitHub's API rejects requests without a User-Agent, and needs the token when
 --- the repo is private. vnd.github.raw makes the contents endpoint return the
 --- plain file rather than JSON with base64 content - CC has no base64 decoder.
-local headers = { ["User-Agent"] = "fleetos-updater" }
+local headers = { ["User-Agent"] = "icos-updater" }
 if private then
   headers["Authorization"] = "Bearer " .. cfg.token
   headers["Accept"] = "application/vnd.github.raw"
@@ -184,7 +184,7 @@ local function draw(stage, done, total, current)
   frame = frame + 1
 
   ui.clear()
-  ui.header("FleetOS update", stage)
+  ui.header("ICOS update", stage)
 
   ui.text(2, 3, ui.pad(cfg.user .. "/" .. cfg.repo, width - 3), ui.theme.dim)
 
@@ -211,7 +211,7 @@ end
 
 local function fail(message, detail)
   ui.clear()
-  ui.header("FleetOS update", "failed")
+  ui.header("ICOS update", "failed")
   ui.text(2, 3, message, ui.theme.bad)
   if detail then
     ui.text(2, 5, ui.pad(detail, (ui.size()) - 3), ui.theme.dim)
@@ -307,7 +307,7 @@ local ok = failed == 0 and #broken == 0
 local width, height = ui.size()
 
 ui.clear()
-ui.header("FleetOS update", ok and "verified" or "PROBLEMS")
+ui.header("ICOS update", ok and "verified" or "PROBLEMS")
 
 ui.text(2, 3, ui.pad(cfg.user .. "/" .. cfg.repo, width - 3), ui.theme.dim)
 ui.text(2, 4, "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (branch)"), ui.theme.dim)

@@ -152,7 +152,38 @@ function expedition.status(job)
     haul = job.haul,
     delivered = job.delivered,
     target = job.targetY,
+    settings = {
+      distance = job.distance,
+      targetY = job.targetY,
+      tunnelLength = job.tunnelLength,
+    },
   }
+end
+
+--- Apply settings received from the fleet controller while parked.
+function expedition.configure(job, settings)
+  local limits = {
+    distance = { 1, 1000 },
+    targetY = { -64, 320 },
+    tunnelLength = { 1, 512 },
+  }
+
+  for field, range in pairs(limits) do
+    if settings[field] ~= nil then
+      local value = tonumber(settings[field])
+      if not value then
+        return false, field .. " must be a number"
+      end
+      value = math.floor(value)
+      if value < range[1] or value > range[2] then
+        return false, ("%s must be %d..%d"):format(field, range[1], range[2])
+      end
+      job[field] = value
+    end
+  end
+
+  expedition.save(job)
+  return true
 end
 
 --- Interactive configuration.
