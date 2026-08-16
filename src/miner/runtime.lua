@@ -134,7 +134,16 @@ local function localSetup(ctx, changeJob)
   -- other while the user is choosing.
   ctx.interactive = true
   if changeJob then
-    ctx:selectJob(ctx:chooseJob(), false)
+    local selected = ctx:chooseJob()
+    local changed, changeError = ctx:selectJob(selected, false, true)
+    if not changed then
+      ctx.interactive = false
+      ctx.node.parkKind = "error"
+      ctx.node.parkReason = "could not select job: " .. tostring(changeError)
+      ctx:saveNode()
+      ctx:report("parked", ctx.node.parkReason)
+      return false
+    end
   end
 
   ctx.job = ctx.jobModule.setup(ui)
