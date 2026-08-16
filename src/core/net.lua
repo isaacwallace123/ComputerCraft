@@ -19,7 +19,10 @@ local isWireless = false
 local function findModem()
   local wired = nil
   for _, name in ipairs(peripheral.getNames()) do
-    if peripheral.getType(name) == "modem" then
+    -- A peripheral can advertise several types. `hasType` detects modem traits
+    -- on combined upgrades such as an Ender Pocket Computer instead of looking
+    -- only at getType's first return value.
+    if peripheral.hasType(name, "modem") then
       local modem = peripheral.wrap(name)
       if modem and modem.isWireless() then
         return name, true

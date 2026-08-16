@@ -15,7 +15,7 @@ Base computer            Pocket controller             Mining turtle
   startup.lua              startup.lua                    startup.lua
   always-on service        handheld shell                 miner runtime
   desktop + console        synced roster/policy  Rednet   navigation + fuel
-  authoritative state  ↔   Fleet/Devices/Operations  ↔   local job safety
+  authoritative state  ↔  Fleet/Devices/Mine Control ↔  local job safety
 ```
 
 ## Dependency direction
@@ -72,6 +72,8 @@ should not import an app, and a job should not manipulate the desktop.
 - Timers, Rednet, resize, and ICOS events are broadcast to all app coroutines.
 - `icos_open_app` opens or focuses a page; `icos_open` passes a payload to it.
 - `icos_close` gives an app a chance to stop before its page is removed.
+- A normally returning app is removed and reveals Home; a crashed app stays open on
+  its diagnostic page.
 
 Fleet can claim the largest secondary monitor for its haul view. Display selection and
 text scaling live in `src/core/display.lua`.

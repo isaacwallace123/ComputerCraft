@@ -178,6 +178,24 @@ function desktop.run(parent, appList, opts)
     end)
   end
 
+  -- A normal program return means the page is finished. Remove it immediately
+  -- and reveal Home; otherwise an app which clears before returning leaves its
+  -- dead, black window focused forever. Crashed tasks stay open so their error
+  -- page remains available for diagnosis.
+  local function reapCompleted()
+    for index = #tasks, 1, -1 do
+      local task = tasks[index]
+      if task.dead and not task.error then
+        table.remove(tasks, index)
+        if focused == index then
+          focused = nil
+        elseif focused and focused > index then
+          focused = focused - 1
+        end
+      end
+    end
+  end
+
   local function drawDesktop()
     onParent(function()
       for row = contentTop, height - 1 do
@@ -218,6 +236,7 @@ function desktop.run(parent, appList, opts)
   end
 
   local function draw()
+    reapCompleted()
     if focused and tasks[focused] then
       setVisibility()
       local task = tasks[focused]

@@ -28,7 +28,7 @@ local DEFINITIONS = {
   },
   {
     id = "automation",
-    name = "Automation",
+    name = "Auto Recovery",
     program = "apps/automation.lua",
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet", "controller" },
@@ -36,7 +36,7 @@ local DEFINITIONS = {
   },
   {
     id = "operations",
-    name = "Operations",
+    name = "Mine Control",
     program = "apps/operations.lua",
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet", "controller" },

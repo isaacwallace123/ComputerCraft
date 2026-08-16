@@ -48,7 +48,10 @@ function device.capabilities()
   }
 
   for _, name in ipairs(peripheral.getNames()) do
-    if peripheral.getType(name) == "modem" then
+    -- Peripherals may expose multiple types. Ender Pocket Computers can expose
+    -- their back upgrade with another primary type while still carrying the
+    -- `modem` trait, so comparing only getType's first return value misses it.
+    if peripheral.hasType(name, "modem") then
       caps.modem = true
       local modem = peripheral.wrap(name)
       if modem and modem.isWireless() then
@@ -99,9 +102,14 @@ device.ROLES = {
     label = "Fleet handheld",
     detail = "Mobile dashboard and full fleet control",
     requires = function(caps)
-      return caps.kind == "pocket" and caps.modem
+      -- The shell remains useful offline, so setup should not collapse to a
+      -- confusing Utility-only menu when a Pocket genuinely has no upgrade.
+      return caps.kind == "pocket"
     end,
     warn = function(caps)
+      if not caps.modem then
+        return "no modem: the UI works offline; fleet control needs a wireless or ender modem"
+      end
       if not caps.wireless then
         return "wired modem: use a wireless or ender modem while mobile"
       end
