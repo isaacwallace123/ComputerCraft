@@ -9,6 +9,7 @@ local config = require("core.config")
 local boot = require("core.boot")
 local version = require("core.version")
 local device = require("core.device")
+local coordinator = require("fleet.coordinator")
 
 local console = {}
 
@@ -186,6 +187,7 @@ function console.run(target, opts)
     if command == "help" or command == "?" then
       log.info("console: " .. HELP)
       log.info("console: about | open devices <device> | clear | update | setup | reboot | exit")
+      log.info("console: quarry <x1> <z1> <x2> <z2> <topY> <bottomY>")
     elseif command == "about" or command == "system" then
       showSystem()
     elseif command == "status" or command == "devices" or command == "list" then
@@ -194,6 +196,27 @@ function console.run(target, opts)
       sendAction(command, words[2])
     elseif command == "refresh" then
       sendAction("status_request", words[2])
+    elseif command == "quarry" then
+      local x1, z1 = tonumber(words[2]), tonumber(words[3])
+      local x2, z2 = tonumber(words[4]), tonumber(words[5])
+      local topY, bottomY = tonumber(words[6]), tonumber(words[7])
+      if not (x1 and z1 and x2 and z2 and topY and bottomY) then
+        log.warn("console: quarry <x1> <z1> <x2> <z2> <topY> <bottomY>")
+      else
+        local ok, message = coordinator.quarry({
+          x1 = math.floor(x1),
+          z1 = math.floor(z1),
+          x2 = math.floor(x2),
+          z2 = math.floor(z2),
+          topY = math.floor(math.max(topY, bottomY)),
+          bottomY = math.floor(math.min(topY, bottomY)),
+        })
+        if ok then
+          log.info("console: " .. message)
+        else
+          log.error("console: " .. message)
+        end
+      end
     elseif command == "open" and words[2] and words[2]:lower() == "devices" then
       openDevice(words[3])
     elseif command == "clear" then

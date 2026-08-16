@@ -2,7 +2,7 @@
 ---
 --- PUBLIC repo: run this on a fresh in-game computer.
 ---
----   wget run https://raw.githubusercontent.com/USER/REPO/main/bootstrap.lua
+---   wget run https://raw.githubusercontent.com/isaacwallace123/ComputerCraft/master/bootstrap.lua
 ---
 --- PRIVATE repo: `wget` cannot send an Authorization header, so it can't fetch
 --- this file from a private repo. Two ways round it:

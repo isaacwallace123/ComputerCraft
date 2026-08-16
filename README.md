@@ -12,7 +12,7 @@ together without hardcoded computer IDs. ✨
 - 🎮 Browse, deploy, recall, and configure individual turtles from the Devices app.
 - ⌨️ Use the physical PC as a live fleet log and command console while the monitor
   stays touch-friendly.
-- ⛏️ Run resumable expedition and quarry jobs with fuel and return-home safeguards.
+- ⛏️ Run five focused mining jobs with automatic fuel and return-home safeguards.
 - 🔄 Check for over-the-air updates automatically whenever ICOS boots.
 - 📦 Update one turtle—or every connected turtle—from the Devices app.
 - 🔊 Play short nostalgic boot, shutdown, success, and alert jingles when a speaker
@@ -21,12 +21,37 @@ together without hardcoded computer IDs. ✨
   get only the controls and apps they can actually use.
 
 > New here? Start with one base computer and one mining turtle. Get a short
-> expedition working end to end, then add the rest of the fleet—the tenth turtle
+> rare-ore run working end to end, then add the rest of the fleet—the tenth turtle
 > pairs exactly like the first one.
 
 **Source of truth is this folder.** In-game machines are deployment targets, never
 where you edit. Everything here survives world resets, server wipes, and losing a
 turtle to a creeper.
+
+## 🚀 Quick install
+
+On a fresh CC: Tweaked computer or turtle, paste this into CraftOS:
+
+```text
+wget run https://raw.githubusercontent.com/isaacwallace123/ComputerCraft/master/bootstrap.lua
+```
+
+Press Enter when asked for an access token because this repository is public. The
+bootstrapper downloads the updater, pins the current commit, and installs everything
+in `src/manifest.json`. Run `install` afterward to choose the machine's role.
+
+## 📚 Documentation
+
+The README is the friendly overview. Detailed technical and handoff documentation
+lives in [`docs/`](docs/README.md):
+
+- [Architecture](docs/architecture.md) — boot, desktop, fleet, miner, and updater flows.
+- [Mining system](docs/mining.md) — algorithms, job contract, fuel safety, and adding jobs.
+- [Network protocol](docs/network-protocol.md) — Rednet envelopes, commands, and telemetry.
+- [Persistent state](docs/persistence.md) — every dotfile, owner, and migration rule.
+- [Operations](docs/operations.md) — installation, deployment, recovery, and releases.
+- [Decision log](docs/decisions.md) — why important choices were made.
+- [AI handoff](docs/ai-handoff.md) — the fastest safe way for another agent to continue.
 
 ## 🗺️ Project layout
 
@@ -54,13 +79,22 @@ src/
 
   turtle/            turtle hardware, no job knowledge
     nav.lua          position tracking + safe movement
-    fuel.lua         fuel level, limit, refuelling
+    fuel.lua         tank + carried-fuel accounting and lazy refuelling
     inv.lua          inventory queries, dumping, junk disposal
     ore.lua          what is worth mining + vein following
+    geo.lua          optional Advanced Peripherals Geo Scanner adapter
 
   jobs/              what a turtle does, no I/O of its own
-    quarry.lua       rectangular pit near base, resumable
-    expedition.lua   travel out, sink a shaft, branch mine, come home
+    quarry.lua       coordinated absolute-world excavation
+    rare.lua         rare and modded-ore prospecting profile
+    fuel_hunt.lua    coal-only prospecting profile
+    resources.lua    iron/copper/zinc/andesite profile
+    hollow.lua       three-block-high floor excavation at a chosen Y
+    common/          shared return and fuel safety policy
+    prospecting/     reusable branch-grid runner and ore profiles
+
+  miner/             turtle lifecycle, telemetry, and remote commands
+  fleet/             shared device roster and coordinated assignments
 
   apps/              entry points — the only files that wire things together
     miner.lua        turtle agent: run jobs, report, obey fleet orders
@@ -72,6 +106,8 @@ src/
     equip.lua        guarded modem swap
 
 bootstrap.lua        one-shot installer for a fresh machine
+AGENTS.md             short rules and routing for coding agents
+docs/                 engineering, operations, decisions, and handoff memory
 tools/               PowerShell helpers, run from the repo root
 types/               CC: Tweaked definitions (gitignored — see setup.ps1)
 ```
@@ -157,7 +193,7 @@ data targets CC: Tweaked 1.100.0 — older than this pack.
 ### ➕ Adding a machine
 
 1. Place it. Pull the code:
-   - **Public repo:** `wget run https://raw.githubusercontent.com/USER/REPO/main/bootstrap.lua`
+   - **Public repo:** `wget run https://raw.githubusercontent.com/isaacwallace123/ComputerCraft/master/bootstrap.lua`
    - **Private repo:** run `.\tools\print-bootstrap.ps1 -User me -Repo ComputerCraft -Token github_pat_xxx`,
      then in game type `lua` and press Ctrl+V.
 2. Run `install`, pick a role.
@@ -203,8 +239,8 @@ time it starts.
 
 ### 🏷️ ICOS versions
 
-ICOS uses semantic versions from `src/core/version.lua`; this release is **v1.1.0**.
-Every pull request merged into the default `master` branch changes the release version:
+ICOS uses the semantic version in `src/core/version.lua` as its single source of truth.
+Every pull request merged into the default `master` branch changes that release version:
 
 - `version:major` → incompatible or breaking change (`2.0.0`)
 - `version:minor` → backward-compatible feature (`1.2.0`)
@@ -212,7 +248,7 @@ Every pull request merged into the default `master` branch changes the release v
 
 The `.github/workflows/icos-version.yml` workflow serializes merge events and commits
 the appropriate bump directly after each merge. A deliberately pre-versioned release
-PR is accepted as-is, which bootstraps this workflow without double-bumping v1.1.0.
+PR is accepted as-is, so release PRs are not bumped twice.
 
 ### 🧠 Why the updater resolves a commit SHA first
 
@@ -307,8 +343,8 @@ Each reporting turtle is treated as a paired device. Touch its Fleet row to swit
 the **Devices** app focused on that turtle. The device list includes each turtle's ICOS
 version. From its detail page ICOS can update, deploy, or recall only that turtle,
 switch its job, forget its pairing, refresh its state, or edit its job settings.
-Expedition distance, target Y, and tunnel length—and quarry width, length, and depth—
-all have touch-friendly controls. Commands are addressed to that turtle's computer ID
+Each job publishes its own settings, with touch controls and scrolling for longer
+forms such as the quarry's world-coordinate corners. Commands target that turtle's ID
 and acknowledged with a useful success or refusal message.
 
 Below that is the compact **haul summary** — the fleet's combined take, most plentiful
@@ -364,46 +400,109 @@ stands, so the new spot becomes its reference point — no reconfiguration.
 A recall is not treated as a failure. The turtle finishes its walk home, empties its
 inventory into the chest, and keeps its haul.
 
-Completed expeditions show 100%. The old 95% parked display was not a stuck turtle:
-95–100% represents the return trip, and the previous snapshot never promoted a
-successful home arrival to 100%. ICOS now persists the parked reason and completion
-state. A new deploy can still be refused safely—for example, when the turtle does not
-have the estimated round-trip fuel—but that reason is shown on both the PC and turtle.
-While parked, the fuel display compares the current tank directly with the next job's
-estimate, rather than comparing it with the zero-block walk home.
+The old 95% parked display was not a stuck turtle: 95–100% represents the return trip.
+ICOS now persists why a turtle parked, and repeatable prospecting runs roll straight into a
+fresh cycle after unloading. A new deploy can still be refused safely—for example,
+when the turtle does not have the minimum safe-trip fuel—but that reason is shown on
+both the PC and turtle.
+While parked, the fuel display compares **all fuel aboard** with the next job's
+estimate, rather than comparing only the tank with the zero-block walk home.
 
 ## ⛏️ Mining jobs
 
-Each turtle picks a job on first boot (`.node` remembers it). Both expose the same
-interface — `load`, `save`, `setup`, `restart`, `status`, `run(job, ctx)` — where
-`ctx.report(phase, detail)` drives the dashboard and `ctx.aborted()` returns a reason
-when the base has recalled the fleet. That is the whole contract; adding a third job
-means adding one file.
+Each turtle picks a job on first boot (`.node` remembers it), and you can switch it
+later from its Devices page or with `J` on the turtle. There are five modes:
 
-### 💎 Expedition — the ore hunter
+| Job | Default | What it optimizes for |
+| --- | --- | --- |
+| **Quarry** | configured world box | Every block from `topY` to `bottomY`, divided evenly across all parked turtles |
+| **Rare** | Y -59 | Diamond, redstone, emerald, ancient debris, and uncommon modded `_ore` blocks |
+| **Fuel** | Y 96 | Coal ore only; coal stays aboard as fuel reserve |
+| **Hollow** | Y -30 | A rectangular, three-block-high empty floor |
+| **Resources** | Y 16 | Iron, copper, zinc, and andesite |
 
-Travels a **random bearing** `distance` blocks out (random per turtle, so a fleet fans
-out instead of queueing down one hole), sinks a shaft to the target Y, then branch
-mines: a main corridor with ribs every few blocks, following any vein it touches.
+The three prospecting modes use the same efficient branch grid: one main corridor,
+ribs every three blocks, and recursive vein following. That spacing exposes every
+block in the volume without blindly excavating all the stone. Turtles take independent
+random bearings, so a fleet spreads out instead of duplicating one tunnel.
 
-Defaults to **Y = -59**, the best diamond band in 1.20.1.
+If a prospecting turtle exposes an Advanced Peripherals Geo Scanner, it first targets
+matching blocks within its scan radius, then runs the complete branch grid as a
+fallback. A blocked scanner target is skipped safely; lava is never opened just to
+reach an ore. Without the peripheral, the exact same jobs continue with normal
+inspection.
 
-> **Coal does not spawn below Y=0.** At diamond level you get diamond, redstone, gold,
-> lapis and deepslate iron — but no coal. This is why the turtle vein-follows *during
-> the shaft descent* as well: the shaft cuts through every ore band on the way down,
-> and that is where your coal and copper come from.
+> A standard mining turtle already uses both upgrade slots for its pickaxe and modem,
+> so it cannot also carry the scanner upgrade. Scanner-assisted mining is optional for
+> compatible/modded hardware; the branch grid is the normal fleet path.
 
-**Junk is dropped where it is mined.** A round trip from Y=-59 a hundred blocks out is
-~250 moves each way, so a turtle hauling deepslate home would spend its whole fuel
-budget commuting. `turtle/ore.lua` keeps two separate lists for this, because
-`turtle.inspect` reports *block* names (`deepslate_iron_ore`) while the inventory holds
-*drops* (`raw_iron`) — mixing those up is the classic bug here. Anything unrecognised
-is kept, so a modded drop errs towards coming home.
+### ♻️ Autonomous fuel and repeat runs
 
-Setup reads your Y from GPS if a cluster is in range, otherwise asks. It also estimates
-the fuel the round trip needs and refuses to leave without it.
+Rare, Fuel, and Resources turtles keep working after an unload. Each cycle picks a
+fresh route, mines, returns to the chest, drops only loot, and launches again.
+**Recall** from Fleet, Devices, or the PC console is the stop button: the current cycle
+unwinds, the turtle comes home, unloads, and parks. Quarry and Hollow are finite because
+restarting the same cleared volume would only waste fuel.
 
-**Chest goes directly BELOW the turtle** for this job — see the swarm section for why.
+Fuel in inventory is a reserve, not loot. Coal, charcoal, coal blocks, lava buckets,
+and other detected fuels stay aboard when the turtle unloads. The dashboard's fuel
+number includes the tank plus known carried fuel; a device detail page also shows the
+tank/reserve breakdown. Empty buckets left after burning lava are ordinary loot and
+are deposited normally.
+
+Before every potentially outward move—including travel, shafts, quarry sweeps, and
+ore-vein detours—the turtle checks the exact planned return route plus a job-specific
+safety margin. It loads fuel lazily, one item at a time. When another step would spend
+the return reserve, it stops mining automatically, walks home, unloads, and parks with
+`fuel reserve reached` instead of becoming stranded.
+
+The launch budget includes the real Manhattan route, climb to cruise altitude, descent,
+return, and a safety allowance. It does not demand enough fuel for every optional
+branch in advance: the live guard can shorten a cycle, and mined coal can extend it.
+
+> **AFK still needs chunk loading.** ICOS can make the turtle autonomous, but it cannot
+> make an unloaded Minecraft chunk tick. Use a Chunky Turtle or your server's chunk
+> loader, and confirm the server itself keeps running with no players online.
+
+### 💎 Focused prospecting
+
+Rare deliberately excludes coal, iron, copper, zinc, and andesite so its vein budget
+is spent on valuable targets. Resources keeps those common building ores instead.
+Fuel matches coal ores only and runs high by default, where coal is plentiful. You can
+adjust distance, target Y, and tunnel length per turtle from Devices; modpack-specific
+rare blocks that contain `_ore` are detected automatically.
+
+Junk is dropped where it is mined. `turtle.inspect` reports block names such as
+`deepslate_iron_ore`, while inventory contains drops such as `raw_iron`, so detection
+and disposal intentionally use separate rules. Unknown modded drops are kept rather
+than accidentally thrown away.
+
+### 🕳️ Three-high hollow floor
+
+Hollow travels to the configured distance and middle Y (default **-30**), then sweeps
+a serpentine rectangle. At every cell it clears the block above and below the turtle,
+producing a continuous three-block-tall space. Width and length are configurable from
+Devices. A protected block, lava, or unbreakable block stops the job and reports the
+exact obstruction instead of falsely marking that cell complete.
+
+### 🏗️ Coordinated quarry
+
+Quarry uses an absolute Minecraft rectangle and vertical range. First run the **Where**
+app on every worker so it knows its world position and heading. Then type this on the
+base computer's physical console:
+
+```text
+quarry <x1> <z1> <x2> <z2> <topY> <bottomY>
+```
+
+ICOS assigns every connected parked miner a non-overlapping, balanced range of cells.
+Each pass clears two vertical blocks, all workers save their exact layer/cell after
+every step, and the whole box is covered once with no overlapping work. If the box has
+fewer horizontal cells than parked turtles, only the useful number are assigned.
+
+Quarry configuration from the older relative width/length/depth format is intentionally
+not reused: after updating, assign a fresh absolute rectangle before deploying. This
+prevents an old `.quarry` file from being mistaken for world coordinates.
 
 ### 📦 The depot
 
@@ -433,36 +532,19 @@ If the depot *is* full when a turtle gets home, the drop silently does nothing, 
 job reports `depot full` and the row goes red rather than parking as though it had
 finished. A turtle holding a load it cannot put down is stuck, not done.
 
-> This layout is for **expedition**, which empties downwards. The **quarry** job empties
-> *behind* itself and digs straight down from its start block — so a quarry turtle must
-> have a chest behind it and clear ground below. `nav` now refuses to dig computers,
-> turtles, chests and barrels, so a quarry placed on top of a chest stops safely instead
-> of eating your depot.
-
-### 🕳️ Quarry — the bulk digger
-
-Rectangular pit next to base. Chest **behind** the turtle. Covered further down.
-
-## 🏗️ Building a quarry
-
-1. Turtle at the near-left corner of the area.
-2. **Chest directly behind it.**
-3. Coal or charcoal in any slot.
-
-The pit extends forward and to the right. Each pass clears two layers, so depth 32 is
-16 passes. One stack of coal (~5,120 fuel) comfortably covers an 8×8×32. Start with
-4×4×16 to watch it behave.
+All five jobs unload into a chest **directly below the turtle's home block** and retain
+anything usable as fuel. A chest that cannot accept the haul is reported as
+`depot full`; it is never disguised as a successful park.
 
 ### 🛡️ How ICOS avoids losing a turtle
 
 - **Position is written to disk after every *confirmed* move** — only once the game
   says the move happened, so the count cannot drift.
-- **It never takes a step it cannot walk back from.** Before each move it checks that
-  fuel still covers the distance home plus a 64-block margin, and burns mined coal one
-  lump at a time to top up.
-- **Every layer starts from home.** After an interruption it walks back to the chest
-  and re-runs the current layer, mostly gliding through air it already mined. Far
-  easier to get right than partial-layer bookkeeping.
+- **It never takes a step it cannot walk back from.** Before each outward move it checks
+  tank fuel plus carried coal, fuel blocks, or lava against the walk home and safety
+  margin. Fuel is burned only when the next physical move needs it.
+- **Progress is checkpointed at cell or tunnel granularity.** A reboot resumes the
+  saved layer and cell rather than restarting an entire excavation.
 - **Gravel and mobs are retried, bedrock is not.** A blocked move digs; if nothing
   solid is there, something alive is, so it attacks. 100 failed attempts ends the job
   cleanly instead of grinding forever.
@@ -489,8 +571,8 @@ once, then pack it up and carry it to the next outpost. 🎒
 
 > **Why chest-underneath, not chest-behind.** A turtle placed by another turtle ends up
 > facing a direction we cannot control, so "drop behind me" is a coin flip. "Drop below
-> me" always hits the chest it is standing on. That is why the expedition job empties
-> downwards while the quarry — which you place by hand — still uses a chest behind.
+> me" always hits the chest it is standing on. Every mining job therefore uses the
+> same chest-below convention.
 
 **What this is not:** turtles crafting brand-new turtles out of ore they just mined.
 That needs smelting, and turtles cannot smelt. These are pre-built turtles being
@@ -512,13 +594,31 @@ carried, planted, and picked back up.
 before falling back to `PATH` — there are rokit shims of the same name on PATH that
 refuse to run without a `rokit.toml`.
 
+### 🗂️ Source layout
+
+Entry points in `src/apps/` are intentionally thin. Long-lived behavior is grouped by
+domain so new features do not turn one app into a thousand-line state machine:
+
+| Folder | Responsibility |
+| --- | --- |
+| `src/miner/` | Turtle state/telemetry, Rednet commands, and autonomous lifecycle |
+| `src/fleet/` | Shared paired-device roster and fleet-domain helpers |
+| `src/jobs/` | Job definitions, with return/fuel rules in `jobs/common/` |
+| `src/turtle/` | Hardware primitives: navigation, inventory, ore, and fuel accounting |
+| `src/turtle/fuel/` | Fuel-value catalogue and future fuel-policy extensions |
+| `src/core/` | Platform-neutral desktop, UI, config, logging, and networking |
+
+The miner entrypoint is now composition only; its previous UI, networking, state, and
+job-loop responsibilities live in focused modules. Fleet and Devices share one roster
+module instead of maintaining duplicate pairing and timeout rules.
+
 ## 🧭 Suggested upgrade path
 
 | Upgrade | Why |
 | --- | --- |
 | **Ender modems** | Prerequisite for any tracking at depth. Do this first. |
 | **Chunky Turtle** (AP) | Keeps its own chunk loaded, so turtles mine while you're away. The real "mine for me" unlock. |
-| **Geo Scanner** (AP) | `scan` turns blind quarrying into targeted digging. |
+| **Geo Scanner** (AP) | Optional targeted prospecting on hardware that can expose it alongside mining. |
 | **GPS cluster** | 4 computers + 4 modems high up. World coordinates on the dashboard. |
 | **Inventory Manager** (AP) | Push items straight into your own inventory. |
 

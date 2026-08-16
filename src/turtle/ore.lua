@@ -113,14 +113,17 @@ end
 --- lets the caller carry on down a tunnel without re-navigating.
 ---
 --- `budget` caps total blocks so a huge andesite blob cannot swallow the trip.
-function ore.follow(nav, isWanted, budget, record, maxDepth)
+--- `beforeMove` applies the same recall/fuel/inventory policy as the main path.
+function ore.follow(nav, isWanted, budget, record, maxDepth, beforeMove)
   maxDepth = maxDepth or 12
   local total = budget or 64
   local remaining = total
+  local stoppedReason = nil
+  local stoppedKind = nil
   local explore
 
   local function consider(inspect, moveIn, moveOut, depth)
-    if remaining <= 0 then
+    if remaining <= 0 or stoppedReason then
       return
     end
 
@@ -129,17 +132,27 @@ function ore.follow(nav, isWanted, budget, record, maxDepth)
       return
     end
 
-    record(data.name)
-    remaining = remaining - 1
+    if beforeMove then
+      local allowed, reason, kind = beforeMove()
+      if not allowed then
+        stoppedReason, stoppedKind = reason, kind
+        return
+      end
+    end
 
     if moveIn() then
+      record(data.name)
+      remaining = remaining - 1
       explore(depth + 1)
-      moveOut()
+      local returned, returnError = moveOut()
+      if not returned then
+        stoppedReason = "could not leave vein: " .. tostring(returnError)
+      end
     end
   end
 
   explore = function(depth)
-    if depth > maxDepth or remaining <= 0 then
+    if depth > maxDepth or remaining <= 0 or stoppedReason then
       return
     end
 
@@ -154,7 +167,7 @@ function ore.follow(nav, isWanted, budget, record, maxDepth)
   end
 
   explore(0)
-  return total - remaining
+  return total - remaining, stoppedReason, stoppedKind
 end
 
 return ore

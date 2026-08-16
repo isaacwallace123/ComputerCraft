@@ -83,13 +83,13 @@ end
 --- Could the turtle still get home right now? The margin covers the moves it
 --- takes to notice a problem and any detour around it.
 function nav.canReturn(margin)
-  return fuel.level() >= nav.distanceHome() + (margin or 0)
+  return fuel.available() >= nav.distanceHome() + (margin or 0)
 end
 
 --- Blocks the turtle must never break, whatever is in its way.
 ---
 --- Without this a turtle placed under another turtle digs its neighbour up on
---- launch - the expedition's first move is to rise to cruise altitude, and
+--- launch - a prospecting job's first move is to rise to cruise altitude, and
 --- `up` digs. The fleet eats itself and you are left wondering where a turtle
 --- went. Chests are protected for the same reason: that is where the haul goes.
 ---
@@ -121,6 +121,9 @@ local function push(move, dig, detect, attack, inspect)
   local refusal = refuses(inspect)
   if refusal then
     return false, refusal
+  end
+  if not fuel.ensureMove() then
+    return false, "out of fuel"
   end
 
   for attempt = 1, 100 do
@@ -163,6 +166,9 @@ end
 --- Used to unwind after stepping into a vein: the space behind is the one we
 --- just came out of, so it is always clear.
 function nav.back()
+  if not fuel.ensureMove() then
+    return false, "out of fuel"
+  end
   if not turtle.back() then
     return false, "blocked"
   end
@@ -201,10 +207,30 @@ function nav.digDown()
   if refusal then
     return false, refusal
   end
-  if turtle.digDown() then
-    state.digs = state.digs + 1
-    save()
+  if not turtle.detectDown() then
+    return true
   end
+  if not turtle.digDown() then
+    return false, "unbreakable"
+  end
+  state.digs = state.digs + 1
+  save()
+  return true
+end
+
+function nav.digUp()
+  local refusal = refuses(turtle.inspectUp)
+  if refusal then
+    return false, refusal
+  end
+  if not turtle.detectUp() then
+    return true
+  end
+  if not turtle.digUp() then
+    return false, "unbreakable"
+  end
+  state.digs = state.digs + 1
+  save()
   return true
 end
 
@@ -236,20 +262,30 @@ end
 --- Walk to a job-relative coordinate.
 --- Rises before travelling and descends last, so the turtle crosses air it has
 --- already mined rather than tunnelling through fresh rock on the way back.
-function nav.goTo(tx, ty, tz)
+function nav.goTo(tx, ty, tz, beforeMove)
+  local function checked(move)
+    if beforeMove then
+      local allowed, reason, kind = beforeMove()
+      if not allowed then
+        return false, reason, kind
+      end
+    end
+    return move()
+  end
+
   while state.y < ty do
-    local ok, err = nav.up()
+    local ok, err, kind = checked(nav.up)
     if not ok then
-      return false, err
+      return false, err, kind
     end
   end
 
   if state.x ~= tx then
     nav.face(state.x < tx and 1 or 3)
     while state.x ~= tx do
-      local ok, err = nav.forward()
+      local ok, err, kind = checked(nav.forward)
       if not ok then
-        return false, err
+        return false, err, kind
       end
     end
   end
@@ -257,17 +293,17 @@ function nav.goTo(tx, ty, tz)
   if state.z ~= tz then
     nav.face(state.z < tz and 0 or 2)
     while state.z ~= tz do
-      local ok, err = nav.forward()
+      local ok, err, kind = checked(nav.forward)
       if not ok then
-        return false, err
+        return false, err, kind
       end
     end
   end
 
   while state.y > ty do
-    local ok, err = nav.down()
+    local ok, err, kind = checked(nav.down)
     if not ok then
-      return false, err
+      return false, err, kind
     end
   end
 
@@ -310,6 +346,47 @@ function nav.origin()
     y = state.originY,
     z = state.originZ,
     heading = state.originHeading,
+  }
+end
+
+--- Convert an absolute world block into this job's relative coordinate system.
+function nav.worldToRelative(x, y, z)
+  if not state.originSet then
+    return nil, "world origin is not configured - run where on this turtle"
+  end
+  local dx, dz = x - state.originX, z - state.originZ
+  local forward = WORLD[state.originHeading]
+  local right = WORLD[(state.originHeading + 1) % 4]
+  return {
+    x = dx * right.x + dz * right.z,
+    y = y - state.originY,
+    z = dx * forward.x + dz * forward.z,
+  }
+end
+
+--- Convert a world-axis offset into job-relative axes.
+function nav.worldOffsetToRelative(dx, dy, dz)
+  if not state.originSet then
+    return nil, "world heading is not configured"
+  end
+  local forward = WORLD[state.originHeading]
+  local right = WORLD[(state.originHeading + 1) % 4]
+  return {
+    x = dx * right.x + dz * right.z,
+    y = dy,
+    z = dx * forward.x + dz * forward.z,
+  }
+end
+
+--- Convert scanner front/right/up offsets at the current facing into an
+--- absolute job-relative coordinate.
+function nav.scannerTarget(front, right, up)
+  local forwardDelta = DELTA[state.facing]
+  local rightDelta = DELTA[(state.facing + 1) % 4]
+  return {
+    x = state.x + front * forwardDelta.x + right * rightDelta.x,
+    y = state.y + up,
+    z = state.z + front * forwardDelta.z + right * rightDelta.z,
   }
 end
 

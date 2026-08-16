@@ -9,7 +9,7 @@
 --- Why chest-underneath rather than chest-behind: a turtle placed by another
 --- turtle ends up facing a direction we cannot control, so "drop behind me" is
 --- a coin flip. "Drop below me" always hits the chest it is standing on. That
---- is also why the expedition job empties downwards.
+--- is also why every mining job empties downwards.
 ---
 --- What this is NOT: turtles crafting brand new turtles out of ore they mined.
 --- That needs smelting, and turtles cannot smelt. These are pre-built turtles
