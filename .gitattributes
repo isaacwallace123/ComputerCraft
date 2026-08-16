@@ -1,0 +1,4 @@
+# CC: Tweaked downloads these files verbatim over HTTP. Keep LF endings so the
+# in-game `edit` program does not show stray ^M characters.
+* text=auto eol=lf
+*.ps1 text eol=crlf
