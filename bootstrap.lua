@@ -1,13 +1,20 @@
 --- bootstrap.lua - one-shot installer for a brand new computer.
 ---
---- On a fresh in-game computer, run this single line (substitute your details):
+--- PUBLIC repo: run this on a fresh in-game computer.
 ---
 ---   wget run https://raw.githubusercontent.com/USER/REPO/main/bootstrap.lua
 ---
---- It grabs the two files needed to self-update, then hands off to update.lua
---- which pulls everything else listed in src/manifest.json.
+--- PRIVATE repo: `wget` cannot send an Authorization header, so it can't fetch
+--- this file from a private repo. Two ways round it:
+---   1. Run tools\print-bootstrap.ps1 on your PC. It copies a single line to
+---      your clipboard; paste it into the in-game `lua` prompt with Ctrl+V.
+---   2. Put ONLY this file in a secret Gist and `wget run` that. It will prompt
+---      for a token and pull everything else from the private repo.
+---
+--- Either way it grabs the two files needed to self-update, then hands off to
+--- update.lua which pulls everything in src/manifest.json.
 
-local USER = "" -- <- fill these in and commit, or you will be prompted
+local USER = "" -- fill in and commit if you like; never commit a token
 local REPO = ""
 local BRANCH = "main"
 local PATH = "src"
@@ -16,15 +23,38 @@ local user, repo, branch = USER, REPO, BRANCH
 
 if user == "" or repo == "" then
   write("GitHub username: ")
-  user = read()
+  user = read() or ""
   write("Repository name: ")
-  repo = read()
+  repo = read() or ""
 end
 
-local base = ("https://raw.githubusercontent.com/%s/%s/%s/%s/"):format(user, repo, branch, PATH)
+write("Access token (blank if the repo is public): ")
+local token = read("*") or ""
+local private = token ~= ""
+
+local headers = private
+    and {
+      ["Authorization"] = "Bearer " .. token,
+      ["Accept"] = "application/vnd.github.raw",
+      ["User-Agent"] = "cc-tweaked-updater",
+    }
+  or nil
+
+local function urlFor(name)
+  if private then
+    return ("https://api.github.com/repos/%s/%s/contents/%s/%s?ref=%s"):format(
+      user,
+      repo,
+      PATH,
+      name,
+      branch
+    )
+  end
+  return ("https://raw.githubusercontent.com/%s/%s/%s/%s/%s"):format(user, repo, branch, PATH, name)
+end
 
 local function grab(name)
-  local response, err = http.get(base .. name .. "?t=" .. tostring(os.epoch("utc")))
+  local response, err = http.get(urlFor(name), headers)
   if not response then
     printError("Failed to download " .. name .. ": " .. tostring(err))
     error("bootstrap aborted", 0)
@@ -34,19 +64,27 @@ local function grab(name)
     fs.makeDir(dir)
   end
   local handle = fs.open(name, "w")
+  if not handle then
+    error("could not write " .. name, 0)
+  end
   handle.write(response.readAll())
   handle.close()
   response.close()
   print("  got " .. name)
 end
 
-print("Bootstrapping from " .. user .. "/" .. repo)
+print("\nBootstrapping from " .. user .. "/" .. repo)
 grab("lib/config.lua")
 grab("update.lua")
 
 -- Seed update.lua's config so it does not ask again.
 local handle = fs.open(".update", "w")
-handle.write(textutils.serialise({ user = user, repo = repo, branch = branch, path = PATH }))
+if not handle then
+  error("could not write .update", 0)
+end
+handle.write(
+  textutils.serialise({ user = user, repo = repo, branch = branch, path = PATH, token = token })
+)
 handle.close()
 
 print("\nRunning update...\n")

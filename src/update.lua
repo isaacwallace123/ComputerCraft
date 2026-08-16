@@ -18,39 +18,83 @@ local defaults = {
   repo = "", -- the repository name
   branch = "main",
   path = "src", -- folder inside the repo holding these programs
+  token = "", -- only for a PRIVATE repo; see the warning below
 }
+
+-- SECURITY: the token is stored here in plain text. Anyone who can reach this
+-- computer in game, plus the server admin, plus anyone with the world files,
+-- can read it. Use a fine-grained personal access token scoped to this ONE
+-- repository with Contents: Read-only and an expiry date. Never a classic
+-- token, never one you use anywhere else.
 
 local cfg = config.load(CONFIG_PATH, defaults)
 
 if cfg.user == "" or cfg.repo == "" then
   print("First run - where does your code live?\n")
   write("GitHub username: ")
-  cfg.user = read()
+  cfg.user = read() or ""
   write("Repository name: ")
-  cfg.repo = read()
+  cfg.repo = read() or ""
   write("Branch [main]: ")
-  local branch = read()
+  local branch = read() or ""
   if branch ~= "" then
     cfg.branch = branch
   end
+  write("Access token (blank if the repo is public): ")
+  cfg.token = read("*") or ""
   config.save(CONFIG_PATH, cfg)
   print("")
 end
 
-local base = ("https://raw.githubusercontent.com/%s/%s/%s/%s/"):format(
-  cfg.user,
-  cfg.repo,
-  cfg.branch,
-  cfg.path
-)
+local private = cfg.token ~= ""
 
---- Fetch a URL as a string. Returns nil plus a message on failure.
---- The timestamp defeats GitHub's CDN cache, which otherwise serves stale
---- files for a few minutes after you push.
+--- Build the URL for one file.
+--- Public repos are served straight off the raw CDN. Private repos have to go
+--- through the API, which honours an Authorization header - raw.githubusercontent
+--- does not accept one. The timestamp defeats caching, which otherwise serves
+--- stale files for a few minutes after you push.
+local function urlFor(name)
+  local bust = "t=" .. tostring(os.epoch("utc"))
+  if private then
+    return ("https://api.github.com/repos/%s/%s/contents/%s/%s?ref=%s&%s"):format(
+      cfg.user,
+      cfg.repo,
+      cfg.path,
+      name,
+      cfg.branch,
+      bust
+    )
+  end
+  return ("https://raw.githubusercontent.com/%s/%s/%s/%s/%s?%s"):format(
+    cfg.user,
+    cfg.repo,
+    cfg.branch,
+    cfg.path,
+    name,
+    bust
+  )
+end
+
+--- Asking for vnd.github.raw makes the API return the plain file rather than
+--- JSON with base64 content - CC has no base64 decoder, so this matters.
+local headers = private
+    and {
+      ["Authorization"] = "Bearer " .. cfg.token,
+      ["Accept"] = "application/vnd.github.raw",
+      ["User-Agent"] = "cc-tweaked-updater",
+    }
+  or nil
+
+--- Fetch a file as a string. Returns nil plus a message on failure.
 local function fetch(name)
-  local url = base .. name .. "?t=" .. tostring(os.epoch("utc"))
-  local response, err = http.get(url)
+  local response, err, failed = http.get(urlFor(name), headers)
   if not response then
+    local code = failed and failed.getResponseCode()
+    if code == 401 then
+      err = "401 - token rejected (expired, or wrong permissions)"
+    elseif code == 404 then
+      err = "404 - not found (check repo/branch/path, or token lacks access)"
+    end
     return nil, err or "no response"
   end
   local body = response.readAll()
@@ -60,10 +104,10 @@ end
 
 --- Read a local file, or nil if it does not exist.
 local function readLocal(path)
-  if not fs.exists(path) then
+  local handle = fs.exists(path) and fs.open(path, "r")
+  if not handle then
     return nil
   end
-  local handle = fs.open(path, "r")
   local body = handle.readAll()
   handle.close()
   return body
@@ -75,6 +119,9 @@ local function writeLocal(path, body)
     fs.makeDir(dir)
   end
   local handle = fs.open(path, "w")
+  if not handle then
+    error("could not write " .. path, 0)
+  end
   handle.write(body)
   handle.close()
 end

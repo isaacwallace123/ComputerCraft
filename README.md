@@ -36,6 +36,13 @@ code --install-extension sumneko.lua
 
 `.luarc.json` wires the definitions in and is checked in, so it just works.
 
+It also disables `param-type-mismatch` and `undefined-field`. Those aren't laziness:
+the definition set declares its string enums (`fs.openMode`, `os.locale`, …) with a
+legacy annotation syntax that LuaLS 3.19 reads as *including the quote characters*, so
+every correct `fs.open(path, "w")` gets flagged. With them off, `lua-language-server
+--check .` reports zero problems across the repo; leave them on and you get ~129 false
+ones. Undefined globals and syntax errors are still caught, and selene backs it up.
+
 Also useful, and already installed: `johnnymorganz.stylua` (formatter, configured by
 `.stylua.toml`), `usernamehw.errorlens` (shows diagnostics inline), and
 `kampfkarren.selene-vscode` (linter). Selene needs to be told what CC's globals are or
@@ -59,11 +66,32 @@ not CC's Lua 5.2. `.vscode/settings.json` pins `*.lua` to the `lua` language to 
 
 You can't reach the computer's files, so it pulls them itself over HTTP.
 
-**One-time:** push this folder to a public GitHub repo, then on a fresh in-game computer:
+**One-time, public repo:** push this folder, then on a fresh in-game computer:
 
 ```
 wget run https://raw.githubusercontent.com/USER/REPO/main/bootstrap.lua
 ```
+
+**One-time, private repo:** the repo can stay private — the computer just has to
+authenticate. `raw.githubusercontent.com` ignores auth headers, so `update.lua`
+automatically switches to the GitHub contents API (`Accept: application/vnd.github.raw`,
+which returns the plain file rather than base64) whenever a token is configured.
+
+`wget run` can't send headers, so bootstrapping needs a different first step:
+
+```powershell
+.\tools\print-bootstrap.ps1 -User me -Repo ComputerCraft -Token github_pat_xxx
+```
+
+That copies a one-liner to your clipboard. In game: `lua`, Ctrl+V, Enter. Everything
+after that is the normal `update` flow.
+
+> **Token hygiene.** The token is stored in plain text in `.update` on the computer.
+> Anyone who can reach that computer in game, the server admin, and anyone with the
+> world files can read it. Use a **fine-grained** PAT scoped to that **one repository**,
+> `Contents: Read-only`, with an expiry date. Never a classic token, never one you use
+> elsewhere. If that's not acceptable, keep the repo public — it's only Minecraft Lua —
+> and keep genuine secrets out of it entirely.
 
 **Every time after that:**
 

@@ -11,8 +11,8 @@ function config.load(path, defaults)
     result[k] = v
   end
 
-  if fs.exists(path) then
-    local handle = fs.open(path, "r")
+  local handle = fs.exists(path) and fs.open(path, "r")
+  if handle then
     local ok, saved = pcall(textutils.unserialise, handle.readAll())
     handle.close()
     if ok and type(saved) == "table" then
@@ -28,6 +28,9 @@ end
 --- Write `tbl` to `path`.
 function config.save(path, tbl)
   local handle = fs.open(path, "w")
+  if not handle then
+    error("could not write " .. path, 0)
+  end
   handle.write(textutils.serialise(tbl))
   handle.close()
 end
