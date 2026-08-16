@@ -94,6 +94,15 @@ local function unload(job)
   return true
 end
 
+--- Can this job start? The quarry works next to its chest and tops up from what
+--- it mines, so it only needs enough to get going.
+function quarry.ready()
+  if fuel.level() >= SAFETY_MARGIN or fuel.refuelTo(SAFETY_MARGIN * 4) then
+    return true
+  end
+  return false, "no fuel - add coal"
+end
+
 --- Reset progress but keep the configured dimensions. Used when the base sends
 --- a deploy order - there is nobody at the keyboard to answer setup questions.
 function quarry.restart(job)

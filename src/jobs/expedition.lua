@@ -106,6 +106,26 @@ function expedition.progress(job)
   return 0
 end
 
+--- Can this job actually start? Checked before every launch, including remote
+--- deploys where nobody is at the keyboard to read a warning.
+---
+--- Launching without fuel is not a harmless mistake: the turtle flies out,
+--- trips the safety margin, walks back, and parks - burning the little fuel it
+--- had to accomplish nothing. Refusing at the gate is far better.
+function expedition.ready(job)
+  local needed = expedition.estimateFuel(job)
+  if fuel.level() >= needed then
+    return true
+  end
+
+  fuel.refuelTo(needed)
+  if fuel.level() >= needed then
+    return true
+  end
+
+  return false, ("needs %d fuel, has %d - add coal"):format(needed, math.floor(fuel.level()))
+end
+
 --- Reset progress and pick a fresh bearing, keeping the configured settings.
 --- Used when the base sends a deploy order - there is nobody at the keyboard to
 --- answer setup questions. A new bearing each time means a redeployed fleet

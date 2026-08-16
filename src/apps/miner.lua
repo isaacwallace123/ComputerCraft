@@ -199,11 +199,29 @@ local function park(reason)
   report("parked", reason or "waiting for orders")
   log.info("parked: " .. tostring(reason))
 
-  while not control.deploy do
-    sleep(1)
+  while true do
+    while not control.deploy do
+      sleep(1)
+    end
+    control.deploy = false
+
+    -- Refuse to launch a job that cannot finish. Otherwise a deploy order sends
+    -- an empty turtle out, it trips its own safety margin, walks back, and
+    -- parks - having burned what little it had for nothing.
+    local canStart, why = true, nil
+    if jobModule.ready then
+      canStart, why = jobModule.ready(job)
+    end
+
+    if canStart then
+      break
+    end
+
+    log.warn("deploy refused: " .. tostring(why))
+    sound.play("error")
+    report("parked", why or "not ready")
   end
 
-  control.deploy = false
   control.recall = false
 
   -- "Here" becomes home. If you physically moved the turtle while it was
@@ -239,7 +257,10 @@ local function agent()
 
     local ok, stopped = jobModule.run(job, ctx)
 
-    if control.recall or stopped then
+    -- Only control.recall means "recalled". Jobs also return a reason string on
+    -- ordinary failure, so testing that here reported every out-of-fuel and
+    -- depot-full abort as a recall and hid the real cause.
+    if control.recall then
       control.recall = false
       park("recalled - move me, then press deploy")
     elseif not ok then
