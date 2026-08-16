@@ -4,6 +4,7 @@ local config = require("core.config")
 local fuel = require("turtle.fuel")
 local nav = require("turtle.nav")
 local net = require("core.net")
+local peers = require("turtle.peers")
 local ui = require("core.ui")
 local util = require("core.util")
 local version = require("core.version")
@@ -120,16 +121,28 @@ end
 function Context:snapshot()
   local x, y, z, facing = nav.position()
   local stats = nav.stats()
-  local tank = fuel.level()
-  local reserve = fuel.inventoryPotential()
-  local available = fuel.available()
+  local fuelState = fuel.snapshot()
+  local tank = fuelState.level
+  local reserve = fuelState.reserve
+  local available = fuelState.available
   local jobStatus = self.jobModule.status(self.job)
+  local world = (nav.hasOrigin() and nav.worldPosition()) or self.worldPos
+  self.worldPos = world
   local fuelRequired = self.jobModule.minimumFuel and self.jobModule.minimumFuel(self.job)
     or (self.jobModule.estimateFuel and self.jobModule.estimateFuel(self.job) or nil)
   local progress = jobStatus.progress
 
-  if self.node.parked and self.node.parkKind == "complete" then
-    progress = 1
+  if self.node.parked then
+    if self.node.parkKind == "complete" then
+      progress = 1
+    elseif jobStatus.standing then
+      -- A parked turtle is not part-way along a route, so a job whose progress
+      -- tracks the route phase must report something else while it waits. Without
+      -- this, every recalled turtle sits at the `home` phase's 95% for as long as
+      -- it is parked - which reads as a turtle stuck on its way back, and is
+      -- indistinguishable from one that genuinely is.
+      progress = jobStatus.standing
+    end
   end
 
   return {
@@ -145,12 +158,15 @@ function Context:snapshot()
     y = y,
     z = z,
     facing = facing,
-    world = self.worldPos,
+    -- With a saved origin this is cheap dead reckoning and must be refreshed on
+    -- every heartbeat. A 30-second-old position is actively harmful to peer
+    -- avoidance because it makes a moving turtle look parked in an old block.
+    world = world,
     -- math.huge does not survive rednet serialisation cleanly; -1 means off.
     fuel = available == math.huge and -1 or available,
     fuelTank = tank == math.huge and -1 or tank,
     fuelReserve = reserve,
-    fuelFraction = fuel.fraction(),
+    fuelFraction = fuelState.fraction,
     fuelRequired = fuelRequired,
     distanceHome = nav.distanceHome(),
     moves = stats.moves,
@@ -161,14 +177,19 @@ function Context:snapshot()
     settings = jobStatus.settings,
     settingFields = self.jobModule.settingFields,
     startedAt = self.job.startedAt,
+    -- Shared-mine telemetry. Optional on readers: a turtle running an older
+    -- build, or a job with no concept of sectors, simply omits these.
+    sector = jobStatus.sector,
+    workKey = jobStatus.workKey,
+    peers = peers.count(),
   }
 end
 
-function Context:draw()
+function Context:draw(snapshot)
   if self.interactive then
     return
   end
-  local snap = self:snapshot()
+  local snap = snapshot or self:snapshot()
   ui.clear()
   ui.header(snap.label, net.isOpen() and (self.baseId and "linked" or "no base") or "no modem")
 

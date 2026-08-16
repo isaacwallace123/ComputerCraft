@@ -10,6 +10,8 @@ local boot = require("core.boot")
 local version = require("core.version")
 local device = require("core.device")
 local coordinator = require("fleet.coordinator")
+local minePlan = require("mine.plan")
+local mineRegistry = require("mine.registry")
 
 local console = {}
 
@@ -113,6 +115,138 @@ local function showSystem()
   end
 end
 
+--- Place the shared mine, or report where it already is.
+---
+--- `mine here` uses the base computer's own position, which is almost always
+--- what you want: sectors are laid out around the base, and the turtles fly home
+--- to their own chests beside it.
+local function mineCommand(words)
+  local action = words[2] and words[2]:lower()
+
+  if action == "here" or action == "at" then
+    local x, y, z
+    if action == "at" then
+      x, y, z = tonumber(words[3]), tonumber(words[4]), tonumber(words[5])
+      if not (x and y and z) then
+        log.warn("console: mine at <x> <y> <z>")
+        return
+      end
+    else
+      x, y, z = gps.locate(2, false)
+      if not x then
+        log.warn("console: no GPS - use `mine at <x> <y> <z>`")
+        return
+      end
+    end
+
+    if y < -63 or y > 310 then
+      log.warn("console: mine surface must be Y -63..310 so cruise lanes fit")
+      return
+    end
+
+    local placed, moved = coordinator.setMine({
+      centreX = math.floor(x),
+      centreZ = math.floor(z),
+      surfaceY = math.floor(y),
+      cruiseY = math.floor(y) + 8,
+    })
+    log.info(
+      ("console: mine centred on %d,%d surface Y %d, %d sectors of %d blocks"):format(
+        placed.centreX,
+        placed.centreZ,
+        placed.surfaceY,
+        minePlan.capacity(placed),
+        placed.cellSize
+      )
+    )
+    if moved then
+      log.warn("console: sector progress cleared - the grid moved")
+    end
+    return
+  end
+
+  if action == "size" or action == "rings" or action == "keepout" then
+    local value = tonumber(words[3])
+    if not value then
+      log.warn("console: mine size <blocks> | mine rings <1-8> | mine keepout <blocks>")
+      return
+    end
+    value = math.floor(value)
+
+    local state = coordinator.mineState()
+    if not state.plan.configured then
+      log.warn("console: place the mine first with `mine here` or `mine at <x> <y> <z>`")
+      return
+    end
+
+    local fields
+    if action == "size" then
+      fields = { cellSize = value }
+    elseif action == "rings" then
+      fields = { maxRing = value }
+    else
+      -- A keep-out radius in blocks is really a minimum ring. Rounded up, since
+      -- asking for 100 blocks of clearance and getting 96 is the wrong way to
+      -- miss.
+      fields = { minRing = minePlan.ringForKeepout(state.plan, value) }
+    end
+
+    local placed, cleared = coordinator.setMine(fields)
+    log.info(
+      ("console: sectors %d blocks across, %d available, digging starts %d blocks out"):format(
+        placed.cellSize,
+        minePlan.capacity(placed),
+        minePlan.keepout(placed)
+      )
+    )
+    if cleared then
+      log.warn("console: sector progress cleared - the grid moved")
+    end
+    return
+  end
+
+  local state = coordinator.mineState()
+  if not state.plan.configured then
+    log.warn("console: no mine yet - run `mine here` on the base")
+    return
+  end
+
+  log.info(
+    ("mine: centre %d,%d  surface Y %d  cruise Y %d"):format(
+      state.plan.centreX,
+      state.plan.centreZ,
+      state.plan.surfaceY,
+      state.plan.cruiseY
+    )
+  )
+  log.info(
+    ("mine: %d sectors of %d blocks, digging starts %d blocks out"):format(
+      minePlan.capacity(state.plan),
+      state.plan.cellSize,
+      minePlan.keepout(state.plan)
+    )
+  )
+
+  local rows = mineRegistry.summary(state)
+  if #rows == 0 then
+    log.info("mine: no sectors opened yet")
+    return
+  end
+  for _, row in ipairs(rows) do
+    log.info(
+      ("  sector %-3d %-14s shaft %6d,%-6d %3d/%-3d %s"):format(
+        row.index,
+        row.workKey or "unknown",
+        row.shaftX or 0,
+        row.shaftZ or 0,
+        row.frontier,
+        row.length,
+        row.exhausted and "worked out" or (row.holder and ("held by #" .. row.holder) or "free")
+      )
+    )
+  end
+end
+
 local HELP = "help | status | recall [all|device] | deploy [all|device] | refresh [all|device]"
 
 function console.run(target, opts)
@@ -188,6 +322,8 @@ function console.run(target, opts)
       log.info("console: " .. HELP)
       log.info("console: about | open devices <device> | clear | update | setup | reboot | exit")
       log.info("console: quarry <x1> <z1> <x2> <z2> <topY> <bottomY>")
+      log.info("console: mine | mine here | mine at <x> <y> <z>")
+      log.info("console: mine size <n> | mine rings <n> | mine keepout <blocks>")
     elseif command == "about" or command == "system" then
       showSystem()
     elseif command == "status" or command == "devices" or command == "list" then
@@ -217,6 +353,8 @@ function console.run(target, opts)
           log.error("console: " .. message)
         end
       end
+    elseif command == "mine" then
+      mineCommand(words)
     elseif command == "open" and words[2] and words[2]:lower() == "devices" then
       openDevice(words[3])
     elseif command == "clear" then

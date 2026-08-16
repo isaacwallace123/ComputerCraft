@@ -62,6 +62,31 @@ local function countItems(pattern)
   return total
 end
 
+--- Clear ordinary terrain without mining a deployed worker, storage, a
+--- peripheral, or lava. The miner navigation layer has the same invariant, but
+--- the deployer must use raw placement calls and therefore enforces it here.
+local function clearForPlacement()
+  local present, data = turtle.inspect()
+  if not present then
+    return true
+  end
+
+  local name = tostring(data.name)
+  if
+    name:find("lava", 1, true)
+    or name:find("computercraft:", 1, true)
+    or name:find("chest", 1, true)
+    or name:find("barrel", 1, true)
+  then
+    return false, "protected block in placement space (" .. name .. ")"
+  end
+
+  if not turtle.dig() then
+    return false, "could not clear placement space (" .. name .. ")"
+  end
+  return true
+end
+
 --- Plant one worker to the right of the current position: chest at ground
 --- level, turtle sitting on top of it.
 local function plantOne()
@@ -75,7 +100,11 @@ local function plantOne()
 
   turtle.select(chestSlot)
   if not turtle.place() then
-    turtle.dig() -- something in the way; clear it and retry once
+    local cleared, clearError = clearForPlacement()
+    if not cleared then
+      nav.turnLeft()
+      return false, clearError
+    end
     if not turtle.place() then
       nav.turnLeft()
       return false, "could not place chest"
@@ -89,7 +118,12 @@ local function plantOne()
 
   turtle.select(turtleSlot)
   if not turtle.place() then
-    turtle.dig()
+    local cleared, clearError = clearForPlacement()
+    if not cleared then
+      nav.down()
+      nav.turnLeft()
+      return false, clearError
+    end
     if not turtle.place() then
       nav.down()
       nav.turnLeft()
@@ -185,7 +219,11 @@ local function deploy()
   end
 
   print("\nReturning home...")
-  nav.goHome()
+  local home, homeError = nav.goHome()
+  if not home then
+    printError("Could not return home: " .. tostring(homeError))
+    return
+  end
 
   ui.clear()
   print(("Planted %d workers, %d blocks apart."):format(state.planted, state.spacing))
@@ -206,7 +244,10 @@ local function reclaim()
 
   print(("Collecting %d workers..."):format(state.planted))
   local needed = state.planted * state.spacing * 2 + 200
-  fuel.refuelTo(needed)
+  if not fuel.refuelTo(needed) then
+    printError("Not enough fuel. Add coal and run again.")
+    return
+  end
   print("")
 
   local collected = 0
@@ -231,7 +272,11 @@ local function reclaim()
   end
 
   print("\nReturning home...")
-  nav.goHome()
+  local home, homeError = nav.goHome()
+  if not home then
+    printError("Could not return home: " .. tostring(homeError))
+    return
+  end
   inv.dropAll(turtle.dropDown)
 
   state.planted = math.max(0, state.planted - collected)

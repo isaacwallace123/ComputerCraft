@@ -2,6 +2,8 @@
 
 local log = require("core.log")
 local net = require("core.net")
+local peers = require("turtle.peers")
+local site = require("mine.site")
 
 local network = {}
 
@@ -29,8 +31,9 @@ function network.heartbeat(ctx)
       ctx.baseId = found or ctx.baseId
     end
 
-    net.broadcast("status", ctx:snapshot())
-    ctx:draw()
+    local snapshot = ctx:snapshot()
+    net.broadcast("status", snapshot)
+    ctx:draw(snapshot)
     sleep(HEARTBEAT_SECONDS)
   end
 end
@@ -38,7 +41,13 @@ end
 function network.commands(ctx)
   while true do
     local sender, kind, body = net.receive(1)
-    if kind == "command" and type(body) == "table" then
+    if kind == "status" and type(body) == "table" then
+      -- Another miner's heartbeat. Only the base used to care about these; now
+      -- every turtle keeps them so it can tell a colleague apart from a wall.
+      peers.note(sender, body)
+    elseif kind == "mine_result" and type(body) == "table" then
+      site.deliver(body)
+    elseif kind == "command" and type(body) == "table" then
       if body.action == "recall" then
         if ctx.node.parked then
           ctx:reply(sender, body.action, true, "already parked")

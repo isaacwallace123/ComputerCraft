@@ -63,27 +63,67 @@ table.sort(rows, function(a, b)
 end)
 
 ui.clear()
-ui.header("Geo Scan", "r=" .. radius)
+local scroll = 0
+local running = true
 
-if #rows == 0 then
-  ui.text(2, 3, "Nothing but rock within " .. radius .. " blocks.", ui.theme.dim)
-  return
-end
+local function draw()
+  local width, height = ui.size()
+  local compact = width < 40
+  local capacity = math.max(1, math.floor((height - 3) / (compact and 2 or 1)))
+  scroll = math.max(0, math.min(scroll, math.max(0, #rows - capacity)))
 
-local _, height = ui.size()
-ui.text(2, 3, ("%-20s %5s  %s"):format("ORE", "COUNT", "NEAREST"), ui.theme.dim)
-
-local row = 4
-for _, entry in ipairs(rows) do
-  if row >= height then
-    break
+  ui.clear()
+  ui.header("Geo Scan", ("r=%d %d ore"):format(radius, #rows))
+  if #rows == 0 then
+    ui.text(2, 3, "Nothing but rock nearby.", ui.theme.dim)
+  elseif compact then
+    for slot = 1, capacity do
+      local entry = rows[scroll + slot]
+      if not entry then
+        break
+      end
+      local y = 2 + (slot - 1) * 2
+      ui.text(2, y, ui.pad(entry.name, width - 9), ui.theme.fg)
+      ui.text(math.max(2, width - 6), y, ui.pad(entry.count, 5, "right"), ui.theme.accent)
+      ui.text(3, y + 1, ("at %d,%d,%d"):format(entry.x, entry.y, entry.z), ui.theme.dim)
+    end
+  else
+    local tableRows = {}
+    for index = scroll + 1, math.min(#rows, scroll + capacity) do
+      local entry = rows[index]
+      tableRows[#tableRows + 1] = {
+        cells = { entry.name, entry.count, ("%d,%d,%d"):format(entry.x, entry.y, entry.z) },
+      }
+    end
+    ui.table(2, 2, width - 2, {
+      { title = "ORE", width = 20 },
+      { title = "COUNT", width = 5, align = "right" },
+      { title = "NEAREST", width = 11 },
+    }, tableRows, capacity)
   end
-  ui.text(
-    2,
-    row,
-    ("%-20s %5d  %d,%d,%d"):format(util.fit(entry.name, 20), entry.count, entry.x, entry.y, entry.z)
-  )
-  row = row + 1
+  ui.footer("up/down scroll  Q close")
 end
 
-term.setCursorPos(1, height)
+draw()
+while running do
+  local event = { os.pullEvent() }
+  if event[1] == "icos_close" then
+    running = false
+  elseif event[1] == "key" then
+    if event[2] == keys.q then
+      running = false
+    elseif event[2] == keys.up then
+      scroll = math.max(0, scroll - 1)
+    elseif event[2] == keys.down then
+      scroll = scroll + 1
+    end
+  elseif event[1] == "mouse_scroll" then
+    scroll = math.max(0, scroll + event[2])
+  elseif event[1] == "mouse_click" and event[4] == select(2, ui.size()) then
+    local width = ui.size()
+    scroll = math.max(0, scroll + (event[3] <= width / 2 and -1 or 1))
+  end
+  draw()
+end
+
+ui.clear()

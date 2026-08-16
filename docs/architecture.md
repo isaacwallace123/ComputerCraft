@@ -11,11 +11,11 @@ GitHub repository
   └─ bootstrap.lua → update.lua → src/manifest.json
                                   └─ installed device filesystem
 
-Base computer                         Mining turtle
-  startup.lua                           startup.lua
-  desktop + physical console            miner runtime
-  Fleet + Devices apps       Rednet      navigation + fuel + inventory
-  persisted .fleet            ↔          persisted .node/.nav/job file
+Base computer            Pocket controller             Mining turtle
+  startup.lua              startup.lua                    startup.lua
+  always-on service        handheld shell                 miner runtime
+  desktop + console        synced roster/policy  Rednet   navigation + fuel
+  authoritative state  ↔   Fleet/Devices/Operations  ↔   local job safety
 ```
 
 ## Dependency direction
@@ -23,11 +23,14 @@ Base computer                         Mining turtle
 The intended dependency flow is:
 
 ```text
-apps → miner / fleet / jobs → turtle → core
+apps → miner / fleet / jobs → turtle / mine → core
 ```
 
 - `core/` contains platform services: configuration, UI, display, logging, networking,
   sound, boot, and app metadata.
+- `mine/` contains the shared worksite: sector geometry (`plan.lua`, pure arithmetic),
+  the base-side lease and frontier store (`registry.lua`), and the turtle-side cache and
+  claim client (`site.lua`). It sits beside `turtle/` because both sides import it.
 - `turtle/` contains hardware primitives and should not know about a particular job.
 - `jobs/` contains mining behavior and accepts callbacks rather than drawing UI or
   receiving network messages.
@@ -48,8 +51,12 @@ should not import an app, and a job should not manipulate the desktop.
 4. If enabled, run the automatic updater.
 5. Load the app registry after updating so fresh app definitions are used immediately.
 6. On a turtle, auto-run the only valid launcher app or show the compact launcher.
-7. On a computer, start the page-based desktop. If the desktop is on a monitor, run
-   the keyboard console on the physical computer in parallel.
+7. On a Pocket Computer, start the touch-first handheld shell. On other computers,
+   start the page-based desktop; if it is on a monitor, run the keyboard console on
+   the physical computer in parallel.
+8. For `fleet` and `controller` roles, run networking beside the UI. Closing an app
+   never stops discovery, sector leasing, telemetry, or controller synchronization.
+   Startup supervises and restarts that service if an unexpected runtime error escapes.
 
 `src/install.lua` assigns the device role and label. Capability filtering in
 `src/core/apps.lua` decides which apps and tools are valid for the hardware and role.
@@ -92,14 +99,30 @@ deployment, update, and job-selection commands.
 
 ## Fleet model
 
-`apps/fleet.lua` listens for `hello`, `status`, and `command_result` messages and saves
-the latest snapshot for every known turtle through `fleet/roster.lua`. Devices owns
-individual detail and configuration views. Touching a Fleet row opens Devices focused
-on that computer ID.
+`fleet/service.lua` is the only base-side Rednet receiver. It starts at boot, hosts the
+base name, persists every turtle snapshot through `fleet/roster.lua`, renews leases,
+answers mine claims, refreshes status, and applies conservative automation. Fleet and
+Devices are views over that state, so neither app must remain open. Touching a Fleet
+row opens Devices focused on that computer ID.
+
+The default policy refreshes health, resumes a fuel park only after reported fuel meets
+the turtle's own requirement, retries setup preflight and depot-full unloading, and
+logs heartbeat transitions. It never auto-restarts an intentional recall, completed
+job, unknown error, or stuck route. Rolling updates are available but opt-in.
 
 `fleet/coordinator.lua` performs multi-turtle assignments. The coordinated quarry
 currently selects connected parked miners, divides the world rectangle into balanced
 non-overlapping cell ranges, and sends one atomic assignment to each worker.
+
+The service answers shared-mine `mine` requests inline through `fleet/coordinator.lua`,
+which leases prospecting sectors and records their frontiers in `mine/registry.lua`.
+Handling is synchronous and short because a turtle waits about three seconds before
+falling back to its cached plan.
+
+A Pocket Computer uses role `controller`. Its own service passively mirrors turtle
+heartbeats and subscribes to the base for authoritative roster, policy, and log state.
+Mine/quarry operations are validated and executed on the base through request/result
+messages; the handheld never hosts `base` and never answers a turtle's mine claim.
 
 ## Update model
 

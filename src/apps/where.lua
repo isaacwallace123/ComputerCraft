@@ -77,6 +77,8 @@ if not heading then
   return
 end
 
+-- `setOrigin` resets the relative frame and world origin in one persisted
+-- update, so a reboot cannot leave half of the recalibration applied.
 nav.setOrigin(x, y, z, heading - 1)
 
 ui.clear()

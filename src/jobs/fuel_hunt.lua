@@ -5,11 +5,10 @@ return factory.create({
   label = "Coal and fuel hunting",
   path = ".fuel-hunt",
   profile = "fuel",
-  distance = 48,
   targetY = 96,
-  cruise = 40,
-  tunnelLength = 64,
-  branchLength = 16,
+  -- Coal seams are small and common. A large budget would spend the whole trip
+  -- on one seam when the point of this job is to cover ground and come back
+  -- with a tank, not to strip a single vein.
   veinBudget = 96,
   description = "Targets coal veins and keeps the fuel aboard for future cycles.",
 })

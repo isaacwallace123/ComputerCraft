@@ -35,7 +35,12 @@ for _, text in ipairs(device.describe(caps)) do
   line = line + 1
 end
 ui.text(2, line + 1, "Press any key to choose a role.", ui.theme.fg)
-os.pullEvent("key")
+while true do
+  local event = { os.pullEvent() }
+  if event[1] == "key" or event[1] == "mouse_click" then
+    break
+  end
+end
 
 local roles = device.roles(caps)
 local labels = {}
@@ -66,7 +71,8 @@ term.setCursorPos(1, warning and 7 or 5)
 
 local suggested = node.label
 if not suggested then
-  suggested = role.key == "fleet" and "base" or (role.key .. "-" .. caps.id)
+  suggested = role.key == "fleet" and "base"
+    or (role.key == "controller" and "handheld" or (role.key .. "-" .. caps.id))
 end
 
 node.label = ui.ask("Name this machine", suggested)
@@ -93,11 +99,20 @@ if role.key == "miner" then
       )
     else
       ui.text(2, line, "No base station yet - it will keep looking.", ui.theme.dim)
-      ui.text(2, line + 1, "Run `fleet` on the base computer.", ui.theme.dim)
+      ui.text(2, line + 1, "Start ICOS on the fleet base.", ui.theme.dim)
     end
   end
 elseif role.key == "fleet" and not caps.modem then
   ui.text(2, line, "No modem: this base cannot hear turtles.", ui.theme.bad)
+elseif role.key == "controller" then
+  local baseId = net.findBase()
+  ui.text(
+    2,
+    line,
+    baseId and ("Connected to fleet base " .. tostring(baseId) .. ".")
+      or "Base not found yet - it will keep looking.",
+    baseId and ui.theme.good or ui.theme.dim
+  )
 end
 
 sound.play("ready")

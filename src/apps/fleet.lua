@@ -1,4 +1,4 @@
---- Fleet discovery service and scalable overview.
+--- Scalable fleet overview and fleet-wide controls.
 ---
 --- This page stays intentionally shallow: it shows every miner, aggregate haul
 --- and fleet-wide actions. Selecting a miner opens the Devices app, which owns
@@ -12,6 +12,7 @@ local log = require("core.log")
 local util = require("core.util")
 local sound = require("core.sound")
 local display = require("core.display")
+local control = require("fleet.control")
 local rosterStore = require("fleet.roster")
 
 local embedded = ({ ... })[1] == "--embedded"
@@ -34,10 +35,6 @@ local running = true
 local auxiliary, auxiliaryName
 local haulPage = 1
 
-local function saveRoster()
-  rosterStore.save(roster)
-end
-
 local function age(node)
   return rosterStore.age(node)
 end
@@ -55,6 +52,7 @@ local function statusColor(node)
 end
 
 local function nodes()
+  roster = rosterStore.load()
   return rosterStore.sorted(roster)
 end
 
@@ -120,13 +118,20 @@ local function drawFooter(width, height)
   ui.row(height, ui.theme.headerBg)
   clickTargets = {}
   local x = 2
-  for _, button in ipairs({
-    { "up", "up" },
-    { "down", "down" },
-    { "recall all", "recall" },
-    { "deploy all", "deploy" },
-    { "sync", "refresh" },
-  }) do
+  local buttons = width < 42
+      and {
+        { "up", "up" },
+        { "down", "down" },
+        { "actions", "actions" },
+      }
+    or {
+      { "up", "up" },
+      { "down", "down" },
+      { "recall all", "recall" },
+      { "deploy all", "deploy" },
+      { "sync", "refresh" },
+    }
+  for _, button in ipairs(buttons) do
     if x + #button[1] + 1 <= width then
       x = addButton(x, height, button[1], button[2])
     end
@@ -243,10 +248,9 @@ local function draw()
   local last = math.min(#list, scroll + visibleRows)
 
   ui.clear()
-  ui.header(
-    "FLEET",
-    ("%d/%d online  %d parked  %d-%d"):format(sum.online, #list, sum.parked, first, last)
-  )
+  local status = width < 42 and ("%d/%d  P%d"):format(sum.online, #list, sum.parked)
+    or ("%d/%d online  %d parked  %d-%d"):format(sum.online, #list, sum.parked, first, last)
+  ui.header("FLEET", status)
   rowTargets = {}
 
   if #list == 0 then
@@ -279,56 +283,6 @@ local function draw()
   drawAuxiliary(haul, sum)
 end
 
-local function listen()
-  while running do
-    local sender, kind, body = net.receive(1)
-    if sender and kind then
-      local key = tostring(sender)
-      if kind == "hello" and type(body) == "table" then
-        rosterStore.update(roster, key, body)
-        log.info((body.label or key) .. " joined")
-        sound.play("ready")
-        saveRoster()
-      elseif kind == "status" and type(body) == "table" then
-        local previous = rosterStore.update(roster, key, body)
-
-        local oldPhase = previous and previous.snap and previous.snap.phase
-        if body.phase ~= oldPhase then
-          local line = ("%s: %s"):format(body.label or key, body.phase or "unknown")
-          if body.phase == "stuck" then
-            log.error(line .. " - " .. tostring(body.detail))
-            sound.play("alert")
-          else
-            log.info(line)
-          end
-        end
-        saveRoster()
-      elseif kind == "command_result" and type(body) == "table" then
-        local previous = roster[key] or {}
-        if type(body.snapshot) == "table" then
-          previous.snap = body.snapshot
-        end
-        previous.lastSeen = os.epoch("utc")
-        previous.pairedAt = previous.pairedAt or os.epoch("utc")
-        roster[key] = previous
-
-        local label = (previous.snap and previous.snap.label) or key
-        local message = ("%s %s: %s"):format(
-          label,
-          body.action or "command",
-          body.message or "acknowledged"
-        )
-        if body.ok == false then
-          log.warn(message)
-        else
-          log.info(message)
-        end
-        saveRoster()
-      end
-    end
-  end
-end
-
 local function redraw()
   while running do
     local ok, err = pcall(draw)
@@ -354,7 +308,22 @@ local function act(action)
     sound.play("ready")
   elseif action == "refresh" then
     net.broadcast("command", { action = "status_request" })
+    control.requestSync()
     log.info("fleet: status refresh requested")
+  elseif action == "actions" then
+    local choice = ui.menu("FLEET ACTIONS", {
+      "Deploy all",
+      "Recall all",
+      "Refresh status",
+      "Cancel",
+    })
+    if choice == 1 then
+      act("deploy")
+    elseif choice == 2 then
+      act("recall")
+    elseif choice == 3 then
+      act("refresh")
+    end
   end
 end
 
@@ -366,13 +335,7 @@ local function controls()
       running = false
       return
     elseif kind == "icos_forget_device" then
-      local id = tostring(event[2])
-      local forgotten = roster[id]
-      roster[id] = nil
-      saveRoster()
-      log.warn(
-        "fleet: forgot " .. tostring((forgotten and forgotten.snap and forgotten.snap.label) or id)
-      )
+      roster = rosterStore.load()
     elseif kind == "key" then
       if event[2] == keys.q then
         running = false
@@ -391,6 +354,8 @@ local function controls()
         act("deploy")
       elseif event[2] == keys.r then
         act("refresh")
+      elseif event[2] == keys.enter then
+        act("actions")
       end
     elseif kind == "mouse_scroll" then
       scroll = math.max(0, scroll + event[2])
@@ -423,23 +388,8 @@ local function controls()
   end
 end
 
-if not net.hostAsBase() then
-  ui.clear()
-  ui.header("FLEET", "offline")
-  ui.text(2, 3, "No modem attached.", ui.theme.bad)
-  ui.text(2, 5, "Attach a wireless or ender modem, then reopen Fleet.", ui.theme.dim)
-  os.pullEvent("icos_close")
-  return
-end
-
-log.info("fleet online, hosting '" .. net.HOSTNAME .. "'")
-if not net.isWireless() then
-  log.warn("wired modem - turtles will not reach this wirelessly")
-end
-
-parallel.waitForAny(listen, redraw, controls)
+parallel.waitForAny(redraw, controls)
 running = false
-net.unhostBase()
 if auxiliary and display.isAttached(auxiliaryName) then
   display.on(auxiliary, ui.clear)
 end

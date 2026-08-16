@@ -90,6 +90,24 @@ function fuel.available()
   return level + fuel.inventoryPotential()
 end
 
+--- One coherent read for dashboards and network telemetry.
+---
+--- Calling `level`, `available`, and `fraction` separately scans the inventory
+--- twice and asks for the tank several times. Status is rendered frequently, so
+--- expose all four values from one inventory pass instead.
+function fuel.snapshot()
+  local level = fuel.level()
+  local limit = fuel.limit()
+  local reserve = fuel.inventoryPotential()
+  return {
+    level = level,
+    limit = limit,
+    reserve = reserve,
+    available = level == math.huge and math.huge or level + reserve,
+    fraction = (limit == math.huge or limit == 0) and 1 or level / limit,
+  }
+end
+
 local function candidates()
   local known, unknown = {}, {}
   for slot = 1, 16 do

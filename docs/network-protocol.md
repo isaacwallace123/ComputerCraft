@@ -5,6 +5,8 @@
 All fleet traffic uses Rednet protocol `ccfleet`. The base hosts hostname `base`.
 `core/net.lua` prefers a wireless modem and falls back to wired for bench testing.
 Messages are best-effort and must never be required for a turtle to finish or return.
+Base registration is idempotent across modem reconnection. A genuine duplicate `base`
+hostname is logged and retried rather than crashing startup.
 
 Every message has this envelope:
 
@@ -44,10 +46,47 @@ Important snapshot fields:
 | `fuelTank`, `fuelReserve`, `fuelRequired` | detailed fuel telemetry |
 | `distanceHome`, `moves`, `digs` | navigation statistics |
 | `progress`, `haul`, `delivered`, `startedAt` | job telemetry |
+| `progress` while parked | durable job progress, not route phase; 1 when `parkKind` is `complete` |
 | `settings`, `settingFields` | values and schema rendered by Devices |
+| `sector`, `workKey` | shared-mine sector and profile/depth key, absent for other jobs |
+| `peers` | how many other miners this turtle can currently hear |
 
 New snapshot fields should be optional on readers because old turtles may not report
 them until updated.
+
+Miners now also listen to each other's `status` broadcasts, not just the base. The
+`world` field is what makes that useful: `turtle/peers.lua` uses it to tell which
+computer is standing in the block ahead, and therefore who has right of way.
+
+### `mine`
+
+Broadcast by a turtle to claim or update a shared-mine sector. Broadcast rather than
+addressed because the base is the only thing that answers, which keeps the turtle from
+having to know a base ID.
+
+| Action | Extra fields | Meaning |
+| --- | --- | --- |
+| `claim` | `requestId`, `workKey`, `sector`, `frontier` | request work; the turtle's cached sector/frontier is preferred |
+| `report` | `workKey`, `sector`, `frontier`, `blocks`, `exhausted` | record progress for one profile/depth |
+| `release` | `sector` | give a lease back without recording progress |
+
+The base replies to `claim` with `mine_result`:
+
+```lua
+{
+  ok = true,
+  requestId = "17:1786914000000:rare@-59",
+  plan = { centreX = 0, centreZ = 0, surfaceY = 64, cellSize = 48, ... },
+  sector = 3,
+  frontier = 17,
+}
+```
+
+`ok = false` carries a `message` and no plan. A turtle waits about three seconds for
+this before falling back to its cached plan, so the handler must not block. Leases
+expire after 15 minutes of silence so a turtle lost to lava does not lock a sector out
+permanently. While a turtle is running, its normal status heartbeat renews the lease;
+a parked turtle eventually releases it by expiry.
 
 ### `command_result`
 
@@ -79,10 +118,33 @@ touches do not wait for the next heartbeat.
 Unknown actions are currently ignored. When adding an action, update the receiver,
 the sending UI/console, result handling, and this table.
 
+## Pocket controller synchronization
+
+A Pocket Computer with role `controller` periodically sends `controller` with action
+`subscribe` directly to the hosted base. The base remembers the subscriber for 60
+seconds and replies periodically with `fleet_sync`, containing the authoritative
+device-ID set, automation policy, recent fleet log, base ID, and version. Each roster
+entry follows as a separate `fleet_node` message, keeping large fleets below the modem
+payload limit. The Pocket also listens to ordinary turtle heartbeats, so a missed sync
+does not blank current status.
+
+Controller actions are intentionally separate from turtle commands:
+
+| `controller` action | Fields | Base behavior |
+| --- | --- | --- |
+| `subscribe` | none | register/renew the controller and return `fleet_sync` |
+| `forget` | `target` | remove a device from the authoritative roster |
+| `set_policy` | `fields` | validate and persist fleet automation settings |
+| `operation` | `requestId`, `operation`, `fields` | run validated mine/quarry work on the base |
+
+An operation reply uses `controller_result` with the matching `requestId`, `ok`,
+`message`, and optional data. A controller never hosts hostname `base` and ignores
+`mine` claims; only the stationary service owns sector authority.
+
 ## Discovery and staleness
 
 Turtles resolve the hosted base name periodically but broadcast status even before a
-base is found. Fleet persists the last snapshot in `.fleet`. A device becomes late
+base is found. The always-on base service persists the last snapshot in `.fleet`. A device becomes late
 after 10 seconds and offline after 60 seconds; offline devices remain visible until
 explicitly forgotten.
 

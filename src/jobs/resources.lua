@@ -5,9 +5,10 @@ return factory.create({
   label = "Common resource mining",
   path = ".resources",
   profile = "resources",
-  distance = 64,
   targetY = 16,
-  tunnelLength = 64,
-  branchLength = 16,
+  -- Create needs andesite by the thousand, and 1.20 large ore veins run to
+  -- dozens of blocks. The old 48-block cap is what left half-mined iron behind.
+  veinBudget = 384,
+  veinRadius = 32,
   description = "Targets iron, copper, zinc, and andesite veins.",
 })

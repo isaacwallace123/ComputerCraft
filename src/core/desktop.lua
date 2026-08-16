@@ -239,6 +239,15 @@ function desktop.run(parent, appList, opts)
     drawChrome()
   end
 
+  local function resize()
+    width, height = parent.getSize()
+    contentHeight = math.max(1, height - 1)
+    for _, task in ipairs(tasks) do
+      task.win.reposition(1, contentTop, width, contentHeight)
+      resume(task, { "term_resize" })
+    end
+  end
+
   local function click(x, y)
     if y == height then
       for _, chip in ipairs(chips) do
@@ -301,6 +310,7 @@ function desktop.run(parent, appList, opts)
           launch(app, event[3])
         end
       elseif primaryResize or (kind == "term_resize" and opts.localInput ~= false) then
+        resize()
         draw()
       elseif kind == "timer" and event[2] == clock then
         clock = os.startTimer(1)

@@ -14,8 +14,8 @@ local DEFINITIONS = {
     program = "apps/fleet.lua",
     args = { "--embedded" },
     kinds = { "computer", "pocket", "command" },
-    roles = { "fleet" },
-    surfaces = { "desktop" },
+    roles = { "fleet", "controller" },
+    surfaces = { "desktop", "handheld" },
   },
   {
     id = "devices",
@@ -23,8 +23,32 @@ local DEFINITIONS = {
     program = "apps/devices.lua",
     args = { "--embedded" },
     kinds = { "computer", "pocket", "command" },
-    roles = { "fleet" },
-    surfaces = { "desktop" },
+    roles = { "fleet", "controller" },
+    surfaces = { "desktop", "handheld" },
+  },
+  {
+    id = "automation",
+    name = "Automation",
+    program = "apps/automation.lua",
+    kinds = { "computer", "pocket", "command" },
+    roles = { "fleet", "controller" },
+    surfaces = { "desktop", "handheld" },
+  },
+  {
+    id = "operations",
+    name = "Operations",
+    program = "apps/operations.lua",
+    kinds = { "computer", "pocket", "command" },
+    roles = { "fleet", "controller" },
+    surfaces = { "desktop", "handheld" },
+  },
+  {
+    id = "logs",
+    name = "Fleet Log",
+    program = "apps/logs.lua",
+    kinds = { "computer", "pocket", "command" },
+    roles = { "fleet", "controller" },
+    surfaces = { "desktop", "handheld" },
   },
   {
     id = "miner",
@@ -38,7 +62,7 @@ local DEFINITIONS = {
     id = "scan",
     name = "Ore Scan",
     program = "apps/scan.lua",
-    surfaces = { "desktop", "launcher" },
+    surfaces = { "desktop", "handheld", "launcher" },
     needs = function(caps)
       return caps.geoScanner
     end,
@@ -56,7 +80,7 @@ local DEFINITIONS = {
     name = "Update",
     program = "update.lua",
     kinds = { "computer", "pocket", "command" },
-    surfaces = { "desktop" },
+    surfaces = { "desktop", "handheld" },
     needs = function(caps)
       return caps.http
     end,
@@ -66,7 +90,7 @@ local DEFINITIONS = {
     name = "Terminal",
     program = "shell",
     kinds = { "computer", "pocket", "command" },
-    surfaces = { "desktop" },
+    surfaces = { "desktop", "handheld" },
     needs = function(caps)
       return not caps.monitor
     end,
@@ -76,7 +100,7 @@ local DEFINITIONS = {
     name = "Setup",
     program = "install.lua",
     kinds = { "computer", "pocket", "command" },
-    surfaces = { "desktop" },
+    surfaces = { "desktop", "handheld" },
     needs = function(caps)
       return not caps.monitor
     end,
@@ -86,7 +110,7 @@ local DEFINITIONS = {
     name = "Power",
     program = "apps/power.lua",
     kinds = { "computer", "pocket", "command" },
-    surfaces = { "desktop" },
+    surfaces = { "desktop", "handheld" },
   },
   {
     id = "where",

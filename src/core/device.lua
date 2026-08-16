@@ -82,7 +82,7 @@ device.ROLES = {
     label = "Fleet base station",
     detail = "Roster, dashboard, fleet orders",
     requires = function(caps)
-      return caps.kind ~= "turtle" and caps.modem
+      return caps.kind ~= "turtle" and caps.kind ~= "pocket" and caps.modem
     end,
     warn = function(caps)
       if not caps.monitor then
@@ -90,6 +90,20 @@ device.ROLES = {
       end
       if not caps.wireless then
         return "wired modem: turtles will not reach this"
+      end
+      return nil
+    end,
+  },
+  {
+    key = "controller",
+    label = "Fleet handheld",
+    detail = "Mobile dashboard and full fleet control",
+    requires = function(caps)
+      return caps.kind == "pocket" and caps.modem
+    end,
+    warn = function(caps)
+      if not caps.wireless then
+        return "wired modem: use a wireless or ender modem while mobile"
       end
       return nil
     end,
