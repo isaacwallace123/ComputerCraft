@@ -347,10 +347,19 @@ function expedition.run(job, ctx)
 
   -- Empty downwards, into the chest under the home block. Unlike "behind me",
   -- that works no matter which way the turtle ended up facing - which matters
-  -- when a swarm deployer placed it rather than a player.
+  -- when a swarm deployer placed it rather than a player, and it lets several
+  -- turtles share one double chest as a depot.
   local home = nav.goHome()
+  local depotFull = false
   if home then
     job.delivered = job.delivered + inv.dropAll(turtle.dropDown)
+
+    -- With a shared depot this is the failure that actually happens: the chest
+    -- backs up, the drop silently does nothing, and the turtle would otherwise
+    -- park looking healthy while carrying a full load it can never put down.
+    if inv.itemCount() > 0 then
+      depotFull = true
+    end
   end
 
   job.active = not ok and not home -- only stay "active" if we never made it back
@@ -358,6 +367,11 @@ function expedition.run(job, ctx)
 
   if not ok then
     return false, reason
+  end
+  if depotFull then
+    -- Surfaced as a failure so the row goes red on the dashboard. A turtle
+    -- holding a full load it cannot deposit is stuck, not finished.
+    return false, "depot full - empty the chest below me"
   end
   return true
 end

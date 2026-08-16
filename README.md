@@ -275,6 +275,40 @@ the fuel the round trip needs and refuses to leave without it.
 
 **Chest goes directly BELOW the turtle** for this job — see the swarm section for why.
 
+### The depot
+
+A double chest is a *single* inventory, so two turtles standing on its two halves
+already share it. That is the whole trick — no code knows about a "depot", each turtle
+just empties into the chest it is standing on, and they happen to be the same one.
+
+```
+ SIDE VIEW                TOP-DOWN
+
+  [T1][T2]                [T1][T2]      turtles
+  [ double chest ]        [C ][C ]      one inventory
+  [ hopper ]
+  [ barrel ]              hopper under either half drains the whole chest
+  [ barrel ]
+```
+
+Put a hopper under either half and it pulls from the whole chest into bulk storage
+below. That matters more than it sounds: the shared depot's one real failure mode is
+backing up, and a hopper draining it continuously is what stops that happening.
+
+Scaling past two: a row of chests, one turtle on each, hoppers underneath feeding a
+common line. Turtles do not need to be near the computer — ender modems have unlimited
+range.
+
+If the depot *is* full when a turtle gets home, the drop silently does nothing, so the
+job reports `depot full` and the row goes red rather than parking as though it had
+finished. A turtle holding a load it cannot put down is stuck, not done.
+
+> This layout is for **expedition**, which empties downwards. The **quarry** job empties
+> *behind* itself and digs straight down from its start block — so a quarry turtle must
+> have a chest behind it and clear ground below. `nav` now refuses to dig computers,
+> turtles, chests and barrels, so a quarry placed on top of a chest stops safely instead
+> of eating your depot.
+
 ### quarry — the bulk digger
 
 Rectangular pit next to base. Chest **behind** the turtle. Covered further down.
