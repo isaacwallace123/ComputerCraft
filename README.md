@@ -1,190 +1,216 @@
 # ComputerCraft — Valhelsia 6
 
-Lua for CC: Tweaked 1.113.1 (Minecraft 1.20.1, Forge). Advanced Peripherals 0.7.41r
-is also on the pack, so peripheral-based projects are open once you have the items.
+A monitored turtle fleet for CC: Tweaked 1.113.1 (Minecraft 1.20.1, Forge), with
+Advanced Peripherals 0.7.41r available.
 
-**Source of truth is this folder.** The in-game computer is a deployment target,
-never the place you edit. Every program here survives world resets, server wipes,
-and losing the computer to a creeper.
+**Source of truth is this folder.** In-game machines are deployment targets, never
+where you edit. Everything here survives world resets, server wipes, and losing a
+turtle to a creeper.
 
 ## Layout
 
 ```
-src/                 every program, deployed as a unit to any computer
-  startup.lua        boot menu / launcher
-  door.lua           PIN-locked redstone door
-  pulse.lua          configurable redstone clock
-  update.lua         pulls the latest code from GitHub, in game
-  lib/ui.lua         screen helpers
-  lib/config.lua     table persistence
+src/
+  startup.lua        boot: read this machine's role, hand over to its app
+  install.lua        give a machine a role (the "deploy a turtle" step)
+  update.lua         pull latest code from GitHub
   manifest.json      generated — the file list update.lua downloads
-bootstrap.lua        one-liner installer for a brand new computer
+
+  core/              no dependencies on turtles, jobs, or each other
+    config.lua       table persistence with defaults
+    log.lua          capped file log + in-memory ring buffer
+    net.lua          rednet: one protocol, one envelope, modem discovery
+    ui.lua           drawing, works on a computer term or a monitor
+    util.lua         formatting helpers
+
+  turtle/            turtle hardware, no job knowledge
+    nav.lua          position tracking + safe movement
+    fuel.lua         fuel level, limit, refuelling
+    inv.lua          inventory queries and dumping
+
+  jobs/              what a turtle does, no I/O of its own
+    quarry.lua       rectangular pit, resumable
+
+  apps/              entry points — the only files that wire things together
+    miner.lua        turtle agent: run a job, report to base
+    fleet.lua        base station: roster + monitor dashboard
+    scan.lua         Geo Scanner ore listing
+
+bootstrap.lua        one-shot installer for a fresh machine
 tools/               PowerShell helpers, run from the repo root
-types/               CC: Tweaked type definitions (gitignored, see setup.ps1)
+types/               CC: Tweaked definitions (gitignored — see setup.ps1)
 ```
+
+The dependency rule is one-directional: `apps` → `jobs` → `turtle` → `core`. Nothing
+in `core` knows a turtle exists, and nothing in `jobs` touches the screen or the
+network — jobs take a `report(phase, detail)` callback and the app decides what that
+means. That is what lets the same quarry code drive a local screen and a remote
+dashboard without knowing about either.
+
+Every entry point starts with `package.path = "/?.lua;/?/init.lua;" .. package.path`
+so `require("core.ui")` resolves from the filesystem root. Without it CC resolves
+requires relative to the running program's own directory, and anything in `apps/`
+would look for `apps/core/ui.lua`.
+
+## Hardware you actually need
+
+| | |
+| --- | --- |
+| Base station | Advanced computer + **modem** + advanced monitor |
+| Each turtle | Advanced mining turtle + **modem** |
+
+**The modems are not optional for tracking.** Use **ender modems** (8 stone + eye of
+ender). A plain wireless modem reaches 64 blocks, and a turtle 30 blocks down a quarry
+is already out of range — you would see every turtle as permanently offline. Turtles
+still mine perfectly well without any modem; you just get no telemetry.
 
 ## Editor setup
 
-One extension does the real work: **`sumneko.lua`** (the "Lua" extension). Combined
-with `types/cc-tweaked/library`, it gives you autocomplete, hover docs, go-to-definition
-and type checking for every CC API — `redstone.setOutput`, `peripheral.wrap`, the lot.
+One extension does the real work: **`sumneko.lua`**. With `types/cc-tweaked/library`
+it gives autocomplete, hover docs and type checking for every CC API.
 
 ```powershell
 code --install-extension sumneko.lua
 .\tools\setup.ps1          # clones the type definitions into types\
 ```
 
-`.luarc.json` wires the definitions in and is checked in, so it just works.
+`.luarc.json` wires it up and is checked in. It disables `param-type-mismatch` and
+`undefined-field` — not laziness: the definition set declares its string enums
+(`fs.openMode`, `os.locale`) with a legacy annotation syntax LuaLS 3.19 reads as
+*including the quote characters*, so every correct `fs.open(path, "w")` gets flagged.
+With them off `tools\check.ps1` is clean; with them on you get ~129 false positives.
 
-It also disables `param-type-mismatch` and `undefined-field`. Those aren't laziness:
-the definition set declares its string enums (`fs.openMode`, `os.locale`, …) with a
-legacy annotation syntax that LuaLS 3.19 reads as *including the quote characters*, so
-every correct `fs.open(path, "w")` gets flagged. With them off, `lua-language-server
---check .` reports zero problems across the repo; leave them on and you get ~129 false
-ones. Undefined globals and syntax errors are still caught, and selene backs it up.
-
-Also useful, and already installed: `johnnymorganz.stylua` (formatter, configured by
-`.stylua.toml`), `usernamehw.errorlens` (shows diagnostics inline), and
-`kampfkarren.selene-vscode` (linter). Selene needs to be told what CC's globals are or
-it flags every one of them — `selene.toml` and `cc-tweaked.yaml` in the repo root do
-that, and are checked in.
+Also configured: `johnnymorganz.stylua` (formatting, `.stylua.toml`) and
+`kampfkarren.selene-vscode` (linting, `selene.toml` + `cc-tweaked.yaml`).
 
 **Skip `jackmacwindows.vscode-computercraft`.** It registers a second completion
-provider on `.lua`, so you get duplicated and conflicting suggestions next to
-sumneko's, and its API data targets CC: Tweaked 1.100.0 — older than what this pack
-ships. Disable it in the Extensions panel.
+provider on `.lua`, so it competes with sumneko rather than adding to it, and its API
+data targets CC: Tweaked 1.100.0 — older than this pack.
 
-**Do not** let `johnnymorganz.luau-lsp` claim `.lua` files. Luau is Roblox's dialect,
-not CC's Lua 5.2. `.vscode/settings.json` pins `*.lua` to the `lua` language to prevent this.
+## Deploying
 
-> Note: CC runs Cobalt — Lua 5.2 plus a few 5.3 features. The type definitions declare
-> 5.3, which is close enough for tooling, but don't lean on 5.3-only stdlib functions.
+### Adding a machine
 
-## Getting code onto a computer
+1. Place it. Pull the code:
+   - **Public repo:** `wget run https://raw.githubusercontent.com/USER/REPO/main/bootstrap.lua`
+   - **Private repo:** run `.\tools\print-bootstrap.ps1 -User me -Repo ComputerCraft -Token github_pat_xxx`,
+     then in game type `lua` and press Ctrl+V.
+2. Run `install`, pick a role.
+3. Reboot.
 
-### On the server (your main world)
+That's it. A turtle finds the base station over rednet **by name**, announces itself,
+and the base adds it to the roster — there is nothing to configure on the base side,
+and no IDs to write down anywhere. Adding the tenth turtle is the same three steps as
+the first.
 
-You can't reach the computer's files, so it pulls them itself over HTTP.
-
-**One-time, public repo:** push this folder, then on a fresh in-game computer:
-
-```
-wget run https://raw.githubusercontent.com/USER/REPO/main/bootstrap.lua
-```
-
-**One-time, private repo:** the repo can stay private — the computer just has to
-authenticate. `raw.githubusercontent.com` ignores auth headers, so `update.lua`
-automatically switches to the GitHub contents API (`Accept: application/vnd.github.raw`,
-which returns the plain file rather than base64) whenever a token is configured.
-
-`wget run` can't send headers, so bootstrapping needs a different first step:
+### Pushing changes
 
 ```powershell
-.\tools\print-bootstrap.ps1 -User me -Repo ComputerCraft -Token github_pat_xxx
+.\tools\deploy.ps1 -Message "smarter fuel margin"
 ```
 
-That copies a one-liner to your clipboard. In game: `lua`, Ctrl+V, Enter. Everything
-after that is the normal `update` flow.
+Regenerates the manifest, runs all checks, commits, pushes. Then run `update` on any
+in-game machine and reboot.
 
-> **Token hygiene.** The token is stored in plain text in `.update` on the computer.
-> Anyone who can reach that computer in game, the server admin, and anyone with the
-> world files can read it. Use a **fine-grained** PAT scoped to that **one repository**,
-> `Contents: Read-only`, with an expiry date. Never a classic token, never one you use
-> elsewhere. If that's not acceptable, keep the repo public — it's only Minecraft Lua —
-> and keep genuine secrets out of it entirely.
+### Private repos
 
-**Every time after that:**
+`raw.githubusercontent.com` ignores auth headers, so `update.lua` switches to the
+GitHub contents API (`Accept: application/vnd.github.raw`, which returns the plain file
+rather than base64 — CC has no base64 decoder) whenever a token is configured.
 
-```powershell
-.\tools\make-manifest.ps1     # only if you added or deleted a file
-git add -A; git commit -m "..."; git push
-```
+> **Token hygiene.** The token is stored in plain text in `.update` on the machine.
+> Anyone who can reach it in game, the server admin, and anyone with the world files
+> can read it. Use a **fine-grained** PAT scoped to that **one repository**,
+> `Contents: Read-only`, with an expiry. If that's not acceptable, keep the repo public
+> — it's Minecraft Lua — and keep real secrets out of it entirely.
 
-then in game: `update` — and reboot the computer.
+## Roles
 
-If you get `Domain not permitted` or `HTTP is disabled`, the admin has turned off the
-HTTP API; ask them to enable it in `computercraft-server.toml`.
-
-### In a local test world (fast loop)
-
-For iterating on a program, a singleplayer world beats the server — no push, no update.
-`tools\link-world.ps1` junctions a computer's folder straight to `src\`:
-
-```powershell
-.\tools\link-world.ps1 -List                    # see your local worlds
-.\tools\link-world.ps1 -World "New World" -Id 0
-```
-
-Now saving in VS Code changes the file the computer runs. Reboot the computer in game
-(hold Ctrl+R) to pick it up. Run `tools\unlink-world.ps1` before zipping that world.
-
-## Programs
-
-| Program | Runs on | What it does |
+| Role | App | What it does |
 | --- | --- | --- |
-| `startup` | both | Runs on boot. Arrow-key menu; crashes drop you back here, not into a dead computer. Resumes an unfinished quarry automatically. |
-| `quarry` | turtle | Digs a rectangular pit and hauls everything back to a chest. |
-| `scan` | either | Lists nearby ores. Needs an Advanced Peripherals Geo Scanner. |
-| `door` | computer | PIN pad that powers a redstone door for a few seconds. Prompts for side and PIN on first run; lockout after repeated failures. |
-| `pulse` | computer | Redstone clock with an exact, editable period. Bone-meal dispensers, droppers, a Create clutch, lamps. |
-| `update` | both | Downloads everything in `manifest.json` from GitHub. |
+| `fleet` | `apps/fleet.lua` | Hosts the rednet protocol, keeps the roster, paints the monitor |
+| `miner` | `apps/miner.lua` | Runs the quarry job and heartbeats status every 2s |
+| `utility` | — | No autorun; boots to the menu |
 
-## Running the quarry
+`startup.lua` waits three seconds before launching the role app. That pause is the
+escape hatch — a turtle with a broken job is never an unrecoverable brick.
 
-1. Place the turtle at the near-left corner of the area you want gone.
-2. Put a **chest directly behind it**.
-3. Give it coal or charcoal in any slot.
-4. Run `quarry` and answer width / length / depth.
+## The dashboard
 
-The pit extends **forward and to the right**. Each pass clears two layers, so a
-depth of 32 is 16 passes.
+`fleet` shows one row per turtle: name, phase, position, fuel bar, layer progress, and
+time since last heartbeat. Rows go yellow after 10s of silence and red after 60s. The
+footer aggregates blocks mined, items delivered, and total moves across the fleet.
 
-### How it avoids losing the turtle
+The roster is persisted, so after a server restart the dashboard still lists every
+known turtle as offline until it checks back in — a turtle that has gone quiet is
+exactly the one you want to see. Press `R` on the base to clear the roster.
 
-Everything below is in [src/lib/nav.lua](src/lib/nav.lua) and [src/quarry.lua](src/quarry.lua):
+If a GPS cluster is in range, turtles report **world** coordinates instead of
+job-relative ones, so you can actually go and find the thing. Without GPS it falls
+back to coordinates relative to that turtle's own start point.
 
-- **Position is written to disk after every confirmed move.** Not after every attempt —
-  only once the game says the move happened, so the count can't drift. A reboot loses
-  nothing.
-- **It never takes a step it can't walk back from.** Before each move it checks that
-  remaining fuel still covers the Manhattan distance home plus a 64-block margin, and
-  burns mined coal one lump at a time to top up.
-- **Every layer starts from home.** So after a server restart the turtle walks back to
-  the chest and redoes the current layer — mostly moving through air it already mined.
-  Cheap, and it means no partial-layer bookkeeping to get wrong.
-- **Gravel and mobs are retried, bedrock isn't.** A blocked move digs; if nothing solid
-  is there, something alive is, so it attacks. A block that won't break after 100 tries
-  ends the job cleanly instead of grinding forever.
-- **Lava is left alone** rather than dug into and flooding the pit.
-- **Full inventory triggers a round trip** home to the chest and back to the exact block
-  it left off at.
+## The quarry
 
-Ctrl+T is safe at any time — progress is saved continuously.
+1. Turtle at the near-left corner of the area.
+2. **Chest directly behind it.**
+3. Coal or charcoal in any slot.
 
-Settings live in dotfiles on the computer (`.door`, `.pulse`, `.update`) and are not
-overwritten by updates. Edit them in game with `edit .door`.
+The pit extends forward and to the right. Each pass clears two layers, so depth 32 is
+16 passes. One stack of coal (~5,120 fuel) comfortably covers an 8×8×32. Start with
+4×4×16 to watch it behave.
+
+### How it avoids losing a turtle
+
+- **Position is written to disk after every *confirmed* move** — only once the game
+  says the move happened, so the count cannot drift.
+- **It never takes a step it cannot walk back from.** Before each move it checks that
+  fuel still covers the distance home plus a 64-block margin, and burns mined coal one
+  lump at a time to top up.
+- **Every layer starts from home.** After an interruption it walks back to the chest
+  and re-runs the current layer, mostly gliding through air it already mined. Far
+  easier to get right than partial-layer bookkeeping.
+- **Gravel and mobs are retried, bedrock is not.** A blocked move digs; if nothing
+  solid is there, something alive is, so it attacks. 100 failed attempts ends the job
+  cleanly instead of grinding forever.
+- **Lava is left sealed** rather than dug into and flooding the pit.
+- **A full inventory triggers a round trip** home and back to the exact block it left.
+
+Ctrl+T is safe at any time.
+
+## Tools
+
+| | |
+| --- | --- |
+| `tools\setup.ps1` | One-time: clone the type definitions |
+| `tools\check.ps1` | LuaLS + selene + stylua over the repo |
+| `tools\deploy.ps1` | Manifest, checks, commit, push |
+| `tools\make-manifest.ps1` | Regenerate `src/manifest.json` |
+| `tools\print-bootstrap.ps1` | Private-repo installer one-liner to clipboard |
+| `tools\link-world.ps1` | Junction a *singleplayer* world's computer to `src\` for fast iteration |
+| `tools\unlink-world.ps1` | Undo that before zipping a world |
+
+`check.ps1` deliberately looks for selene and stylua in VS Code's `globalStorage`
+before falling back to `PATH` — there are rokit shims of the same name on PATH that
+refuse to run without a `rokit.toml`.
 
 ## Upgrade path
 
-Roughly in order of payoff per material spent:
+| Upgrade | Why |
+| --- | --- |
+| **Ender modems** | Prerequisite for any tracking at depth. Do this first. |
+| **Chunky Turtle** (AP) | Keeps its own chunk loaded, so turtles mine while you're away. The real "mine for me" unlock. |
+| **Geo Scanner** (AP) | `scan` turns blind quarrying into targeted digging. |
+| **GPS cluster** | 4 computers + 4 modems high up. World coordinates on the dashboard. |
+| **Inventory Manager** (AP) | Push items straight into your own inventory. |
 
-| Upgrade | Cost | Why |
-| --- | --- | --- |
-| **Chunky Turtle** (AP) | moderate | Keeps its own chunk loaded, so the quarry runs while you're elsewhere. This is the single biggest change to "mine for me while I do something else". |
-| **Geo Scanner** (AP) | moderate | `scan` tells you where ore actually is. Turns blind quarrying into targeted digging. |
-| **Ender modem** | 8 stone + eye of ender | Unlimited range, cross-dimension. Lets the turtle report status home from anywhere. Skip the plain wireless modem — 64 blocks is not enough to be useful. |
-| **GPS cluster** | 4 computers + 4 wireless modems | Absolute coordinates via `gps.locate()`. Only worth it once you run several turtles, or if dead reckoning ever desyncs. |
-| **Inventory Manager** (AP) | high | Push items straight into your own inventory from anywhere. |
-
-## Handy in-game commands
+## In-game commands
 
 | | |
 | --- | --- |
 | `Ctrl+T` (hold) | terminate the running program |
 | `Ctrl+R` (hold) | reboot |
-| `edit <file>` | built-in editor |
-| `ls`, `rm`, `cd` | as you'd expect |
-| `lua` | interactive REPL — best way to poke at an API |
+| `edit <file>` | built-in editor — useful for `.node`, `.quarry`, `.update` |
+| `lua` | interactive REPL |
 | `help <topic>` | built-in docs |
 
-Full API reference: <https://tweaked.cc/>
+Full API reference: <https://tweaked.cc/> · Advanced Peripherals: <https://docs.advanced-peripherals.de/>

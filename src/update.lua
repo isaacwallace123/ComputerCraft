@@ -1,23 +1,23 @@
---- update.lua - pull the latest code from GitHub onto this computer.
+--- Pull the latest code from GitHub onto this machine.
 ---
---- This is the deploy step for server play, where you cannot reach the
---- computer's files from your PC. Workflow:
+--- This is the deploy step for server play, where you cannot reach a computer's
+--- files from your PC:
 ---
 ---   edit in VS Code  ->  git push  ->  run `update` in game
 ---
---- Requires the HTTP API, which CC: Tweaked enables by default. If your server
---- admin disabled it you will get "HTTP is disabled" and will need to ask them
---- to set http.enabled = true in computercraft-server.toml.
+--- Requires the HTTP API, which CC: Tweaked enables by default.
 
-local config = require("lib.config")
+package.path = "/?.lua;/?/init.lua;" .. package.path
+
+local config = require("core.config")
 
 local CONFIG_PATH = ".update"
 
 local defaults = {
-  user = "", -- your GitHub username
-  repo = "", -- the repository name
+  user = "",
+  repo = "",
   branch = "main",
-  path = "src", -- folder inside the repo holding these programs
+  path = "src", -- folder in the repo holding these programs
   token = "", -- only for a PRIVATE repo; see the warning below
 }
 
@@ -48,11 +48,10 @@ end
 
 local private = cfg.token ~= ""
 
---- Build the URL for one file.
---- Public repos are served straight off the raw CDN. Private repos have to go
---- through the API, which honours an Authorization header - raw.githubusercontent
---- does not accept one. The timestamp defeats caching, which otherwise serves
---- stale files for a few minutes after you push.
+--- Public repos come off the raw CDN. Private repos must go through the API,
+--- which honours an Authorization header - raw.githubusercontent does not. The
+--- timestamp defeats caching, which otherwise serves stale files for a few
+--- minutes after you push.
 local function urlFor(name)
   local bust = "t=" .. tostring(os.epoch("utc"))
   if private then
@@ -75,8 +74,8 @@ local function urlFor(name)
   )
 end
 
---- Asking for vnd.github.raw makes the API return the plain file rather than
---- JSON with base64 content - CC has no base64 decoder, so this matters.
+--- vnd.github.raw makes the API return the plain file rather than JSON with
+--- base64 content - CC has no base64 decoder, so this matters.
 local headers = private
     and {
       ["Authorization"] = "Bearer " .. cfg.token,
@@ -85,7 +84,6 @@ local headers = private
     }
   or nil
 
---- Fetch a file as a string. Returns nil plus a message on failure.
 local function fetch(name)
   local response, err, failed = http.get(urlFor(name), headers)
   if not response then
@@ -102,7 +100,6 @@ local function fetch(name)
   return body
 end
 
---- Read a local file, or nil if it does not exist.
 local function readLocal(path)
   local handle = fs.exists(path) and fs.open(path, "r")
   if not handle then
@@ -161,5 +158,5 @@ print("")
 print(("%d updated, %d unchanged, %d failed"):format(changed, unchanged, failed))
 
 if changed > 0 then
-  print("Reboot (or run `startup`) to use the new code.")
+  print("Reboot (Ctrl+R) to run the new code.")
 end

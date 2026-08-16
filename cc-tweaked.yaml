@@ -1,5 +1,9 @@
 ---
-base: lua52
+# Upstream ships base: lua52. The selene binary the VS Code extension downloads
+# is not built with the lua52 feature, so that errors out. lua51 is also closer
+# to what CC actually exposes - Cobalt keeps unpack, loadstring and setfenv
+# unless _CC_DISABLE_LUA51_FEATURES is set.
+base: lua51
 
 globals:
   package.cpath:

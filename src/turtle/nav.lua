@@ -1,16 +1,18 @@
---- nav.lua - position tracking and safe movement for turtles.
+--- Position tracking and safe movement.
 ---
 --- The turtle has no idea where it is. This keeps a coordinate relative to
---- wherever the job started, and writes it to disk after EVERY successful move.
---- That is the whole trick behind surviving a server restart or a chunk unload:
---- when the turtle boots back up it still knows where it stands and how to walk
---- home. Position is only ever updated after the game confirms the move, so the
---- count cannot drift.
+--- wherever the job started and writes it to disk after EVERY confirmed move.
+--- That is the whole trick behind surviving a server restart: the world reloads,
+--- the turtle reboots, and it still knows where it stands and how to walk home.
+---
+--- Position updates only after the game confirms the move succeeded, so the
+--- count cannot drift away from reality.
 ---
 --- Coordinates are job-relative: home is 0,0,0 and facing 0 is whatever
 --- direction the turtle pointed when the job began. +y is up.
 
-local config = require("lib.config")
+local config = require("core.config")
+local fuel = require("turtle.fuel")
 
 local STATE_PATH = ".nav"
 
@@ -24,61 +26,43 @@ local DELTA = {
   [3] = { x = -1, z = 0 },
 }
 
-local state = config.load(STATE_PATH, { x = 0, y = 0, z = 0, facing = 0 })
+local state = config.load(STATE_PATH, {
+  x = 0,
+  y = 0,
+  z = 0,
+  facing = 0,
+  moves = 0, -- lifetime counters, for the dashboard
+  digs = 0,
+})
 
 local function save()
   config.save(STATE_PATH, state)
 end
 
---- Current position and facing.
 function nav.position()
   return state.x, state.y, state.z, state.facing
 end
 
---- Declare "here" to be home. Call this once when starting a fresh job.
+function nav.stats()
+  return { moves = state.moves, digs = state.digs }
+end
+
+--- Declare "here" to be home. Call once when starting a fresh job.
 function nav.setHome()
-  state = { x = 0, y = 0, z = 0, facing = 0 }
+  state.x, state.y, state.z, state.facing = 0, 0, 0, 0
   save()
 end
 
---- Manhattan distance back to 0,0,0 - which is exactly how many moves, and so
---- how much fuel, the trip home costs.
+--- Manhattan distance to 0,0,0 - exactly how many moves, and so how much fuel,
+--- the trip home costs.
 function nav.distanceHome()
   return math.abs(state.x) + math.abs(state.y) + math.abs(state.z)
 end
 
---- Fuel as a number. Turtles report "unlimited" when fuel is switched off
---- server-side, which would blow up any numeric comparison.
-function nav.fuel()
-  local level = turtle.getFuelLevel()
-  if level == "unlimited" then
-    return math.huge
-  end
-  return level
-end
-
---- Burn items from the inventory until we hit `target`, one at a time so we
---- never torch a whole stack of coal to top up by 80.
-function nav.refuel(target)
-  if nav.fuel() >= target then
-    return true
-  end
-  for slot = 1, 16 do
-    turtle.select(slot)
-    while nav.fuel() < target and turtle.refuel(1) do
-    end
-    if nav.fuel() >= target then
-      break
-    end
-  end
-  turtle.select(1)
-  return nav.fuel() >= target
-end
-
---- True if the turtle could not get home right now. The margin covers the
---- moves it takes to notice the problem in the first place.
-function nav.stranded(margin)
-  return nav.fuel() < nav.distanceHome() + (margin or 0)
+--- Could the turtle still get home right now? The margin covers the moves it
+--- takes to notice a problem and any detour around it.
+function nav.canReturn(margin)
+  return fuel.level() >= nav.distanceHome() + (margin or 0)
 end
 
 local function isLava(inspect)
@@ -86,32 +70,39 @@ local function isLava(inspect)
   return ok and type(data) == "table" and tostring(data.name):find("lava") ~= nil
 end
 
---- Try to move, clearing whatever is in the way.
---- Gravel and sand fall back into the space, and mobs stand in it, so this
+--- Move one block, clearing whatever is in the way.
+---
+--- Gravel and sand fall back into the space and mobs stand in it, so this
 --- retries rather than giving up on the first failure. A block that will not
---- break after many attempts is bedrock or claimed territory - we stop instead
---- of grinding forever.
+--- break after many attempts is bedrock or someone's claim - we report that
+--- instead of grinding forever.
 local function push(move, dig, detect, attack, inspect)
   if isLava(inspect) then
     return false, "lava"
   end
+
   for attempt = 1, 100 do
     if move() then
+      state.moves = state.moves + 1
       return true
     end
+
     if detect() then
       if not dig() then
         return false, "unbreakable"
       end
+      state.digs = state.digs + 1
     else
-      -- Nothing solid there, so something alive is standing in the way.
+      -- Nothing solid there, so something alive is standing in it.
       attack()
       sleep(0.2)
     end
+
     if attempt % 10 == 0 then
       sleep(0.4) -- let falling gravel settle
     end
   end
+
   return false, "blocked"
 end
 
@@ -127,8 +118,7 @@ function nav.forward()
 end
 
 function nav.up()
-  local ok, err =
-    push(turtle.up, turtle.digUp, turtle.detectUp, turtle.attackUp, turtle.inspectUp)
+  local ok, err = push(turtle.up, turtle.digUp, turtle.detectUp, turtle.attackUp, turtle.inspectUp)
   if not ok then
     return false, err
   end
@@ -148,6 +138,19 @@ function nav.down()
   return true
 end
 
+--- Dig the block below without moving. Returns false if it is lava, which we
+--- deliberately leave sealed rather than flooding the pit.
+function nav.digDown()
+  if isLava(turtle.inspectDown) then
+    return false, "lava"
+  end
+  if turtle.digDown() then
+    state.digs = state.digs + 1
+    save()
+  end
+  return true
+end
+
 function nav.turnRight()
   turtle.turnRight()
   state.facing = (state.facing + 1) % 4
@@ -160,7 +163,7 @@ function nav.turnLeft()
   save()
 end
 
---- Turn to an absolute facing, taking the shorter way round.
+--- Turn to an absolute facing, the short way round.
 function nav.face(facing)
   local diff = (facing - state.facing) % 4
   if diff == 1 then
@@ -174,8 +177,8 @@ function nav.face(facing)
 end
 
 --- Walk to a job-relative coordinate.
---- Rises before travelling and descends last, so the turtle crosses open air
---- rather than tunnelling through fresh rock on the way back.
+--- Rises before travelling and descends last, so the turtle crosses air it has
+--- already mined rather than tunnelling through fresh rock on the way back.
 function nav.goTo(tx, ty, tz)
   while state.y < ty do
     local ok, err = nav.up()
@@ -214,7 +217,7 @@ function nav.goTo(tx, ty, tz)
   return true
 end
 
---- Return to the starting block, facing the way the turtle originally faced.
+--- Back to the starting block, facing the original direction.
 function nav.goHome()
   local ok, err = nav.goTo(0, 0, 0)
   if not ok then
@@ -222,6 +225,17 @@ function nav.goHome()
   end
   nav.face(0)
   return true
+end
+
+--- World coordinates, if a GPS cluster is in range. Purely informational - the
+--- turtle navigates fine without it, but it makes the dashboard far more useful
+--- because you can actually go and find the thing.
+function nav.worldPosition()
+  local x, y, z = gps.locate(2, false)
+  if not x then
+    return nil
+  end
+  return { x = math.floor(x), y = math.floor(y), z = math.floor(z) }
 end
 
 return nav

@@ -74,7 +74,7 @@ local function grab(name)
 end
 
 print("\nBootstrapping from " .. user .. "/" .. repo)
-grab("lib/config.lua")
+grab("core/config.lua")
 grab("update.lua")
 
 -- Seed update.lua's config so it does not ask again.

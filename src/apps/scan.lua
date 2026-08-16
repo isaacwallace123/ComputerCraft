@@ -1,12 +1,14 @@
---- scan.lua - list nearby ores using an Advanced Peripherals Geo Scanner.
+--- List nearby ores using an Advanced Peripherals Geo Scanner.
 ---
---- Works with either the Geo Scanner block (attached to a computer) or the Geo
---- Scanner turtle upgrade. Tells you where the ore actually is so you can point
---- a quarry at ground worth digging instead of guessing.
+--- Works with the Geo Scanner block on a computer or the Geo Scanner turtle
+--- upgrade. Turns blind quarrying into pointing the pit at ground worth digging.
 ---
 --- Coordinates are relative to the scanner: +x east, +y up, +z south.
 
-local ui = require("lib.ui")
+package.path = "/?.lua;/?/init.lua;" .. package.path
+
+local ui = require("core.ui")
+local util = require("core.util")
 
 -- Advanced Peripherals renamed this type in 1.21.1; this pack is 1.20.1.
 local scanner = peripheral.find("geoScanner") or peripheral.find("geo_scanner")
@@ -14,8 +16,8 @@ local scanner = peripheral.find("geoScanner") or peripheral.find("geo_scanner")
 if not scanner then
   printError("No Geo Scanner found.")
   print("")
-  print("Attach a Geo Scanner block to this computer, or use a turtle")
-  print("with the Geo Scanner upgrade on its left or right side.")
+  print("Attach a Geo Scanner block to this computer, or use a")
+  print("turtle with the Geo Scanner upgrade on left or right.")
   return
 end
 
@@ -28,8 +30,8 @@ if not blocks then
   return
 end
 
---- Anything worth walking to. Matching on the name covers modded ores too,
---- which is what matters in a pack this size.
+--- Match on the name so modded ores are picked up too, which matters in a pack
+--- this size.
 local function isInteresting(name)
   return name:find("ore") or name:find("debris") or name:find("raw_")
 end
@@ -38,8 +40,8 @@ local found = {}
 
 for _, block in ipairs(blocks) do
   if isInteresting(block.name) then
-    local entry = found[block.name]
     local distance = math.abs(block.x) + math.abs(block.y) + math.abs(block.z)
+    local entry = found[block.name]
     if not entry then
       found[block.name] = { count = 1, x = block.x, y = block.y, z = block.z, distance = distance }
     else
@@ -53,34 +55,35 @@ end
 
 local rows = {}
 for name, entry in pairs(found) do
-  entry.name = name:gsub("^.*:", ""):gsub("_", " ")
+  entry.name = util.blockName(name)
   rows[#rows + 1] = entry
 end
 table.sort(rows, function(a, b)
   return a.count > b.count
 end)
 
-ui.header("Geo Scan  r=" .. radius)
+ui.clear()
+ui.header("Geo Scan", "r=" .. radius)
 
 if #rows == 0 then
-  term.setCursorPos(3, 3)
-  term.write("Nothing but rock within " .. radius .. " blocks.")
+  ui.text(2, 3, "Nothing but rock within " .. radius .. " blocks.", ui.theme.dim)
   return
 end
 
-term.setCursorPos(2, 3)
-term.write(("%-18s %4s  %s"):format("ORE", "N", "NEAREST"))
+local _, height = ui.size()
+ui.text(2, 3, ("%-20s %5s  %s"):format("ORE", "COUNT", "NEAREST"), ui.theme.dim)
 
-local line = 4
+local row = 4
 for _, entry in ipairs(rows) do
-  if line >= ui.height then
+  if row >= height then
     break
   end
-  term.setCursorPos(2, line)
-  term.write(
-    ("%-18s %4d  %d,%d,%d"):format(entry.name:sub(1, 18), entry.count, entry.x, entry.y, entry.z)
+  ui.text(
+    2,
+    row,
+    ("%-20s %5d  %d,%d,%d"):format(util.fit(entry.name, 20), entry.count, entry.x, entry.y, entry.z)
   )
-  line = line + 1
+  row = row + 1
 end
 
-term.setCursorPos(1, ui.height)
+term.setCursorPos(1, height)

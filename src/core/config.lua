@@ -1,14 +1,15 @@
---- Dead-simple table persistence.
---- Saves a Lua table to a file as text, loads it back, and fills in defaults
---- for any key the saved file is missing (so adding a new option later never
---- breaks an existing install).
+--- Table persistence with defaults.
+---
+--- Loading always layers the saved file over a defaults table, so adding a new
+--- option in code never breaks a machine that already has a config file.
+
 local config = {}
 
---- Read `path`, layering it over `defaults`. Always returns a usable table.
+--- Read `path`, layered over `defaults`. Always returns a usable table.
 function config.load(path, defaults)
   local result = {}
-  for k, v in pairs(defaults) do
-    result[k] = v
+  for key, value in pairs(defaults) do
+    result[key] = value
   end
 
   local handle = fs.exists(path) and fs.open(path, "r")
@@ -16,8 +17,8 @@ function config.load(path, defaults)
     local ok, saved = pcall(textutils.unserialise, handle.readAll())
     handle.close()
     if ok and type(saved) == "table" then
-      for k, v in pairs(saved) do
-        result[k] = v
+      for key, value in pairs(saved) do
+        result[key] = value
       end
     end
   end
@@ -27,6 +28,11 @@ end
 
 --- Write `tbl` to `path`.
 function config.save(path, tbl)
+  local dir = fs.getDir(path)
+  if dir ~= "" and not fs.exists(dir) then
+    fs.makeDir(dir)
+  end
+
   local handle = fs.open(path, "w")
   if not handle then
     error("could not write " .. path, 0)
