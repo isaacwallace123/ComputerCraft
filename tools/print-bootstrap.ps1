@@ -29,7 +29,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $lua = @'
-local u,r,b,p,t="__USER__","__REPO__","__BRANCH__","__PATH__","__TOKEN__" local h={Authorization="Bearer "..t,Accept="application/vnd.github.raw",["User-Agent"]="cc"} local function g(n) local x,e=http.get(("https://api.github.com/repos/%s/%s/contents/%s/%s?ref=%s"):format(u,r,p,n,b),h) if not x then error(n..": "..tostring(e),0) end local d=fs.getDir(n) if d~="" and not fs.exists(d) then fs.makeDir(d) end local f=fs.open(n,"w") f.write(x.readAll()) f.close() x.close() print("got "..n) end g("core/config.lua") g("update.lua") local f=fs.open(".update","w") f.write(textutils.serialise({user=u,repo=r,branch=b,path=p,token=t})) f.close() if shell then shell.run("update.lua") else print("Now run: update") end
+local u,r,b,p,t="__USER__","__REPO__","__BRANCH__","__PATH__","__TOKEN__" local h={Authorization="Bearer "..t,Accept="application/vnd.github.raw",["User-Agent"]="cc"} local function g(n) local x,e=http.get(("https://api.github.com/repos/%s/%s/contents/%s/%s?ref=%s"):format(u,r,p,n,b),h) if not x then error(n..": "..tostring(e),0) end local d=fs.getDir(n) if d~="" and not fs.exists(d) then fs.makeDir(d) end local f=fs.open(n,"w") f.write(x.readAll()) f.close() x.close() print("got "..n) end g("core/config.lua") g("core/ui.lua") g("core/sound.lua") g("update.lua") local f=fs.open(".update","w") f.write(textutils.serialise({user=u,repo=r,branch=b,path=p,token=t})) f.close() if shell then shell.run("update.lua") else print("Now run: update") end
 '@
 
 $lua = $lua.Trim().

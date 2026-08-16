@@ -52,6 +52,10 @@ local function autoUpdate()
   if not ok then
     ui.text(2, 5, "Update failed - running existing code.", ui.theme.warn)
     sleep(1.5)
+  else
+    -- update.lua leaves its verification summary on screen. Hold it long enough
+    -- to actually be read before the role app paints over it.
+    sleep(1.5)
   end
 end
 

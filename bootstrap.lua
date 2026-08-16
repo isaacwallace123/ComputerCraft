@@ -88,8 +88,12 @@ local function grab(name)
   print("  got " .. name)
 end
 
+-- The minimum update.lua needs to run and draw itself. Everything else comes
+-- down in the update pass immediately after.
 print("\nBootstrapping from " .. user .. "/" .. repo)
 grab("core/config.lua")
+grab("core/ui.lua")
+grab("core/sound.lua")
 grab("update.lua")
 
 -- Seed update.lua's config so it does not ask again.

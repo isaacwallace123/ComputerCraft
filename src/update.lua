@@ -1,14 +1,15 @@
 --- Pull the latest code from GitHub onto this machine.
 ---
---- This is the deploy step for server play, where you cannot reach a computer's
---- files from your PC:
----
 ---   edit in VS Code  ->  git push  ->  run `update` in game
 ---
---- Requires the HTTP API, which CC: Tweaked enables by default.
+--- Runs in two passes. The first downloads anything whose content differs from
+--- what is on disk. The second re-reads every file back OFF the disk and checks
+--- its checksum against what was actually fetched - so "updated" means the
+--- bytes are really there, not merely that a write call returned.
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
+local ui = require("core.ui")
 local config = require("core.config")
 
 local CONFIG_PATH = ".update"
@@ -24,49 +25,39 @@ local defaults = {
 -- SECURITY: the token is stored here in plain text. Anyone who can reach this
 -- computer in game, plus the server admin, plus anyone with the world files,
 -- can read it. Use a fine-grained personal access token scoped to this ONE
--- repository with Contents: Read-only and an expiry date. Never a classic
--- token, never one you use anywhere else.
+-- repository with Contents: Read-only and an expiry date.
 
--- Prompt on the first run only. Keyed on the file existing rather than on the
--- fields being blank, so the baked-in defaults above can still be confirmed or
--- overridden - and so a private repo gets asked for its token.
+-- Prompt on the first run only, keyed on the file existing rather than on the
+-- fields being blank, so the baked-in defaults can still be overridden - and so
+-- a private repo gets asked for its token.
 local firstRun = not fs.exists(CONFIG_PATH)
 local cfg = config.load(CONFIG_PATH, defaults)
 
 if firstRun then
-  print("First run - press enter to accept each default.\n")
-  write("GitHub username [" .. cfg.user .. "]: ")
-  cfg.user = (read() or ""):gsub("^%s*(.-)%s*$", "%1")
-  if cfg.user == "" then
-    cfg.user = defaults.user
+  ui.clear()
+  print("Update source - enter to accept each default.\n")
+
+  local function ask(prompt, current)
+    write(prompt .. " [" .. current .. "]: ")
+    local answer = (read() or ""):gsub("^%s*(.-)%s*$", "%1")
+    return answer ~= "" and answer or current
   end
 
-  write("Repository [" .. cfg.repo .. "]: ")
-  cfg.repo = (read() or ""):gsub("^%s*(.-)%s*$", "%1")
-  if cfg.repo == "" then
-    cfg.repo = defaults.repo
-  end
-
-  write("Branch [" .. cfg.branch .. "]: ")
-  local branch = (read() or ""):gsub("^%s*(.-)%s*$", "%1")
-  if branch ~= "" then
-    cfg.branch = branch
-  end
-
-  write("Access token (blank if the repo is public): ")
+  cfg.user = ask("GitHub username", cfg.user)
+  cfg.repo = ask("Repository", cfg.repo)
+  cfg.branch = ask("Branch", cfg.branch)
+  write("Access token (blank if public): ")
   cfg.token = read("*") or ""
 
   config.save(CONFIG_PATH, cfg)
-  print("")
 end
 
 local private = cfg.token ~= ""
 
 --- GitHub's API rejects requests without a User-Agent, and needs the token when
 --- the repo is private. vnd.github.raw makes the contents endpoint return the
---- plain file rather than JSON with base64 content - CC has no base64 decoder,
---- so that matters.
-local headers = { ["User-Agent"] = "cc-tweaked-updater" }
+--- plain file rather than JSON with base64 content - CC has no base64 decoder.
+local headers = { ["User-Agent"] = "fleetos-updater" }
 if private then
   headers["Authorization"] = "Bearer " .. cfg.token
   headers["Accept"] = "application/vnd.github.raw"
@@ -77,9 +68,9 @@ local function get(url)
   if not response then
     local code = failed and failed.getResponseCode()
     if code == 401 then
-      err = "401 - token rejected (expired, or wrong permissions)"
+      err = "401 token rejected"
     elseif code == 404 then
-      err = "404 - not found (check repo/branch/path, or token lacks access)"
+      err = "404 not found"
     end
     return nil, err or "no response"
   end
@@ -88,21 +79,38 @@ local function get(url)
   return body
 end
 
---- Resolve the branch to the commit it currently points at.
+--- djb2, folded to 32 bits. Not cryptographic - it only has to catch a
+--- truncated or partially written file, which it does.
+local function checksum(text)
+  local hash = 5381
+  for i = 1, #text do
+    hash = (hash * 33 + text:byte(i)) % 4294967296
+  end
+  return hash
+end
+
+--- Hand-rolled hex. string.format("%x") throws on a float in later Lua
+--- versions, and CC's numbers are all floats.
+local DIGITS = "0123456789abcdef"
+local function hex(value)
+  local out = ""
+  for _ = 1, 8 do
+    local nibble = value % 16
+    out = DIGITS:sub(nibble + 1, nibble + 1) .. out
+    value = math.floor(value / 16)
+  end
+  return out
+end
+
+--- Resolve the branch to the commit it points at.
 ---
---- This exists because raw.githubusercontent caches hard and CANNOT be busted:
---- a ?t= query string is ignored, and so is Cache-Control: no-cache. Both were
---- measured serving a stale file minutes after a push. A commit SHA in the path
---- is immutable, so it is never stale and never cached wrongly - and a new push
---- produces a new SHA, which is a new URL. One extra API call per update buys
---- correctness that no cache-busting trick can.
+--- raw.githubusercontent caches hard and CANNOT be busted: a ?t= query string
+--- is ignored and so is Cache-Control: no-cache, both measured serving stale
+--- files minutes after a push. A commit SHA in the path is immutable, so it is
+--- never stale - and every push makes a new SHA, which is a new URL.
 local function resolveRef()
-  local url = ("https://api.github.com/repos/%s/%s/branches/%s"):format(
-    cfg.user,
-    cfg.repo,
-    cfg.branch
-  )
-  local body = get(url)
+  local body =
+    get(("https://api.github.com/repos/%s/%s/branches/%s"):format(cfg.user, cfg.repo, cfg.branch))
   if not body then
     return nil
   end
@@ -113,16 +121,7 @@ local function resolveRef()
   return nil
 end
 
-print("Updating from " .. cfg.user .. "/" .. cfg.repo .. " (" .. cfg.branch .. ")")
-
-local ref = resolveRef()
-if not ref then
-  print("Could not resolve " .. cfg.branch .. "; falling back to the branch name.")
-  print("Files may be a few minutes out of date.")
-  ref = cfg.branch
-end
-
-local function urlFor(name)
+local function urlFor(ref, name)
   if private then
     return ("https://api.github.com/repos/%s/%s/contents/%s/%s?ref=%s"):format(
       cfg.user,
@@ -139,10 +138,6 @@ local function urlFor(name)
     cfg.path,
     name
   )
-end
-
-local function fetch(name)
-  return get(urlFor(name))
 end
 
 local function readLocal(path)
@@ -162,50 +157,199 @@ local function writeLocal(path, body)
   end
   local handle = fs.open(path, "w")
   if not handle then
-    error("could not write " .. path, 0)
+    return false
   end
   handle.write(body)
   handle.close()
+  return true
 end
 
-print("At commit " .. tostring(ref):sub(1, 7))
+-- ---------------------------------------------------------------- interface
 
-local manifestBody, err = fetch("manifest.json")
-if not manifestBody then
-  printError("Could not fetch manifest.json: " .. tostring(err))
-  printError("Check the username, repo, and branch in " .. CONFIG_PATH)
-  return
-end
+local SPINNER = { "|", "/", "-", "\\" }
+local recent = {}
+local frame = 0
 
--- Strip a UTF-8 byte order mark. Editors and PowerShell both like to add one,
--- and unserialiseJSON refuses anything before the opening brace.
-manifestBody = manifestBody:gsub("^\239\187\191", "")
-
-local manifest = textutils.unserialiseJSON(manifestBody)
-if not manifest or type(manifest.files) ~= "table" then
-  printError("manifest.json is malformed. Re-run tools\\make-manifest.ps1 and push.")
-  return
-end
-
-local changed, unchanged, failed = 0, 0, 0
-
-for _, name in ipairs(manifest.files) do
-  local body, fetchErr = fetch(name)
-  if not body then
-    printError("  fail  " .. name .. " (" .. tostring(fetchErr) .. ")")
-    failed = failed + 1
-  elseif body == readLocal(name) then
-    unchanged = unchanged + 1
-  else
-    writeLocal(name, body)
-    print("  ok    " .. name)
-    changed = changed + 1
+local function remember(name, note, color)
+  recent[#recent + 1] = { name = name, note = note, color = color }
+  while #recent > 5 do
+    table.remove(recent, 1)
   end
 end
 
-print("")
-print(("%d updated, %d unchanged, %d failed"):format(changed, unchanged, failed))
+--- Repaint the whole screen. Cheap enough to call per file, and redrawing
+--- everything avoids the stale-artifact bugs that partial updates invite.
+local function draw(stage, done, total, current)
+  local width, height = ui.size()
+  frame = frame + 1
 
-if changed > 0 then
-  print("Reboot (Ctrl+R) to run the new code.")
+  ui.clear()
+  ui.header("FleetOS update", stage)
+
+  ui.text(2, 3, ui.pad(cfg.user .. "/" .. cfg.repo, width - 3), ui.theme.dim)
+
+  local barWidth = width - 12
+  ui.bar(2, 5, barWidth, total > 0 and done / total or 0, ui.theme.accent)
+  ui.text(barWidth + 3, 5, ui.pad(("%d/%d"):format(done, total), 8, "right"), ui.theme.fg)
+
+  local spin = done < total and SPINNER[(frame % #SPINNER) + 1] .. " " or "  "
+  ui.text(2, 6, ui.pad(spin .. (current or ""), width - 3), ui.theme.fg)
+
+  local line = 8
+  for _, entry in ipairs(recent) do
+    if line >= height then
+      break
+    end
+    local note = entry.note
+    ui.text(2, line, ui.pad(entry.name, width - #note - 4), entry.color)
+    ui.text(width - #note - 1, line, note, entry.color)
+    line = line + 1
+  end
+
+  ui.footer(stage)
 end
+
+local function fail(message, detail)
+  ui.clear()
+  ui.header("FleetOS update", "failed")
+  ui.text(2, 3, message, ui.theme.bad)
+  if detail then
+    ui.text(2, 5, ui.pad(detail, (ui.size()) - 3), ui.theme.dim)
+  end
+  local _, height = ui.size()
+  term.setCursorPos(1, height - 1)
+end
+
+-- ------------------------------------------------------------------ run it
+
+draw("resolving", 0, 1, "finding latest commit")
+
+local ref = resolveRef()
+local pinned = ref ~= nil
+if not pinned then
+  ref = cfg.branch
+end
+
+draw("manifest", 0, 1, "fetching file list")
+
+local manifestBody, manifestErr = get(urlFor(ref, "manifest.json"))
+if not manifestBody then
+  fail("Could not fetch manifest.json", tostring(manifestErr))
+  return
+end
+
+-- Editors and PowerShell both like to add a BOM, and unserialiseJSON refuses
+-- anything before the opening brace.
+local manifest = textutils.unserialiseJSON((manifestBody:gsub("^\239\187\191", "")))
+if not manifest or type(manifest.files) ~= "table" then
+  fail("manifest.json is malformed", "re-run tools\\make-manifest.ps1 and push")
+  return
+end
+
+local files = manifest.files
+local total = #files
+local expected = {}
+local changed, unchanged, failed = 0, 0, 0
+local bytes = 0
+
+for index, name in ipairs(files) do
+  draw("downloading", index - 1, total, name)
+
+  local body, err = get(urlFor(ref, name))
+  if not body then
+    remember(name, tostring(err):sub(1, 12), ui.theme.bad)
+    failed = failed + 1
+  else
+    bytes = bytes + #body
+    expected[name] = checksum(body)
+
+    if body == readLocal(name) then
+      unchanged = unchanged + 1
+    elseif writeLocal(name, body) then
+      remember(name, "updated", ui.theme.good)
+      changed = changed + 1
+    else
+      remember(name, "UNWRITABLE", ui.theme.bad)
+      failed = failed + 1
+    end
+  end
+end
+
+-- Verification: read every file back off the disk and check it against what we
+-- actually received. This is the difference between "the write call returned"
+-- and "the bytes are on disk", and it is the only pass that can catch a
+-- truncated file, a full disk, or a file that never got written at all.
+local verified, broken = 0, {}
+local fingerprint = 5381
+
+for index, name in ipairs(files) do
+  draw("verifying", index - 1, total, name)
+
+  local onDisk = readLocal(name)
+  if not onDisk then
+    broken[#broken + 1] = name .. " missing"
+  elseif not expected[name] then
+    broken[#broken + 1] = name .. " not fetched"
+  elseif checksum(onDisk) ~= expected[name] then
+    broken[#broken + 1] = name .. " checksum"
+  else
+    verified = verified + 1
+    -- Fold every verified file into one value, in manifest order. Two machines
+    -- showing the same fingerprint are provably running identical code, which
+    -- is the question you actually have when one turtle misbehaves.
+    fingerprint = (fingerprint * 33 + expected[name]) % 4294967296
+  end
+end
+
+-- ----------------------------------------------------------------- summary
+
+local ok = failed == 0 and #broken == 0
+local width, height = ui.size()
+
+ui.clear()
+ui.header("FleetOS update", ok and "verified" or "PROBLEMS")
+
+ui.text(2, 3, ui.pad(cfg.user .. "/" .. cfg.repo, width - 3), ui.theme.dim)
+ui.text(2, 4, "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (branch)"), ui.theme.dim)
+
+ui.text(
+  2,
+  6,
+  ("%-10s %d"):format("updated", changed),
+  changed > 0 and ui.theme.good or ui.theme.dim
+)
+ui.text(2, 7, ("%-10s %d"):format("unchanged", unchanged), ui.theme.dim)
+ui.text(2, 8, ("%-10s %d"):format("failed", failed), failed > 0 and ui.theme.bad or ui.theme.dim)
+
+ui.text(
+  2,
+  10,
+  ("%-10s %d/%d files, %dkB"):format("verified", verified, total, math.floor(bytes / 1024)),
+  ok and ui.theme.good or ui.theme.bad
+)
+ui.text(2, 11, ("%-10s %s"):format("fingerprint", hex(fingerprint)), ui.theme.accent)
+
+local line = 13
+for _, problem in ipairs(broken) do
+  if line >= height - 1 then
+    break
+  end
+  ui.text(2, line, ui.pad(problem, width - 3), ui.theme.bad)
+  line = line + 1
+end
+
+if ok and changed > 0 then
+  ui.footer("Updated - reboot to run the new code")
+elseif ok then
+  ui.footer("Already up to date")
+else
+  ui.footer("Update incomplete - see above")
+end
+
+-- Sound is optional: a machine with no speaker just updates quietly, and a
+-- missing module must never be able to break updating itself.
+pcall(function()
+  require("core.sound").play(ok and "ready" or "error")
+end)
+
+term.setCursorPos(1, height)
