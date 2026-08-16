@@ -69,6 +69,10 @@ local function write(level, message, color)
     handle.close()
   end
 
+  -- The physical ICOS console listens for this so new fleet messages appear
+  -- immediately instead of waiting for its refresh timer.
+  os.queueEvent("icos_log", level, message)
+
   if echo then
     local previous = term.getTextColor()
     term.setTextColor(color)
@@ -96,6 +100,40 @@ function log.recent(count)
     out[#out + 1] = buffer[i]
   end
   return out
+end
+
+--- Most recent persisted lines, oldest first. Unlike `recent`, this survives a
+--- reboot and can also see messages written by another running ICOS task.
+function log.readRecent(count)
+  if not fs.exists(PATH) then
+    return {}
+  end
+
+  local handle = fs.open(PATH, "r")
+  if not handle then
+    return {}
+  end
+
+  local lines = {}
+  for line in handle.readLine do
+    lines[#lines + 1] = line
+  end
+  handle.close()
+
+  local out = {}
+  for i = math.max(1, #lines - count + 1), #lines do
+    out[#out + 1] = lines[i]
+  end
+  return out
+end
+
+function log.clear()
+  local handle = fs.open(PATH, "w")
+  if handle then
+    handle.close()
+  end
+  buffer = {}
+  os.queueEvent("icos_log", "INFO", "log cleared")
 end
 
 return log

@@ -25,6 +25,7 @@ local log = require("core.log")
 local util = require("core.util")
 local sound = require("core.sound")
 local config = require("core.config")
+local version = require("core.version")
 local nav = require("turtle.nav")
 local fuel = require("turtle.fuel")
 
@@ -60,6 +61,7 @@ local control = {
   changeJob = false,
   setJob = nil,
   settings = nil,
+  update = nil,
 }
 local status = { phase = "idle", detail = "" }
 
@@ -119,6 +121,7 @@ local function snapshot()
 
   return {
     label = os.getComputerLabel() or ("turtle-" .. os.getComputerID()),
+    version = version,
     role = "miner",
     job = jobModule.name,
     phase = status.phase,
@@ -154,6 +157,7 @@ local function drawLocal()
   ui.header(snap.label, net.isOpen() and (baseId and "linked" or "no base") or "no modem")
 
   local width, height = ui.size()
+  ui.text(2, 2, "ICOS v" .. snap.version, ui.theme.dim)
   ui.text(2, 3, ("%-9s %s"):format("job", snap.job), ui.theme.dim)
   ui.text(2, 4, ("%-9s %s"):format("phase", snap.phase), ui.theme.accent)
   ui.text(2, 5, ui.pad(util.fit(snap.detail, width - 3), width - 3), ui.theme.dim)
@@ -279,6 +283,21 @@ local function commands()
         end
       elseif body.action == "status_request" then
         net.send(sender, "status", snapshot())
+      elseif body.action == "update" then
+        if not http or not fs.exists(".update") then
+          reply(sender, body.action, false, "OTA update is not configured")
+        elseif control.update then
+          reply(sender, body.action, true, "update already queued")
+        else
+          control.update = { sender = sender }
+          if node.parked then
+            reply(sender, body.action, true, "update starting")
+          else
+            control.recall = true
+            log.warn("update requested - returning home first")
+            reply(sender, body.action, true, "update queued; returning home first")
+          end
+        end
       elseif body.action == "rename" and type(body.label) == "string" then
         local label = body.label:sub(1, 32)
         os.setComputerLabel(label)
@@ -370,7 +389,30 @@ local function park(reason, kind)
 
   local launchRequester = nil
   while true do
-    if control.setJob then
+    if control.update then
+      local request = assert(control.update)
+      control.update = nil
+      node.parkKind = "updating"
+      node.parkReason = "installing ICOS update"
+      config.save(NODE_PATH, node)
+      report("updating", node.parkReason)
+      reply(request.sender, "update", true, "downloading update")
+      log.info("remote update starting")
+
+      interactive = true
+      local ran = shell.run("update.lua", "--automatic", "--reboot")
+      interactive = false
+
+      -- A successful update reboots inside update.lua and never reaches here.
+      local result = config.load(".update-result", { ok = false, message = "update stopped" })
+      local updateReason = ran and result.message or "updater crashed"
+      node.parkKind = "error"
+      node.parkReason = updateReason or "update failed"
+      config.save(NODE_PATH, node)
+      report("parked", node.parkReason)
+      reply(request.sender, "update", false, node.parkReason)
+      log.error("remote update failed: " .. tostring(node.parkReason))
+    elseif control.setJob then
       local request = assert(control.setJob)
       control.setJob = nil
       if not node.parked then
@@ -524,7 +566,7 @@ local function agent()
 end
 
 net.open()
-log.info("miner agent starting (" .. node.job .. ")")
+log.info("miner agent starting v" .. version .. " (" .. node.job .. ")")
 
 local completed, err = pcall(function()
   parallel.waitForAny(agent, heartbeat, commands, localControls)

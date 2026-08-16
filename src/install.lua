@@ -13,6 +13,7 @@ local boot = require("core.boot")
 local sound = require("core.sound")
 local device = require("core.device")
 local config = require("core.config")
+local version = require("core.version")
 
 local NODE_PATH = ".node"
 
@@ -86,7 +87,10 @@ if role.key == "miner" then
     local baseId = net.findBase()
     if baseId then
       ui.text(2, line, ("Registered with base station %d."):format(baseId), ui.theme.good)
-      net.broadcast("hello", { label = node.label, role = "miner", phase = "installed" })
+      net.broadcast(
+        "hello",
+        { label = node.label, role = "miner", phase = "installed", version = version }
+      )
     else
       ui.text(2, line, "No base station yet - it will keep looking.", ui.theme.dim)
       ui.text(2, line + 1, "Run `fleet` on the base computer.", ui.theme.dim)
