@@ -87,7 +87,7 @@ function Context:chooseJob()
   return chooseJob(self.jobs)
 end
 
-function Context:selectJob(name, requireExisting)
+function Context:selectJob(name, requireExisting, allowUnlocated)
   local nextModule = self.jobs[name]
   if not nextModule then
     return false, "unknown job " .. tostring(name)
@@ -100,10 +100,12 @@ function Context:selectJob(name, requireExisting)
   if not fs.exists(nextModule.PATH) then
     if nextModule.usesSurfaceY then
       local here = nav.worldPosition()
-      if not here then
+      if not here and not allowUnlocated then
         return false, "set this turtle's position before selecting " .. name
       end
-      nextJob.surfaceY = here.y
+      if here then
+        nextJob.surfaceY = here.y
+      end
     end
     nextModule.save(nextJob)
   end
