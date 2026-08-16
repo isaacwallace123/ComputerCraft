@@ -120,15 +120,61 @@ Now saving in VS Code changes the file the computer runs. Reboot the computer in
 
 ## Programs
 
-| Program | What it does |
-| --- | --- |
-| `startup` | Runs on boot. Arrow-key menu; crashes drop you back here, not into a dead computer. |
-| `door` | PIN pad that powers a redstone door for a few seconds. Prompts for side and PIN on first run; lockout after repeated failures. |
-| `pulse` | Redstone clock with an exact, editable period. Bone-meal dispensers, droppers, a Create clutch, lamps. |
-| `update` | Downloads everything in `manifest.json` from GitHub. |
+| Program | Runs on | What it does |
+| --- | --- | --- |
+| `startup` | both | Runs on boot. Arrow-key menu; crashes drop you back here, not into a dead computer. Resumes an unfinished quarry automatically. |
+| `quarry` | turtle | Digs a rectangular pit and hauls everything back to a chest. |
+| `scan` | either | Lists nearby ores. Needs an Advanced Peripherals Geo Scanner. |
+| `door` | computer | PIN pad that powers a redstone door for a few seconds. Prompts for side and PIN on first run; lockout after repeated failures. |
+| `pulse` | computer | Redstone clock with an exact, editable period. Bone-meal dispensers, droppers, a Create clutch, lamps. |
+| `update` | both | Downloads everything in `manifest.json` from GitHub. |
+
+## Running the quarry
+
+1. Place the turtle at the near-left corner of the area you want gone.
+2. Put a **chest directly behind it**.
+3. Give it coal or charcoal in any slot.
+4. Run `quarry` and answer width / length / depth.
+
+The pit extends **forward and to the right**. Each pass clears two layers, so a
+depth of 32 is 16 passes.
+
+### How it avoids losing the turtle
+
+Everything below is in [src/lib/nav.lua](src/lib/nav.lua) and [src/quarry.lua](src/quarry.lua):
+
+- **Position is written to disk after every confirmed move.** Not after every attempt —
+  only once the game says the move happened, so the count can't drift. A reboot loses
+  nothing.
+- **It never takes a step it can't walk back from.** Before each move it checks that
+  remaining fuel still covers the Manhattan distance home plus a 64-block margin, and
+  burns mined coal one lump at a time to top up.
+- **Every layer starts from home.** So after a server restart the turtle walks back to
+  the chest and redoes the current layer — mostly moving through air it already mined.
+  Cheap, and it means no partial-layer bookkeeping to get wrong.
+- **Gravel and mobs are retried, bedrock isn't.** A blocked move digs; if nothing solid
+  is there, something alive is, so it attacks. A block that won't break after 100 tries
+  ends the job cleanly instead of grinding forever.
+- **Lava is left alone** rather than dug into and flooding the pit.
+- **Full inventory triggers a round trip** home to the chest and back to the exact block
+  it left off at.
+
+Ctrl+T is safe at any time — progress is saved continuously.
 
 Settings live in dotfiles on the computer (`.door`, `.pulse`, `.update`) and are not
 overwritten by updates. Edit them in game with `edit .door`.
+
+## Upgrade path
+
+Roughly in order of payoff per material spent:
+
+| Upgrade | Cost | Why |
+| --- | --- | --- |
+| **Chunky Turtle** (AP) | moderate | Keeps its own chunk loaded, so the quarry runs while you're elsewhere. This is the single biggest change to "mine for me while I do something else". |
+| **Geo Scanner** (AP) | moderate | `scan` tells you where ore actually is. Turns blind quarrying into targeted digging. |
+| **Ender modem** | 8 stone + eye of ender | Unlimited range, cross-dimension. Lets the turtle report status home from anywhere. Skip the plain wireless modem — 64 blocks is not enough to be useful. |
+| **GPS cluster** | 4 computers + 4 wireless modems | Absolute coordinates via `gps.locate()`. Only worth it once you run several turtles, or if dead reckoning ever desyncs. |
+| **Inventory Manager** (AP) | high | Push items straight into your own inventory from anywhere. |
 
 ## Handy in-game commands
 
