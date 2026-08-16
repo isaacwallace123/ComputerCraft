@@ -65,9 +65,29 @@ function nav.canReturn(margin)
   return fuel.level() >= nav.distanceHome() + (margin or 0)
 end
 
-local function isLava(inspect)
+--- Blocks the turtle must never break, whatever is in its way.
+---
+--- Without this a turtle placed under another turtle digs its neighbour up on
+--- launch - the expedition's first move is to rise to cruise altitude, and
+--- `up` digs. The fleet eats itself and you are left wondering where a turtle
+--- went. Chests are protected for the same reason: that is where the haul goes.
+---
+--- Note this guards `nav` only. `apps/swarm.lua` reclaims workers with raw
+--- `turtle.dig`, which is deliberate and unaffected.
+local function refuses(inspect)
   local ok, data = inspect()
-  return ok and type(data) == "table" and tostring(data.name):find("lava") ~= nil
+  if not ok or type(data) ~= "table" then
+    return nil
+  end
+
+  local name = tostring(data.name)
+  if name:find("lava") then
+    return "lava"
+  end
+  if name:find("computercraft:") or name:find("chest") or name:find("barrel") then
+    return "protected block (" .. name .. ")"
+  end
+  return nil
 end
 
 --- Move one block, clearing whatever is in the way.
@@ -77,8 +97,9 @@ end
 --- break after many attempts is bedrock or someone's claim - we report that
 --- instead of grinding forever.
 local function push(move, dig, detect, attack, inspect)
-  if isLava(inspect) then
-    return false, "lava"
+  local refusal = refuses(inspect)
+  if refusal then
+    return false, refusal
   end
 
   for attempt = 1, 100 do
@@ -152,11 +173,12 @@ function nav.down()
   return true
 end
 
---- Dig the block below without moving. Returns false if it is lava, which we
---- deliberately leave sealed rather than flooding the pit.
+--- Dig the block below without moving. Refuses lava, which we leave sealed
+--- rather than flooding the pit, and refuses chests and computers.
 function nav.digDown()
-  if isLava(turtle.inspectDown) then
-    return false, "lava"
+  local refusal = refuses(turtle.inspectDown)
+  if refusal then
+    return false, refusal
   end
   if turtle.digDown() then
     state.digs = state.digs + 1
