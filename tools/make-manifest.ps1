@@ -26,7 +26,13 @@ $manifest = [ordered]@{
 }
 
 $out = Join-Path $src "manifest.json"
-$manifest | ConvertTo-Json -Depth 3 | Set-Content $out -Encoding utf8
+$json = $manifest | ConvertTo-Json -Depth 3
+
+# NOT Set-Content -Encoding utf8: Windows PowerShell 5.1 writes a UTF-8 BOM,
+# and a leading EF BB BF makes CC's textutils.unserialiseJSON reject the file.
+# That fails as "manifest.json is malformed" on every machine, which looks like
+# a bad push rather than an encoding problem.
+[System.IO.File]::WriteAllText($out, $json, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "Wrote $out" -ForegroundColor Green
 $files | ForEach-Object { "  $_" }

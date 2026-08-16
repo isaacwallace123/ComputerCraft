@@ -146,6 +146,10 @@ if not manifestBody then
   return
 end
 
+-- Strip a UTF-8 byte order mark. Editors and PowerShell both like to add one,
+-- and unserialiseJSON refuses anything before the opening brace.
+manifestBody = manifestBody:gsub("^\239\187\191", "")
+
 local manifest = textutils.unserialiseJSON(manifestBody)
 if not manifest or type(manifest.files) ~= "table" then
   printError("manifest.json is malformed. Re-run tools\\make-manifest.ps1 and push.")
