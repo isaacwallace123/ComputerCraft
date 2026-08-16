@@ -65,6 +65,10 @@ function net.hostAsBase()
   return true
 end
 
+function net.unhostBase()
+  pcall(rednet.unhost, net.PROTOCOL)
+end
+
 --- Look up the base station's computer ID. Returns nil if it is not reachable,
 --- which is a normal condition, not an error.
 function net.findBase()

@@ -1,14 +1,10 @@
---- Boot entry point.
+--- ICOS boot entry point.
 ---
----   splash -> auto-update -> role app
+---   splash -> automatic update -> hardware-appropriate shell
 ---
---- Holding any key during the splash interrupts all of it and drops you at the
---- menu. That is the escape hatch, and the reason the splash is not skippable
---- to zero: a machine that auto-updates and auto-runs on every boot needs one
---- reliable window where you can get in and stop it.
----
---- Auto-updating here rather than inside the apps means the new code is already
---- on disk before anything loads it, so no reboot loop is needed.
+--- Computers get the monitor desktop. Turtles get a compact launcher, and a
+--- single valid app starts immediately. Holding a key during the splash opens
+--- system tools instead, so a broken autorun can never trap the machine.
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
@@ -17,13 +13,9 @@ local boot = require("core.boot")
 local sound = require("core.sound")
 local device = require("core.device")
 local config = require("core.config")
+local display = require("core.display")
 
 local NODE_PATH = ".node"
-
-local APPS = {
-  miner = "apps/miner.lua",
-  fleet = "apps/fleet.lua",
-}
 
 local node = config.load(NODE_PATH, {
   role = nil,
@@ -34,82 +26,85 @@ local node = config.load(NODE_PATH, {
 })
 
 local caps = device.capabilities()
-local interrupted = boot.splash(node.label or device.KINDS[caps.kind])
+local screen = term.current()
+local monitor, monitorScale
 
---- Pull new code before anything loads it. Silent on success unless something
---- actually changed, so a normal boot is not a wall of text.
+-- Turtles keep their own compact screen. Computers promote an attached
+-- monitor to the ICOS desktop and choose the largest readable scale that fits.
+if caps.kind ~= "turtle" then
+  monitor, monitorScale = display.attach(42, 18)
+  screen = monitor or screen
+end
+
+local function onScreen(fn)
+  return display.on(screen, fn)
+end
+
+local interrupted = onScreen(function()
+  return boot.splash(node.label or device.KINDS[caps.kind])
+end)
+
 local function autoUpdate()
   if node.autoUpdate == false or not caps.http or not fs.exists(".update") then
     return
   end
 
-  ui.clear()
-  ui.header(boot.NAME, "updating")
-  ui.text(2, 3, "Checking for updates...", ui.theme.dim)
-  term.setCursorPos(1, 5)
-
-  local ok = pcall(shell.run, "update.lua")
-  if not ok then
-    ui.text(2, 5, "Update failed - running existing code.", ui.theme.warn)
-    sleep(1.5)
-  else
-    -- update.lua leaves its verification summary on screen. Hold it long enough
-    -- to actually be read before the role app paints over it.
-    sleep(1.5)
-  end
-end
-
-local function menu()
-  while true do
-    local entries = {}
-    if node.role and APPS[node.role] then
-      entries[#entries + 1] = { label = "Start " .. node.role, program = APPS[node.role] }
-    end
-    if caps.geoScanner then
-      entries[#entries + 1] = { label = "Scan for ore", program = "apps/scan.lua" }
-    end
-    if caps.kind == "turtle" then
-      entries[#entries + 1] = { label = "Set position", program = "apps/where.lua" }
-      entries[#entries + 1] = { label = "Swarm deploy/reclaim", program = "apps/swarm.lua" }
-      entries[#entries + 1] = { label = "Swap modem", program = "apps/equip.lua" }
-    end
-    entries[#entries + 1] = { label = "Update now", program = "update.lua" }
-    entries[#entries + 1] = { label = "Change role", program = "install.lua" }
-
-    local labels = {}
-    for i, entry in ipairs(entries) do
-      labels[i] = entry.label
-    end
-    labels[#labels + 1] = "Reboot"
-    labels[#labels + 1] = "Exit to shell"
-
-    local title = (node.label or ("id " .. caps.id)) .. "  [" .. tostring(node.role) .. "]"
-    local choice = ui.menu(title, labels)
-
-    if choice == nil or choice > #entries + 1 then
-      ui.clear()
-      print("Type `startup` to come back to this menu.")
-      return
-    end
-
-    if choice == #entries + 1 then
-      boot.reboot()
-      return
-    end
-
+  onScreen(function()
     ui.clear()
-    -- shell.run rather than dofile: a crash lands back here instead of killing
-    -- the menu, and the program gets its own environment.
-    shell.run(entries[choice].program)
-    sound.blip(14)
-    print("\nPress any key to return to the menu.")
-    os.pullEvent("key")
-  end
+    ui.header(boot.NAME, "updating")
+    ui.text(2, 3, "Checking for updates...", ui.theme.dim)
+    term.setCursorPos(1, 5)
+
+    local called, ran = pcall(shell.run, "update.lua", "--automatic")
+    if not called or ran == false then
+      ui.text(2, 5, "Update failed - running installed code.", ui.theme.warn)
+      sound.play("error")
+    end
+    sleep(1.2)
+  end)
 end
 
-if interrupted then
-  menu()
-  return
+local function runApp(apps, app)
+  onScreen(function()
+    ui.clear()
+    apps.run(app)
+  end)
+end
+
+local function systemMenu(apps)
+  while true do
+    local tools = apps.available(caps, node, "tools")
+    local labels = {}
+    for i, app in ipairs(tools) do
+      labels[i] = app.name
+    end
+    labels[#labels + 1] = "Restart ICOS"
+    labels[#labels + 1] = "Exit to CraftOS"
+
+    local choice = onScreen(function()
+      return ui.menu((node.label or ("id " .. caps.id)) .. " system", labels)
+    end)
+
+    if not choice or choice == #labels then
+      onScreen(function()
+        ui.clear()
+      end)
+      print("Type `startup` to start ICOS again.")
+      return
+    elseif choice == #labels - 1 then
+      onScreen(boot.reboot)
+      return
+    else
+      runApp(apps, tools[choice])
+      onScreen(function()
+        sound.blip(14)
+        print("\nPress any key to return.")
+        os.pullEvent("key")
+      end)
+      node = config.load(NODE_PATH, node)
+      caps = device.capabilities()
+    end
+  end
 end
 
 if not node.role then
@@ -117,13 +112,57 @@ if not node.role then
   return
 end
 
-autoUpdate()
+if not interrupted then
+  autoUpdate()
+end
 
-local app = APPS[node.role]
-if not app then
-  menu()
+-- Load these after updating: applications are the part most likely to have
+-- changed, and no reboot is needed just to pick up a new registry entry.
+local apps = require("core.apps")
+
+if interrupted then
+  systemMenu(apps)
   return
 end
 
-ui.clear()
-shell.run(app)
+if caps.kind == "turtle" then
+  local available = apps.available(caps, node, "launcher")
+
+  if #available == 1 then
+    runApp(apps, available[1])
+    return
+  end
+
+  while true do
+    local labels = {}
+    for i, app in ipairs(available) do
+      labels[i] = app.name
+    end
+    labels[#labels + 1] = "System tools"
+
+    local choice = ui.menu(boot.NAME .. " apps", labels)
+    if not choice or choice == #labels then
+      systemMenu(apps)
+      return
+    end
+    runApp(apps, available[choice])
+  end
+end
+
+local desktop = require("core.desktop")
+local desktopApps = apps.available(caps, node, "desktop")
+
+if monitor then
+  ui.clear()
+  ui.header(boot.NAME, "monitor desktop")
+  ui.text(2, 3, ("Monitor scale %s"):format(tostring(monitorScale)), ui.theme.good)
+  ui.text(2, 5, "Touch the monitor to open apps.", ui.theme.fg)
+  ui.text(2, 7, "Hold Ctrl+T here to close ICOS.", ui.theme.dim)
+end
+
+desktop.run(screen, desktopApps, {
+  name = boot.NAME,
+  autoLaunch = false,
+})
+
+systemMenu(apps)

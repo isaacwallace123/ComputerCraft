@@ -50,6 +50,10 @@ function quarry.layers(job)
   return math.ceil(job.depth / 2)
 end
 
+function quarry.estimateFuel()
+  return SAFETY_MARGIN
+end
+
 function quarry.progress(job)
   local total = quarry.layers(job)
   if total == 0 then
@@ -119,7 +123,37 @@ function quarry.status(job)
     progress = quarry.progress(job),
     haul = {},
     delivered = job.delivered,
+    settings = {
+      width = job.width,
+      length = job.length,
+      depth = job.depth,
+    },
   }
+end
+
+function quarry.configure(job, settings)
+  local limits = {
+    width = { 1, 64 },
+    length = { 1, 64 },
+    depth = { 1, 320 },
+  }
+
+  for field, range in pairs(limits) do
+    if settings[field] ~= nil then
+      local value = tonumber(settings[field])
+      if not value then
+        return false, field .. " must be a number"
+      end
+      value = math.floor(value)
+      if value < range[1] or value > range[2] then
+        return false, ("%s must be %d..%d"):format(field, range[1], range[2])
+      end
+      job[field] = value
+    end
+  end
+
+  quarry.save(job)
+  return true
 end
 
 --- Run before every move: not recalled, enough fuel to get home, and somewhere

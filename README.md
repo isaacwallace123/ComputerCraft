@@ -1,25 +1,49 @@
-# ComputerCraft — Valhelsia 6
+# 🐢 ICOS — Isaac's Cool Operating System
 
-A monitored turtle fleet for CC: Tweaked 1.113.1 (Minecraft 1.20.1, Forge), with
-Advanced Peripherals 0.7.41r available.
+Welcome to ICOS: a friendly little operating system and turtle fleet controller for
+CC: Tweaked 1.113.1 in Valhelsia 6 (Minecraft 1.20.1, Forge). It gives computers a
+touch-friendly desktop, gives turtles a focused control panel, and lets the two work
+together without hardcoded computer IDs. ✨
+
+## 🌟 What ICOS can do
+
+- 🖥️ Turn an attached monitor into an auto-scaling desktop with launchable apps.
+- 📡 Discover turtles automatically and keep them as persistent paired devices.
+- 🎮 Inspect, deploy, recall, configure, or forget one turtle from the Fleet app.
+- ⛏️ Run resumable expedition and quarry jobs with fuel and return-home safeguards.
+- 🔄 Check for over-the-air updates automatically whenever ICOS boots.
+- 🔊 Play short nostalgic boot, shutdown, success, and alert jingles when a speaker
+  is attached.
+- 🐢 Adapt the interface to the hardware: computers get the desktop, while turtles
+  get only the controls and apps they can actually use.
+
+> New here? Start with one base computer and one mining turtle. Get a short
+> expedition working end to end, then add the rest of the fleet—the tenth turtle
+> pairs exactly like the first one.
 
 **Source of truth is this folder.** In-game machines are deployment targets, never
 where you edit. Everything here survives world resets, server wipes, and losing a
 turtle to a creeper.
 
-## Layout
+## 🗺️ Project layout
 
 ```
 src/
-  startup.lua        boot: read this machine's role, hand over to its app
+  startup.lua        ICOS boot: update, detect hardware, launch the right shell
   install.lua        give a machine a role (the "deploy a turtle" step)
   update.lua         pull latest code from GitHub
   manifest.json      generated — the file list update.lua downloads
 
-  core/              no dependencies on turtles, jobs, or each other
+  core/              shared operating-system and service modules
+    apps.lua         capability-aware application registry
+    boot.lua         responsive boot/restart animations
     config.lua       table persistence with defaults
+    desktop.lua      monitor desktop, windows, icons, and taskbar
+    device.lua       computer/turtle/peripheral capability detection
+    display.lua      monitor selection and automatic text scaling
     log.lua          capped file log + in-memory ring buffer
     net.lua          rednet: one protocol, one envelope, modem discovery
+    sound.lua        optional speaker boot, shutdown, and alert sounds
     ui.lua           drawing, works on a computer term or a monitor
     util.lua         formatting helpers
 
@@ -36,6 +60,7 @@ src/
   apps/              entry points — the only files that wire things together
     miner.lua        turtle agent: run jobs, report, obey fleet orders
     fleet.lua        base station: roster, dashboard, fleet commands
+    power.lua        animated restart and shutdown
     swarm.lua        deploy a line of turtles, then reclaim them
     scan.lua         Geo Scanner ore listing
     equip.lua        guarded modem swap
@@ -56,7 +81,7 @@ so `require("core.ui")` resolves from the filesystem root. Without it CC resolve
 requires relative to the running program's own directory, and anything in `apps/`
 would look for `apps/core/ui.lua`.
 
-## Hardware you actually need
+## 🧱 Hardware you actually need
 
 | | |
 | --- | --- |
@@ -82,7 +107,7 @@ at world height. What that means in practice:
 across dimensions, and none of the placement rules above apply. No code changes are
 needed: `core/net.lua` picks any modem reporting `isWireless()`, which ender modems do.
 
-### Fitting an ender modem
+### 📶 Fitting an ender modem
 
 **Base computer:** break the old wireless modem off and place the ender modem against
 any face. Don't leave both attached — `net.lua` opens the first wireless modem it
@@ -98,7 +123,7 @@ currently holds a modem and replaces only that one.
 > upgrade won't fit on the same turtle — use the Geo Scanner *block* on the base
 > computer, or a separate scout turtle.
 
-## Editor setup
+## 🛠️ Editor setup
 
 One extension does the real work: **`sumneko.lua`**. With `types/cc-tweaked/library`
 it gives autocomplete, hover docs and type checking for every CC API.
@@ -121,32 +146,34 @@ Also configured: `johnnymorganz.stylua` (formatting, `.stylua.toml`) and
 provider on `.lua`, so it competes with sumneko rather than adding to it, and its API
 data targets CC: Tweaked 1.100.0 — older than this pack.
 
-## Deploying
+## 🚀 Installing and deploying
 
-### Adding a machine
+### ➕ Adding a machine
 
 1. Place it. Pull the code:
    - **Public repo:** `wget run https://raw.githubusercontent.com/USER/REPO/main/bootstrap.lua`
    - **Private repo:** run `.\tools\print-bootstrap.ps1 -User me -Repo ComputerCraft -Token github_pat_xxx`,
      then in game type `lua` and press Ctrl+V.
 2. Run `install`, pick a role.
-3. Reboot.
+3. Reboot. ICOS detects the hardware, asks for a valid use case, and enables
+   automatic updates by default.
 
-That's it. A turtle finds the base station over rednet **by name**, announces itself,
-and the base adds it to the roster — there is nothing to configure on the base side,
-and no IDs to write down anywhere. Adding the tenth turtle is the same three steps as
-the first.
+That's it! 🎉 A turtle finds the base station over Rednet **by name**, announces
+itself, and appears in Fleet as a paired device. There are no IDs to copy and nothing
+to add manually on the base. Adding the tenth turtle is the same three steps as the
+first.
 
-### Pushing changes
+### 📤 Pushing changes
 
 ```powershell
 .\tools\deploy.ps1 -Message "smarter fuel margin"
 ```
 
-Regenerates the manifest, runs all checks, commits, pushes. Then run `update` on any
-in-game machine and reboot.
+Regenerates the manifest, runs all checks, commits, and pushes. ICOS checks for that
+update automatically on the next boot. A computer can also open the **Update** app;
+on a turtle, hold a key during the boot animation and choose **Update now**.
 
-### Why the updater resolves a commit SHA first
+### 🧠 Why the updater resolves a commit SHA first
 
 `raw.githubusercontent.com` caches hard and **cannot be cache-busted**. Both of the
 usual tricks were measured still serving a file from before the push:
@@ -163,7 +190,7 @@ SHA-pinned paths. Those URLs are immutable, so they are never stale — and ever
 produces a new SHA, which is a new URL. If the lookup fails it falls back to the branch
 name and says so.
 
-### manifest.json must not have a BOM
+### 🧾 Why `manifest.json` must not have a BOM
 
 `tools\make-manifest.ps1` writes it with `[System.IO.File]::WriteAllText` and an
 explicit no-BOM encoder, **not** `Set-Content -Encoding utf8` — Windows PowerShell 5.1
@@ -172,7 +199,7 @@ reject the file. That surfaces as "manifest.json is malformed" on every machine 
 once, which looks like a bad push rather than an encoding problem. `update.lua` also
 strips a BOM defensively.
 
-### Private repos
+### 🔐 Private repositories
 
 `raw.githubusercontent.com` ignores auth headers, so `update.lua` switches to the
 GitHub contents API (`Accept: application/vnd.github.raw`, which returns the plain file
@@ -184,39 +211,60 @@ rather than base64 — CC has no base64 decoder) whenever a token is configured.
 > `Contents: Read-only`, with an expiry. If that's not acceptable, keep the repo public
 > — it's Minecraft Lua — and keep real secrets out of it entirely.
 
-## Roles
+## 🎭 Machine roles
 
 | Role | App | What it does |
 | --- | --- | --- |
-| `fleet` | `apps/fleet.lua` | Hosts the rednet protocol, keeps the roster, paints the monitor |
-| `miner` | `apps/miner.lua` | Runs the quarry job and heartbeats status every 2s |
-| `utility` | — | No autorun; boots to the menu |
+| `fleet` | Fleet desktop app | Hosts rednet, keeps the roster, and renders the dashboard |
+| `miner` | Miner turtle app | Runs the selected job and heartbeats status every 2s |
+| `utility` | Hardware-dependent | Offers only tools supported by that machine |
 
-`startup.lua` waits three seconds before launching the role app. That pause is the
-escape hatch — a turtle with a broken job is never an unrecoverable brick.
+On computers, an attached monitor becomes the ICOS desktop. Its text scale is chosen
+automatically, and Fleet, Update, Terminal, Setup, Power, and hardware-specific apps
+appear only when they can run. Apps open maximized inside desktop windows and can be
+focused or closed from the taskbar.
 
-## The dashboard
+Turtles never get the desktop. They get a compact, capability-filtered launcher; if
+only one normal app is valid (the usual mining-turtle case), it starts automatically.
+Hold any key during the short boot animation to skip autorun and open system tools.
+This is the recovery path for updating, changing roles, or fixing a broken job.
 
-`fleet` shows one row per turtle: name, phase, position, fuel bar, progress, and time
-since last heartbeat. Rows go yellow after 10s of silence, red after 60s, cyan when
+If a speaker is attached, ICOS plays short boot, shutdown, ready, error, and alert
+jingles. Use the **Power** app or **Restart ICOS** for the shutdown animation and
+sound; Ctrl+R remains CraftOS's immediate hard reset.
+
+## 📡 The Fleet dashboard
+
+Open the **Fleet** app to see one row per turtle: name, phase, position, fuel,
+progress, and time since last heartbeat. Rows go yellow after 10s of silence, red
+after 60s, cyan when
 parked and waiting for orders.
+
+Each reporting turtle is treated as a paired device. Touch its row (or select it with
+up/down and Enter) to open its device page. From there ICOS can deploy or recall only
+that turtle, switch its job, forget it, refresh its state, or edit its job settings.
+Expedition distance, target Y, and tunnel length—and quarry width, length, and depth—
+all have touch-friendly controls. Commands are addressed to that turtle's computer ID
+and acknowledged with a useful success or refusal message.
 
 Below that is the **haul panel** — the fleet's combined take, most plentiful first.
 This is the number actually worth watching: not how many blocks were dug, but how much
 diamond, iron and andesite came back. Turtles report their haul with every heartbeat,
 and the base sums it across the whole fleet.
 
-The footer aggregates blocks dug and items delivered, and lists the command keys.
+The footer aggregates blocks dug and items delivered. Fleet-wide recall, deploy, and
+reset remain available from touch buttons.
 
 The roster is persisted, so after a server restart the dashboard still lists every
 known turtle as offline until it checks back in — a turtle that has gone quiet is
-exactly the one you want to see. Press `R` on the base to clear the roster.
+exactly the one you want to see. Forget one turtle from its device page, or use the
+fleet reset button to clear every pairing.
 
 If a GPS cluster is in range, turtles report **world** coordinates instead of
 job-relative ones, so you can actually go and find the thing. Without GPS it falls
 back to coordinates relative to that turtle's own start point.
 
-## Fleet control
+## 🎮 Controlling the fleet
 
 From the base station:
 
@@ -224,11 +272,15 @@ From the base station:
 | --- | --- |
 | `X` | **Recall** — every turtle abandons its job, walks home, and parks |
 | `G` | **Deploy** — every parked turtle re-homes where it stands and starts a fresh job |
-| `R` | Clear the roster |
+| `R` | Request fresh status from every turtle |
 | `Q` | Quit |
 
-Orders are broadcast, not addressed, so a turtle that never completed a handshake
-still hears them.
+Fleet-wide orders are broadcast. Device-page orders are addressed to one computer ID,
+so deploying `miner-1` does not move `miner-2`.
+
+On a parked turtle itself, press `D` to start another run, `C` to configure the
+current job, `J` to change jobs, or `Q` to exit. While working, `R` recalls it. These
+controls are also clickable on an advanced turtle's screen.
 
 Turtles **park** rather than exit when a job ends, is recalled, or fails. A parked
 turtle is still on the dashboard and still listening — which is what makes both of
@@ -242,7 +294,15 @@ stands, so the new spot becomes its reference point — no reconfiguration.
 A recall is not treated as a failure. The turtle finishes its walk home, empties its
 inventory into the chest, and keeps its haul.
 
-## Jobs
+Completed expeditions show 100%. The old 95% parked display was not a stuck turtle:
+95–100% represents the return trip, and the previous snapshot never promoted a
+successful home arrival to 100%. ICOS now persists the parked reason and completion
+state. A new deploy can still be refused safely—for example, when the turtle does not
+have the estimated round-trip fuel—but that reason is shown on both the PC and turtle.
+While parked, the fuel display compares the current tank directly with the next job's
+estimate, rather than comparing it with the zero-block walk home.
+
+## ⛏️ Mining jobs
 
 Each turtle picks a job on first boot (`.node` remembers it). Both expose the same
 interface — `load`, `save`, `setup`, `restart`, `status`, `run(job, ctx)` — where
@@ -250,7 +310,7 @@ interface — `load`, `save`, `setup`, `restart`, `status`, `run(job, ctx)` — 
 when the base has recalled the fleet. That is the whole contract; adding a third job
 means adding one file.
 
-### expedition — the ore hunter
+### 💎 Expedition — the ore hunter
 
 Travels a **random bearing** `distance` blocks out (random per turtle, so a fleet fans
 out instead of queueing down one hole), sinks a shaft to the target Y, then branch
@@ -275,7 +335,7 @@ the fuel the round trip needs and refuses to leave without it.
 
 **Chest goes directly BELOW the turtle** for this job — see the swarm section for why.
 
-### The depot
+### 📦 The depot
 
 A double chest is a *single* inventory, so two turtles standing on its two halves
 already share it. That is the whole trick — no code knows about a "depot", each turtle
@@ -309,11 +369,11 @@ finished. A turtle holding a load it cannot put down is stuck, not done.
 > turtles, chests and barrels, so a quarry placed on top of a chest stops safely instead
 > of eating your depot.
 
-### quarry — the bulk digger
+### 🕳️ Quarry — the bulk digger
 
 Rectangular pit next to base. Chest **behind** the turtle. Covered further down.
 
-## The quarry
+## 🏗️ Building a quarry
 
 1. Turtle at the near-left corner of the area.
 2. **Chest directly behind it.**
@@ -323,7 +383,7 @@ The pit extends forward and to the right. Each pass clears two layers, so depth 
 16 passes. One stack of coal (~5,120 fuel) comfortably covers an 8×8×32. Start with
 4×4×16 to watch it behave.
 
-### How it avoids losing a turtle
+### 🛡️ How ICOS avoids losing a turtle
 
 - **Position is written to disk after every *confirmed* move** — only once the game
   says the move happened, so the count cannot drift.
@@ -341,7 +401,7 @@ The pit extends forward and to the right. Each pass clears two layers, so depth 
 
 Ctrl+T is safe at any time.
 
-## Swarm — deploying and eating turtles
+## 🤖 Swarm — deploying and reclaiming turtles
 
 `apps/swarm.lua` turns one turtle into a deployer. Load it with turtle items and
 chests, run `swarm`, pick **Deploy**: it walks out and every `spacing` blocks plants a
@@ -354,8 +414,8 @@ digs up the chest, and brings everything home. The chest is emptied *before* it 
 broken — break it first and the contents scatter on the ground and despawn.
 
 Placed turtles keep their computer ID and their entire filesystem, so a reclaimed
-turtle redeployed later is still configured. That is the "cannibalising" loop: build a
-squad once, then carry it around as items.
+turtle redeployed later is still configured. That makes the squad portable: build it
+once, then pack it up and carry it to the next outpost. 🎒
 
 > **Why chest-underneath, not chest-behind.** A turtle placed by another turtle ends up
 > facing a direction we cannot control, so "drop behind me" is a coin flip. "Drop below
@@ -366,7 +426,7 @@ squad once, then carry it around as items.
 That needs smelting, and turtles cannot smelt. These are pre-built turtles being
 carried, planted, and picked back up.
 
-## Tools
+## 🔧 Development tools
 
 | | |
 | --- | --- |
@@ -382,7 +442,7 @@ carried, planted, and picked back up.
 before falling back to `PATH` — there are rokit shims of the same name on PATH that
 refuse to run without a `rokit.toml`.
 
-## Upgrade path
+## 🧭 Suggested upgrade path
 
 | Upgrade | Why |
 | --- | --- |
@@ -392,7 +452,7 @@ refuse to run without a `rokit.toml`.
 | **GPS cluster** | 4 computers + 4 modems high up. World coordinates on the dashboard. |
 | **Inventory Manager** (AP) | Push items straight into your own inventory. |
 
-## In-game commands
+## ⌨️ Handy in-game commands
 
 | | |
 | --- | --- |
