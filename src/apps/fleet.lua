@@ -185,7 +185,19 @@ local function drawDashboard()
       if (snap.fuel or 0) < 0 then
         ui.text(COL.fuel, row, "unlim", ui.theme.dim)
       else
-        ui.bar(COL.fuel, row, 7, snap.fuelFraction or 0)
+        -- Deliberately NOT a fraction of the fuel tank. An advanced turtle holds
+        -- 100,000 and a trip costs ~1,000, so that bar reads empty forever and
+        -- tells you nothing. What matters is the ratio to the walk home, so show
+        -- the real number and colour it by how many return trips it covers.
+        local home = math.max(1, snap.distanceHome or 0)
+        local trips = (snap.fuel or 0) / home
+        local tone = ui.theme.good
+        if trips < 1.5 then
+          tone = ui.theme.bad
+        elseif trips < 3 then
+          tone = ui.theme.warn
+        end
+        ui.text(COL.fuel, row, util.fit(util.count(snap.fuel or 0), 7), tone)
       end
     end
     if show.done then

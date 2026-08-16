@@ -122,7 +122,8 @@ local function drawLocal()
   ui.text(2, 7, ("%-9s %d, %d, %d"):format("at", snap.x, snap.y, snap.z))
   ui.text(2, 8, ("%-9s %d blocks"):format("home", snap.distanceHome))
   ui.text(2, 10, ("%-9s %s"):format("fuel", snap.fuel < 0 and "unlimited" or util.count(snap.fuel)))
-  ui.bar(12, 11, 20, snap.fuelFraction)
+  -- Fuel against the walk home, not against the tank - see apps/fleet.lua.
+  ui.bar(12, 11, 20, snap.fuel / math.max(1, snap.distanceHome * 3))
   ui.text(2, 13, ("%-9s %d%%"):format("progress", math.floor((snap.progress or 0) * 100)))
   ui.bar(12, 14, 20, snap.progress or 0, ui.theme.accent)
   ui.text(

@@ -67,14 +67,43 @@ function expedition.estimateFuel(job)
   return 2 * (job.distance + descent) + job.tunnelLength + ribs + SAFETY_MARGIN
 end
 
-local PHASE_PROGRESS = { travel = 0.0, shaft = 0.2, mining = 0.5, home = 0.95 }
-
+--- Progress across the whole trip, 0..1.
+---
+--- Interpolated inside each phase rather than stepped between them: the flight
+--- out is a hundred blocks, and a bar that reads a flat 0% for all of it tells
+--- you nothing about whether the turtle is moving or wedged against a cliff.
 function expedition.progress(job)
-  local base = PHASE_PROGRESS[job.phase] or 0
-  if job.phase == "mining" and job.tunnelLength > 0 then
-    return base + 0.45 * math.min(1, job.tunnelDone / job.tunnelLength)
+  local x, y, z = nav.position()
+
+  if job.phase == "travel" then
+    local total = math.abs(job.bearingX) + math.abs(job.bearingZ) + job.cruise
+    if total <= 0 then
+      return 0
+    end
+    local done = math.abs(x) + math.abs(z) + math.max(0, y)
+    return 0.2 * math.min(1, done / total)
   end
-  return base
+
+  if job.phase == "shaft" then
+    local span = job.cruise - (job.targetY - job.surfaceY)
+    if span <= 0 then
+      return 0.2
+    end
+    return 0.2 + 0.3 * math.min(1, (job.cruise - y) / span)
+  end
+
+  if job.phase == "mining" then
+    if job.tunnelLength <= 0 then
+      return 0.5
+    end
+    return 0.5 + 0.45 * math.min(1, job.tunnelDone / job.tunnelLength)
+  end
+
+  if job.phase == "home" then
+    return 0.95
+  end
+
+  return 0
 end
 
 --- Reset progress and pick a fresh bearing, keeping the configured settings.
