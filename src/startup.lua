@@ -31,6 +31,9 @@ local function menu()
       entries[#entries + 1] = { label = "Start " .. node.role, program = app }
     end
     entries[#entries + 1] = { label = "Scan for ore", program = "apps/scan.lua" }
+    if turtle then
+      entries[#entries + 1] = { label = "Swap modem", program = "apps/equip.lua" }
+    end
     entries[#entries + 1] = { label = "Update from GitHub", program = "update.lua" }
     entries[#entries + 1] = { label = "Change role", program = "install.lua" }
 

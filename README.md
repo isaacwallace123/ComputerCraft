@@ -75,11 +75,24 @@ at world height. What that means in practice:
   into range and re-syncs at each layer boundary.
 
 **Ender modems** (8 stone + eye of ender) remove all of this — unlimited range, works
-across dimensions. Worth it once you have eyes of ender.
+across dimensions, and none of the placement rules above apply. No code changes are
+needed: `core/net.lua` picks any modem reporting `isWireless()`, which ender modems do.
 
-> Both turtle upgrade slots get used by this: pickaxe on one side, modem on the other.
-> A Geo Scanner upgrade won't fit on the same turtle — use the Geo Scanner *block* on
-> the base computer, or a separate scout turtle.
+### Fitting an ender modem
+
+**Base computer:** break the old wireless modem off and place the ender modem against
+any face. Don't leave both attached — `net.lua` opens the first wireless modem it
+finds and there's no API to tell an ender modem from a plain one.
+
+**Turtle:** put the ender modem in any inventory slot and run `equip` (or "Swap modem"
+in the boot menu). Do *not* run `turtle.equipLeft/Right` by hand — a turtle has two
+upgrade slots, both are already full, and equipping on the wrong side swaps out the
+**pickaxe**, leaving a turtle that can't mine. `apps/equip.lua` finds the side that
+currently holds a modem and replaces only that one.
+
+> Both upgrade slots stay full: pickaxe on one side, modem on the other. A Geo Scanner
+> upgrade won't fit on the same turtle — use the Geo Scanner *block* on the base
+> computer, or a separate scout turtle.
 
 ## Editor setup
 
