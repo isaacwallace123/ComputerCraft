@@ -21,6 +21,18 @@ local DEFINITIONS = {
     end,
   },
   {
+    id = "devices",
+    name = "Devices",
+    program = "apps/devices.lua",
+    args = { "--embedded" },
+    kinds = { "computer", "pocket", "command" },
+    roles = { "fleet" },
+    surfaces = { "desktop" },
+    needs = function(caps)
+      return caps.modem
+    end,
+  },
+  {
     id = "miner",
     name = "Miner",
     program = "apps/miner.lua",
@@ -61,6 +73,9 @@ local DEFINITIONS = {
     program = "shell",
     kinds = { "computer", "pocket", "command" },
     surfaces = { "desktop" },
+    needs = function(caps)
+      return not caps.monitor
+    end,
   },
   {
     id = "setup",
@@ -68,6 +83,9 @@ local DEFINITIONS = {
     program = "install.lua",
     kinds = { "computer", "pocket", "command" },
     surfaces = { "desktop" },
+    needs = function(caps)
+      return not caps.monitor
+    end,
   },
   {
     id = "power",

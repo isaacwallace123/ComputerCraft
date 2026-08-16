@@ -9,7 +9,9 @@ together without hardcoded computer IDs. ✨
 
 - 🖥️ Turn an attached monitor into an auto-scaling desktop with launchable apps.
 - 📡 Discover turtles automatically and keep them as persistent paired devices.
-- 🎮 Inspect, deploy, recall, configure, or forget one turtle from the Fleet app.
+- 🎮 Browse, deploy, recall, and configure individual turtles from the Devices app.
+- ⌨️ Use the physical PC as a live fleet log and command console while the monitor
+  stays touch-friendly.
 - ⛏️ Run resumable expedition and quarry jobs with fuel and return-home safeguards.
 - 🔄 Check for over-the-air updates automatically whenever ICOS boots.
 - 🔊 Play short nostalgic boot, shutdown, success, and alert jingles when a speaker
@@ -38,9 +40,10 @@ src/
     apps.lua         capability-aware application registry
     boot.lua         responsive boot/restart animations
     config.lua       table persistence with defaults
+    console.lua      physical-PC fleet log, prompt, and remote commands
     desktop.lua      monitor desktop, windows, icons, and taskbar
     device.lua       computer/turtle/peripheral capability detection
-    display.lua      monitor selection and automatic text scaling
+    display.lua      primary/secondary monitor selection and automatic scaling
     log.lua          capped file log + in-memory ring buffer
     net.lua          rednet: one protocol, one envelope, modem discovery
     sound.lua        optional speaker boot, shutdown, and alert sounds
@@ -59,7 +62,8 @@ src/
 
   apps/              entry points — the only files that wire things together
     miner.lua        turtle agent: run jobs, report, obey fleet orders
-    fleet.lua        base station: roster, dashboard, fleet commands
+    fleet.lua        base station: discovery, scalable overview, fleet commands
+    devices.lua      paired-device browser, detail pages, remote configuration
     power.lua        animated restart and shutdown
     swarm.lua        deploy a line of turtles, then reclaim them
     scan.lua         Geo Scanner ore listing
@@ -220,9 +224,24 @@ rather than base64 — CC has no base64 decoder) whenever a token is configured.
 | `utility` | Hardware-dependent | Offers only tools supported by that machine |
 
 On computers, an attached monitor becomes the ICOS desktop. Its text scale is chosen
-automatically, and Fleet, Update, Terminal, Setup, Power, and hardware-specific apps
-appear only when they can run. Apps open maximized inside desktop windows and can be
-focused or closed from the taskbar.
+automatically, and Fleet, Devices, Update, Power, and hardware-specific apps appear
+only when they can run. Every maximized page owns one title bar, with a Windows-style
+taskbar for switching and closing apps. ICOS Home is the permanent page and cannot be
+closed.
+
+The computer's own screen becomes a keyboard-driven console whenever the desktop is
+on a monitor. It shows the same persistent log Fleet writes and accepts commands such
+as `status`, `recall all`, `deploy miner-2`, `refresh`, and
+`open devices miner-1`. Type `help` there for the complete list. `update`, `setup`,
+`reboot`, and `exit` also live there, so no keyboard-only shell is stranded on a
+touch monitor.
+
+With two or more attached monitors, ICOS automatically chooses the physically largest
+wall for the desktop and gives Fleet the largest remaining wall. The main Fleet page
+then uses its full height for miners while the second wall shows the complete haul,
+aggregate totals, and touchable previous/next paging. Attach or replace that second
+monitor while Fleet is open and it is detected automatically; unplug it and the compact
+haul summary falls back onto the primary page.
 
 Turtles never get the desktop. They get a compact, capability-filtered launcher; if
 only one normal app is valid (the usual mining-turtle case), it starts automatically.
@@ -240,25 +259,32 @@ progress, and time since last heartbeat. Rows go yellow after 10s of silence, re
 after 60s, cyan when
 parked and waiting for orders.
 
-Each reporting turtle is treated as a paired device. Touch its row (or select it with
-up/down and Enter) to open its device page. From there ICOS can deploy or recall only
-that turtle, switch its job, forget it, refresh its state, or edit its job settings.
+Each reporting turtle is treated as a paired device. Touch its Fleet row to switch to
+the **Devices** app focused on that turtle. From there ICOS can deploy or recall only
+that turtle, switch its job, forget its pairing, refresh its state, or edit its job
+settings.
 Expedition distance, target Y, and tunnel length—and quarry width, length, and depth—
 all have touch-friendly controls. Commands are addressed to that turtle's computer ID
 and acknowledged with a useful success or refusal message.
 
-Below that is the **haul panel** — the fleet's combined take, most plentiful first.
+Below that is the compact **haul summary** — the fleet's combined take, most plentiful
+first. It uses two lines regardless of how many item types have been found, with a
+`+N more` count instead of consuming the miner list.
 This is the number actually worth watching: not how many blocks were dug, but how much
 diamond, iron and andesite came back. Turtles report their haul with every heartbeat,
 and the base sums it across the whole fleet.
 
-The footer aggregates blocks dug and items delivered. Fleet-wide recall, deploy, and
-reset remain available from touch buttons.
+If a second monitor is attached, this summary moves to its own **Fleet Haul** wall.
+That wall has room for every item type across paged columns, and the reclaimed rows on
+the main monitor are immediately used for more miners.
+
+The footer provides touch controls for scrolling, fleet-wide recall/deploy, and a
+status refresh. The visible range in the header makes a fleet of 10–20 miners
+easy to navigate; mouse wheels and arrow/Page Up/Page Down also work on local screens.
 
 The roster is persisted, so after a server restart the dashboard still lists every
 known turtle as offline until it checks back in — a turtle that has gone quiet is
-exactly the one you want to see. Forget one turtle from its device page, or use the
-fleet reset button to clear every pairing.
+exactly the one you want to see. Use **forget** on a device page to remove its pairing.
 
 If a GPS cluster is in range, turtles report **world** coordinates instead of
 job-relative ones, so you can actually go and find the thing. Without GPS it falls

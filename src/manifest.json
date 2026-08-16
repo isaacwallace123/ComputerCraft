@@ -1,6 +1,7 @@
 {
-    "generated":  "2026-08-16T07:16:21-04:00",
+    "generated":  "2026-08-16T07:45:23-04:00",
     "files":  [
+                  "apps/devices.lua",
                   "apps/equip.lua",
                   "apps/fleet.lua",
                   "apps/miner.lua",
@@ -11,6 +12,7 @@
                   "core/apps.lua",
                   "core/boot.lua",
                   "core/config.lua",
+                  "core/console.lua",
                   "core/desktop.lua",
                   "core/device.lua",
                   "core/display.lua",

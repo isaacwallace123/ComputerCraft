@@ -1,13 +1,13 @@
---- A windowed desktop: icons, a taskbar, and apps running side by side.
+--- A page-based desktop: icons, maximised apps, and a persistent taskbar.
 ---
 --- Apps are coroutines, each drawing into its own `window`. The event loop
 --- resumes them the way CraftOS's multishell does - keyboard and mouse go to
 --- whichever app has focus, everything else (timers, rednet) goes to all of
 --- them, because a background app still needs its own timers to fire.
 ---
---- Windows are maximised rather than draggable. Dragging is a lot of machinery
---- for a monitor you click with a mouse from three blocks away, and tiling
---- keeps every app readable at whatever scale the wall ended up at.
+--- Each page owns row 1, so there is exactly one title bar: ICOS on Home, or
+--- the app's own header while that app is focused. The taskbar is the only
+--- global chrome and Home is the one page which cannot be closed.
 
 local ui = require("core.ui")
 local apps = require("core.apps")
@@ -31,7 +31,7 @@ function desktop.run(parent, appList, opts)
   local name = opts.name or "ICOS"
 
   local width, height = parent.getSize()
-  local contentTop, contentHeight = 2, height - 2
+  local contentTop, contentHeight = 1, height - 1
 
   local tasks = {}
   local focused = nil
@@ -56,7 +56,7 @@ function desktop.run(parent, appList, opts)
       and event[1]
       and event[1] ~= task.filter
       and event[1] ~= "terminate"
-      and event[1] ~= "icos_close"
+      and not event[1]:match("^icos_")
     then
       return
     end
@@ -80,11 +80,14 @@ function desktop.run(parent, appList, opts)
     end
   end
 
-  local function launch(app)
+  local function launch(app, payload)
     for index, task in ipairs(tasks) do
       if task.app.id == app.id then
         focused = index
         setVisibility()
+        if payload then
+          resume(task, { "icos_open", payload })
+        end
         return
       end
     end
@@ -104,6 +107,18 @@ function desktop.run(parent, appList, opts)
     focused = #tasks
     setVisibility()
     resume(task, {})
+    if payload then
+      resume(task, { "icos_open", payload })
+    end
+  end
+
+  local function availableApp(id)
+    for _, app in ipairs(appList) do
+      if app.id == id then
+        return app
+      end
+    end
+    return nil
   end
 
   local function close(index)
@@ -119,10 +134,12 @@ function desktop.run(parent, appList, opts)
 
   local function drawChrome()
     onParent(function()
-      ui.row(1, ui.theme.headerBg)
-      ui.text(2, 1, name, ui.theme.headerFg, ui.theme.headerBg)
-      local clock = textutils.formatTime(os.time(), true)
-      ui.text(math.max(2, width - #clock), 1, clock, ui.theme.headerFg, ui.theme.headerBg)
+      if focused == nil then
+        ui.row(1, ui.theme.headerBg)
+        ui.text(2, 1, name, ui.theme.headerFg, ui.theme.headerBg)
+        local clock = textutils.formatTime(os.time(), true)
+        ui.text(math.max(2, width - #clock), 1, clock, ui.theme.headerFg, ui.theme.headerBg)
+      end
 
       ui.row(height, ui.theme.headerBg)
       chips = {}
@@ -175,7 +192,7 @@ function desktop.run(parent, appList, opts)
         local column = (index - 1) % perRow
         local row = math.floor((index - 1) / perRow)
         local x = 2 + column * cell
-        local y = contentTop + 1 + row * 4
+        local y = contentTop + 2 + row * 4
 
         if y + 2 < height then
           ui.text(x, y, " +----+ ", ui.theme.accent)
@@ -230,10 +247,6 @@ function desktop.run(parent, appList, opts)
       return
     end
 
-    if y < contentTop then
-      return
-    end
-
     if focused and tasks[focused] then
       resume(tasks[focused], { "mouse_click", 1, x, y - contentTop + 1 })
       return
@@ -264,29 +277,40 @@ function desktop.run(parent, appList, opts)
     else
       -- A monitor is a mouse with one button. Normalising here means apps never
       -- need to know whether they are on a screen or a wall.
-      if kind == "monitor_touch" then
+      local monitorInput = kind == "monitor_touch"
+        and (not opts.monitorName or event[2] == opts.monitorName)
+      local primaryResize = kind == "monitor_resize"
+        and (not opts.monitorName or event[2] == opts.monitorName)
+      if monitorInput then
         event = { "mouse_click", 1, event[3], event[4] }
         kind = "mouse_click"
       end
 
-      if kind == "monitor_resize" or kind == "term_resize" then
+      if kind == "icos_open_app" then
+        local app = availableApp(event[2])
+        if app then
+          launch(app, event[3])
+        end
+      elseif primaryResize or (kind == "term_resize" and opts.localInput ~= false) then
         draw()
       elseif kind == "timer" and event[2] == clock then
         clock = os.startTimer(1)
         for _, task in ipairs(tasks) do
           resume(task, event)
         end
-      elseif kind == "mouse_click" then
+      elseif kind == "mouse_click" and (monitorInput or opts.localInput ~= false) then
         click(event[3], event[4])
       elseif FOCUSED_ONLY[kind] then
-        if focused and tasks[focused] then
-          resume(tasks[focused], event)
-        elseif kind == "char" and event[2] == "q" then
-          running = false
-        elseif kind == "char" then
-          local index = tonumber(event[2])
-          if index and appList[index] then
-            launch(appList[index])
+        if opts.localInput ~= false then
+          if focused and tasks[focused] then
+            resume(tasks[focused], event)
+          elseif kind == "char" and event[2] == "q" then
+            running = false
+          elseif kind == "char" then
+            local index = tonumber(event[2])
+            if index and appList[index] then
+              launch(appList[index])
+            end
           end
         end
       else

@@ -26,13 +26,14 @@ local node = config.load(NODE_PATH, {
 })
 
 local caps = device.capabilities()
-local screen = term.current()
-local monitor, monitorScale
+local localScreen = term.current()
+local screen = localScreen
+local monitor, monitorName
 
 -- Turtles keep their own compact screen. Computers promote an attached
 -- monitor to the ICOS desktop and choose the largest readable scale that fits.
 if caps.kind ~= "turtle" then
-  monitor, monitorScale = display.attach(42, 18)
+  monitor, _, _, _, monitorName = display.attach(42, 18)
   screen = monitor or screen
 end
 
@@ -153,16 +154,23 @@ local desktop = require("core.desktop")
 local desktopApps = apps.available(caps, node, "desktop")
 
 if monitor then
-  ui.clear()
-  ui.header(boot.NAME, "monitor desktop")
-  ui.text(2, 3, ("Monitor scale %s"):format(tostring(monitorScale)), ui.theme.good)
-  ui.text(2, 5, "Touch the monitor to open apps.", ui.theme.fg)
-  ui.text(2, 7, "Hold Ctrl+T here to close ICOS.", ui.theme.dim)
+  local console = require("core.console")
+  parallel.waitForAny(function()
+    desktop.run(screen, desktopApps, {
+      name = boot.NAME,
+      autoLaunch = false,
+      localInput = false,
+      monitorName = monitorName,
+    })
+  end, function()
+    console.run(localScreen, { name = boot.NAME })
+  end)
+else
+  desktop.run(screen, desktopApps, {
+    name = boot.NAME,
+    autoLaunch = false,
+    localInput = true,
+  })
 end
-
-desktop.run(screen, desktopApps, {
-  name = boot.NAME,
-  autoLaunch = false,
-})
 
 systemMenu(apps)
