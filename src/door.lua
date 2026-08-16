@@ -11,6 +11,8 @@ local config = require("lib.config")
 
 local CONFIG_PATH = ".door"
 
+-- Defaults are written to .door on first run; edit that file in game with
+-- `edit .door` rather than changing them here.
 local defaults = {
   side = "back", -- which face of the computer powers the door
   pin = nil, -- set on first run

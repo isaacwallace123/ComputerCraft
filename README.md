@@ -37,7 +37,10 @@ code --install-extension sumneko.lua
 `.luarc.json` wires the definitions in and is checked in, so it just works.
 
 Also useful, and already installed: `johnnymorganz.stylua` (formatter, configured by
-`.stylua.toml`) and `usernamehw.errorlens` (shows diagnostics inline).
+`.stylua.toml`), `usernamehw.errorlens` (shows diagnostics inline), and
+`kampfkarren.selene-vscode` (linter). Selene needs to be told what CC's globals are or
+it flags every one of them — `selene.toml` and `cc-tweaked.yaml` in the repo root do
+that, and are checked in.
 
 **Skip `jackmacwindows.vscode-computercraft`.** It registers a second completion
 provider on `.lua`, so you get duplicated and conflicting suggestions next to
