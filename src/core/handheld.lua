@@ -146,6 +146,11 @@ function handheld.run(parent, appList, opts)
   end
 
   local function draw()
+    -- Apps use a normal return for their in-app Back action. Treat that as a
+    -- completed page and reveal Home; keep failed tasks so the error is visible.
+    if task and task.dead and not task.error then
+      task = nil
+    end
     if task then
       task.win.setVisible(true)
       if task.dead and task.error then

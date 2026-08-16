@@ -197,13 +197,21 @@ function ui.table(x, y, width, specs, rows, maxRows)
   return drawn
 end
 
---- Arrow-key menu. Returns the chosen index, or nil if the user pressed Q.
-function ui.menu(title, items)
+--- Arrow-key menu. Optional help lines explain the page without becoming
+--- selectable actions. Returns the chosen index, or nil if the user pressed Q.
+function ui.menu(title, items, help)
+  if type(help) == "string" then
+    help = { help }
+  elseif type(help) ~= "table" then
+    help = {}
+  end
+
   local selected = 1
   local scroll = 0
   while true do
     local width, height = ui.size()
-    local visible = math.max(1, height - 3)
+    local helpVisible = math.min(#help, math.max(0, height - 4))
+    local visible = math.max(1, height - 3 - helpVisible)
     if selected <= scroll then
       scroll = selected - 1
     elseif selected > scroll + visible then
@@ -214,6 +222,10 @@ function ui.menu(title, items)
       title,
       #items > visible and ((scroll + 1) .. "-" .. math.min(#items, scroll + visible)) or nil
     )
+    for row = 1, helpVisible do
+      ui.text(2, 1 + row, ui.pad(help[row], width - 2), ui.theme.dim)
+    end
+    local itemTop = 2 + helpVisible
     for slot = 1, visible do
       local i = scroll + slot
       local label = items[i]
@@ -223,7 +235,7 @@ function ui.menu(title, items)
       local active = i == selected
       ui.text(
         2,
-        1 + slot,
+        itemTop + slot - 1,
         ui.pad(" " .. tostring(label), width - 2),
         active and ui.theme.bg or ui.theme.fg,
         active and ui.theme.fg or ui.theme.bg
@@ -244,8 +256,8 @@ function ui.menu(title, items)
     elseif kind == "mouse_scroll" then
       selected = math.max(1, math.min(#items, selected + event[2]))
     elseif kind == "mouse_click" then
-      local clicked = scroll + event[4] - 1
-      if event[4] >= 2 and event[4] < height and clicked >= 1 and clicked <= #items then
+      local clicked = scroll + event[4] - itemTop + 1
+      if event[4] >= itemTop and event[4] < height and clicked >= 1 and clicked <= #items then
         return clicked
       end
     end

@@ -15,16 +15,19 @@ end
 while true do
   local policy = policyStore.load()
   local labels = {
-    "Automation        " .. on(policy.enabled),
-    "Resume refueled   " .. on(policy.resumeRefueled),
-    "Retry full depot  " .. on(policy.retryDepot),
-    "Retry setup       " .. on(policy.retrySetup),
-    "Rolling updates   " .. on(policy.updateParked),
-    "Status refresh    " .. tostring(policy.refreshSeconds) .. "s",
-    "Sync handheld     " .. tostring(policy.syncSeconds) .. "s",
-    "Back",
+    "Auto-recovery master  " .. on(policy.enabled),
+    "Fuel stop: resume     " .. on(policy.resumeRefueled),
+    "Full depot: retry     " .. on(policy.retryDepot),
+    "Setup wait: recheck   " .. on(policy.retrySetup),
+    "Update parked slowly  " .. on(policy.updateParked),
+    "Network: poll status  " .. tostring(policy.refreshSeconds) .. "s",
+    "Network: sync pocket  " .. tostring(policy.syncSeconds) .. "s",
+    "Back to Home",
   }
-  local choice = ui.menu("AUTOMATION", labels)
+  local choice = ui.menu("AUTO RECOVERY", labels, {
+    "Handles routine fleet pauses.",
+    "It never assigns a new job.",
+  })
   if not choice or choice == #labels then
     break
   end
@@ -51,7 +54,7 @@ while true do
   if not ok then
     log.warn("automation: " .. tostring(err))
     ui.clear()
-    ui.header("AUTOMATION", "offline")
+    ui.header("AUTO RECOVERY", "offline")
     ui.text(2, 3, ui.pad(err, select(1, ui.size()) - 3), ui.theme.warn)
     sleep(1)
   end

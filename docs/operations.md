@@ -33,14 +33,31 @@ because it has only two upgrade slots.
 Install ICOS on an Advanced Pocket Computer and choose **Fleet handheld**. Existing
 Pocket installations that used the old Fleet role migrate automatically. The handheld
 boots into a touch-first shell with a permanent Home/System row and includes Fleet,
-Devices, Automation, Operations, Fleet Log, Update, Terminal, Setup, Power, and Ore
-Scan when a compatible scanner is attached.
+Devices, Auto Recovery, Mine Control, Fleet Log, Update, Terminal, Setup, Power, and
+Ore Scan when a compatible scanner is attached.
+
+Fleet handheld is offered even when the Pocket has no modem so setup never collapses
+to a confusing Utility-only choice. The shell works offline, but live telemetry and
+commands require a wireless or ender modem upgrade; attach one and reboot ICOS.
+Capability detection uses the modem type trait rather than only a peripheral's primary
+type, so combined devices such as an Advanced Ender Pocket Computer are recognised.
+
+**Auto Recovery** controls conservative responses to routine pauses. It can resume a
+turtle once fuel is sufficient, retry an unload after depot space is freed, recheck
+missing setup prerequisites, and optionally update parked turtles one at a time. It
+does not choose or assign new work. The two network entries only control status polling
+and Pocket synchronization frequency.
+
+**Mine Control** configures the shared prospecting grid used to prevent scattered,
+one-use shafts. It chooses the grid centre, sector size, outer extent, and protected
+radius around the base. Its separate quarry action replaces the jobs of currently
+connected, parked miners with one bounded coordinated quarry after confirmation.
 
 The stationary base must be running ICOS, but no dashboard app needs to be open. An
 ender modem is strongly recommended: ordinary wireless range and chunk loading still
-apply. Operations on the handheld execute at the base, so mine plans, sector leases,
-and coordinated quarry assignments remain authoritative rather than becoming a second
-local copy.
+apply. Mine Control actions on the handheld execute at the base, so mine plans, sector
+leases, and coordinated quarry assignments remain authoritative rather than becoming
+a second local copy.
 
 ## Normal deployment workflow
 
@@ -63,7 +80,7 @@ can also use Update on the base or update/update-all in Devices.
 1. Park every participating turtle over its chest.
 2. Run the Where system tool on each turtle and enter its world position and heading.
 3. Confirm every turtle appears connected and parked in Devices.
-4. Use Operations on the base/handheld, or run this on the physical base console:
+4. Use Mine Control on the base/handheld, or run this on the physical base console:
 
    ```text
    quarry <x1> <z1> <x2> <z2> <topY> <bottomY>

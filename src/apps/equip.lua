@@ -33,7 +33,7 @@ end
 --- reports nothing at all - which is why an empty side looks identical.
 local function equippedModemSide()
   for _, side in ipairs({ "left", "right" }) do
-    if peripheral.getType(side) == "modem" then
+    if peripheral.hasType(side, "modem") then
       return side
     end
   end

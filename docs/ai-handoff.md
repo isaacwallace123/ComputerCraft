@@ -129,12 +129,17 @@ large AFK run.
   did. `ready()` refuses to deploy without one. Where declares the current block as
   both relative home and world origin in one save; run it again after moving or turning
   a parked turtle.
-- The base needs a shared mine configured once, through Operations or `mine here`.
+- The base needs a shared mine configured once, through Mine Control or `mine here`.
   `fleet/service.lua` leases sectors at boot; Fleet is only a view and need not stay
   open. Prospecting frontiers are keyed by job and target Y; do not collapse them into
   one sector-wide completion value.
 - Pocket Computers use role `controller`, run `core/handheld.lua`, and mirror the
   authoritative base. They must never host the base name or answer `mine` requests.
+  Setup offers this role without a modem, but fleet traffic remains offline until a
+  wireless or ender modem is attached.
+- A peripheral can have multiple types. Use `peripheral.hasType(name, "modem")`; an
+  exact comparison with the first `peripheral.getType` result can miss combined Ender
+  Pocket upgrades and incorrectly disable the handheld role and Rednet.
 - Legacy relative quarry files are intentionally invalidated and require a new
   absolute assignment.
 - Partial Quarry and Hollow runs resume their saved cells after recall/fuel/error;
