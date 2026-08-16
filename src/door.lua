@@ -27,8 +27,7 @@ local function firstRunSetup()
   print("No PIN set yet. Let's configure the lock.\n")
 
   local sides = { "back", "left", "right", "top", "bottom", "front" }
-  print("Which side of the computer powers the door?")
-  local choice = ui.menu("Pick a side", sides)
+  local choice = ui.menu("Which side powers the door?", sides)
   if not choice then
     error("Setup cancelled", 0)
   end
@@ -106,7 +105,6 @@ local function main()
   local failures = 0
   while true do
     ui.header("LOCKED")
-    term.setCursorPos(1, 5)
     ui.center(5, "Enter PIN", colors.white)
     term.setCursorPos(math.floor(ui.width / 2) - 5, 7)
 
