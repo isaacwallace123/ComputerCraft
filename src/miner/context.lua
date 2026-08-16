@@ -121,9 +121,10 @@ end
 function Context:snapshot()
   local x, y, z, facing = nav.position()
   local stats = nav.stats()
-  local tank = fuel.level()
-  local reserve = fuel.inventoryPotential()
-  local available = fuel.available()
+  local fuelState = fuel.snapshot()
+  local tank = fuelState.level
+  local reserve = fuelState.reserve
+  local available = fuelState.available
   local jobStatus = self.jobModule.status(self.job)
   local world = (nav.hasOrigin() and nav.worldPosition()) or self.worldPos
   self.worldPos = world
@@ -165,7 +166,7 @@ function Context:snapshot()
     fuel = available == math.huge and -1 or available,
     fuelTank = tank == math.huge and -1 or tank,
     fuelReserve = reserve,
-    fuelFraction = fuel.fraction(),
+    fuelFraction = fuelState.fraction,
     fuelRequired = fuelRequired,
     distanceHome = nav.distanceHome(),
     moves = stats.moves,
@@ -184,11 +185,11 @@ function Context:snapshot()
   }
 end
 
-function Context:draw()
+function Context:draw(snapshot)
   if self.interactive then
     return
   end
-  local snap = self:snapshot()
+  local snap = snapshot or self:snapshot()
   ui.clear()
   ui.header(snap.label, net.isOpen() and (self.baseId and "linked" or "no base") or "no modem")
 

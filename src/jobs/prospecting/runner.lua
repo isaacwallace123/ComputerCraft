@@ -31,7 +31,27 @@ function runner.run(jobType, job, ctx)
   -- a build that picked random bearings. Come home, then ask for a proper route.
   if (job.sector or 0) < 1 then
     ctx.report("returning", "no mine sector yet - heading home to claim one")
-    local home, homeError = nav.goHome()
+    -- A random-bearing job upgraded while underground still knows its old
+    -- shaft. Unwind that legacy route once instead of letting `goHome` cut a
+    -- direct tunnel at depth before the first shared-sector claim.
+    local legacyX = tonumber(job.bearingX)
+    local legacyZ = tonumber(job.bearingZ)
+    local legacyY = tonumber(job.travelY or job.cruise)
+    local home, homeError
+    local _, currentY = nav.position()
+    if legacyX and legacyZ and legacyY and currentY < legacyY then
+      local reached, reachError = nav.goTo(legacyX, currentY, legacyZ)
+      if not reached then
+        return false, "could not reach legacy shaft: " .. tostring(reachError)
+      end
+      while select(2, nav.position()) < legacyY do
+        local surfaced, surfaceError = nav.up()
+        if not surfaced then
+          return false, "could not leave legacy shaft: " .. tostring(surfaceError)
+        end
+      end
+    end
+    home, homeError = nav.goHome()
     if not home then
       return false, "could not return home: " .. tostring(homeError)
     end
@@ -114,20 +134,29 @@ function runner.run(jobType, job, ctx)
   --- Look for ore around the turtle and follow anything found. Costs four turns,
   --- which is the bulk of the time this job spends, so it is throttled by
   --- scanEvery.
-  local function scan()
+  local function scan(force)
     sinceScan = sinceScan + 1
-    if sinceScan < job.scanEvery then
+    if not force and sinceScan < job.scanEvery then
       return true
     end
     sinceScan = 0
 
-    local _, reason, kind, truncated = ore.follow(nav, isWanted, record, {
+    local _, reason, kind, truncated, resume = ore.follow(nav, isWanted, record, {
       budget = job.veinBudget,
       radius = job.veinRadius,
       gapBudget = job.veinGapBudget,
       beforeMove = guard,
     })
     inv.dropJunk(isJunk)
+
+    if resume and (truncated or reason) then
+      resume.sector = job.sector
+      resume.shaftX = job.shaftX
+      resume.shaftZ = job.shaftZ
+      resume.targetY = job.targetY
+      job.pendingVein = resume
+      jobType.save(job)
+    end
 
     if truncated then
       -- The vein outlasted the budget. Remember where, so the report says so and
@@ -282,7 +311,12 @@ function runner.run(jobType, job, ctx)
     turnOut()
     local dug = 0
     local stoppedReason, stoppedKind = nil, nil
-    for _ = 1, job.ribReach do
+    -- Facing along world +X means left is world -Z and right is world +Z,
+    -- regardless of the turtle's saved home heading.
+    local low = job.ribReachLow or job.ribReach or 0
+    local high = job.ribReachHigh or math.max(0, low - 1)
+    local reach = toLeft and low or high
+    for _ = 1, reach do
       local ok, reason, kind, advanced = step()
       if advanced then
         dug = dug + 1
@@ -377,6 +411,33 @@ function runner.run(jobType, job, ctx)
     )
     if not resumed then
       return false, "could not recover frontier: " .. tostring(resumeError), resumeKind
+    end
+
+    -- A budget/recall/fuel stop can happen deep inside a vein. `ore.follow`
+    -- unwinds to the trunk so the turtle can get home, but the remaining ore is
+    -- then separated from the trunk by already-mined air. Revisit the persisted
+    -- reachable cell before advancing the durable frontier.
+    if type(job.pendingVein) == "table" then
+      local pending = job.pendingVein
+      local target = pending.world and relative(pending.x, pending.y, pending.z) or pending
+      local anchorX, anchorY, anchorZ = nav.position()
+      ctx.report("mining", "resuming unfinished vein")
+      local reached, reachError, reachKind = nav.goTo(target.x, target.y, target.z, guard)
+      if not reached then
+        return false, "could not reach unfinished vein: " .. tostring(reachError), reachKind
+      end
+
+      local scanned, scanReason, scanKind = scan(true)
+      local returned, returnError = nav.goTo(anchorX, anchorY, anchorZ)
+      if not returned then
+        return false, "could not leave unfinished vein: " .. tostring(returnError)
+      end
+      if not scanned then
+        return false, scanReason, scanKind
+      end
+
+      job.pendingVein = nil
+      jobType.save(job)
     end
 
     if job.frontier == 0 then
@@ -550,7 +611,10 @@ function runner.run(jobType, job, ctx)
   end
   site.report(workKey, job.sector, job.frontier, minedThisTrip, exhausted == true)
 
-  job.active = not home -- only stay active if we never made it back
+  -- The configured route remains active at home. Persisting `false` here made a
+  -- tiny power-loss window before the cycle handoff reopen interactive setup on
+  -- reboot, even though the sector had been reported correctly.
+  job.active = true
   jobType.save(job)
 
   if not home then

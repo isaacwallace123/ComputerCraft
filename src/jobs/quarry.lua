@@ -150,27 +150,30 @@ end
 
 function quarry.ready(job)
   if not nav.hasOrigin() then
-    return false, "run where on this turtle before assigning a world-area quarry"
+    return false, "run where on this turtle before assigning a world-area quarry", "setup"
   end
   if not job.configured then
-    return false, "configure absolute quarry corners before deploying"
+    return false, "configure absolute quarry corners before deploying", "setup"
   end
   if job.maxX < job.minX or job.maxZ < job.minZ or job.topY < job.bottomY then
-    return false, "invalid quarry corners"
+    return false, "invalid quarry corners", "setup"
   end
   if job.workerCount > areaCells(job) or workerCells(job) == 0 then
-    return false, "more quarry workers than horizontal cells"
+    return false, "more quarry workers than horizontal cells", "setup"
   end
-  if fuel.available() < quarry.minimumFuel(job) then
-    return false,
-      ("needs %d total fuel, has %d"):format(quarry.minimumFuel(job), math.floor(fuel.available()))
+  local needed = quarry.minimumFuel(job)
+  local available = fuel.available()
+  if available < needed then
+    return false, ("needs %d total fuel, has %d"):format(needed, math.floor(available)), "fuel"
   end
   return true
 end
 
 function quarry.restart(job)
-  job.layer = 0
-  job.cell = 0
+  if job.layer >= layerCount(job) then
+    job.layer = 0
+    job.cell = 0
+  end
   job.active = true
   job.startedAt = os.epoch("utc")
   quarry.save(job)
@@ -208,6 +211,7 @@ function quarry.configure(job, settings)
     workerIndex = { 1, 1024 },
     workerCount = { 1, 1024 },
   }
+  local updates = {}
   for key, range in pairs(numeric) do
     if settings[key] ~= nil then
       local value = tonumber(settings[key])
@@ -218,17 +222,37 @@ function quarry.configure(job, settings)
       if value < range[1] or value > range[2] then
         return false, ("%s must be %d..%d"):format(key, range[1], range[2])
       end
-      job[key] = value
+      updates[key] = value
     end
   end
-  if job.maxX < job.minX or job.maxZ < job.minZ or job.topY < job.bottomY then
+  local candidate = {}
+  for key, value in pairs(job) do
+    candidate[key] = value
+  end
+  for key, value in pairs(updates) do
+    candidate[key] = value
+  end
+  if
+    candidate.maxX < candidate.minX
+    or candidate.maxZ < candidate.minZ
+    or candidate.topY < candidate.bottomY
+  then
     return false, "maximum corners must exceed minimum corners"
   end
-  if job.workerIndex > job.workerCount then
+  if candidate.workerIndex > candidate.workerCount then
     return false, "worker index exceeds worker count"
   end
-  if job.workerCount > areaCells(job) then
+  if candidate.workerCount > areaCells(candidate) then
     return false, "worker count exceeds horizontal quarry cells"
+  end
+  local changed = false
+  for key, value in pairs(updates) do
+    changed = changed or job[key] ~= value
+    job[key] = value
+  end
+  if changed then
+    job.layer = 0
+    job.cell = 0
   end
   job.configured = true
   quarry.save(job)
@@ -248,6 +272,7 @@ function quarry.setup(ui)
   job.topY = ui.askNumber("Top block Y", job.topY)
   job.bottomY = ui.askNumber("Bottom block Y", job.bottomY)
   job.workerIndex, job.workerCount = 1, 1
+  job.layer, job.cell = 0, 0
   job.configured = true
   job.delivered = 0
   nav.setHome()

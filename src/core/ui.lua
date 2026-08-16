@@ -34,10 +34,20 @@ end
 --- Write at a position with explicit colours. The workhorse - everything else
 --- is built on it.
 function ui.text(x, y, text, fg, bg)
+  local width, height = ui.size()
+  if y < 1 or y > height or x > width then
+    return
+  end
+  text = tostring(text)
+  if x < 1 then
+    text = text:sub(2 - x)
+    x = 1
+  end
+  text = text:sub(1, math.max(0, width - x + 1))
   term.setCursorPos(x, y)
   term.setTextColor(fg or ui.theme.fg)
   term.setBackgroundColor(bg or ui.theme.bg)
-  term.write(tostring(text))
+  term.write(text)
 end
 
 function ui.center(y, text, fg, bg)
@@ -55,16 +65,22 @@ end
 function ui.header(title, right)
   local width = ui.size()
   ui.row(1, ui.theme.headerBg)
-  ui.text(2, 1, title, ui.theme.headerFg, ui.theme.headerBg)
+  title = tostring(title or "")
   if right then
-    ui.text(math.max(2, width - #right), 1, right, ui.theme.headerFg, ui.theme.headerBg)
+    right = tostring(right)
+    local rightX = math.max(2, width - #right)
+    ui.text(rightX, 1, right, ui.theme.headerFg, ui.theme.headerBg)
+    ui.text(2, 1, ui.pad(title, math.max(0, rightX - 3)), ui.theme.headerFg, ui.theme.headerBg)
+  else
+    ui.text(2, 1, ui.pad(title, width - 1), ui.theme.headerFg, ui.theme.headerBg)
   end
 end
 
 function ui.footer(text)
   local _, height = ui.size()
   ui.row(height, ui.theme.headerBg)
-  ui.text(2, height, text, ui.theme.headerFg, ui.theme.headerBg)
+  local width = ui.size()
+  ui.text(2, height, ui.pad(text, width - 1), ui.theme.headerFg, ui.theme.headerBg)
 end
 
 --- Horizontal meter. `fraction` is 0..1; colour is chosen by how full it is,
@@ -184,15 +200,31 @@ end
 --- Arrow-key menu. Returns the chosen index, or nil if the user pressed Q.
 function ui.menu(title, items)
   local selected = 1
+  local scroll = 0
   while true do
+    local width, height = ui.size()
+    local visible = math.max(1, height - 3)
+    if selected <= scroll then
+      scroll = selected - 1
+    elseif selected > scroll + visible then
+      scroll = selected - visible
+    end
     ui.clear()
-    ui.header(title)
-    for i, label in ipairs(items) do
+    ui.header(
+      title,
+      #items > visible and ((scroll + 1) .. "-" .. math.min(#items, scroll + visible)) or nil
+    )
+    for slot = 1, visible do
+      local i = scroll + slot
+      local label = items[i]
+      if not label then
+        break
+      end
       local active = i == selected
       ui.text(
         2,
-        2 + i,
-        (" %-24s"):format(label),
+        1 + slot,
+        ui.pad(" " .. tostring(label), width - 2),
         active and ui.theme.bg or ui.theme.fg,
         active and ui.theme.fg or ui.theme.bg
       )
@@ -209,9 +241,11 @@ function ui.menu(title, items)
       return selected
     elseif kind == "key" and key == keys.q then
       return nil
+    elseif kind == "mouse_scroll" then
+      selected = math.max(1, math.min(#items, selected + event[2]))
     elseif kind == "mouse_click" then
-      local clicked = event[4] - 2
-      if clicked >= 1 and clicked <= #items then
+      local clicked = scroll + event[4] - 1
+      if event[4] >= 2 and event[4] < height and clicked >= 1 and clicked <= #items then
         return clicked
       end
     end

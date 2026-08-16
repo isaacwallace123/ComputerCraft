@@ -1,6 +1,6 @@
 --- Paired-device browser and per-turtle remote control.
 ---
---- Fleet owns discovery and writes `.fleet`; this app deliberately owns the
+--- The always-on fleet service owns discovery and writes `.fleet`; this app owns the
 --- detail/configuration UI so the fleet overview can stay dense and scalable.
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
@@ -10,6 +10,7 @@ local net = require("core.net")
 local log = require("core.log")
 local util = require("core.util")
 local version = require("core.version")
+local control = require("fleet.control")
 local rosterStore = require("fleet.roster")
 
 local COLUMNS = {
@@ -149,12 +150,14 @@ local function drawList(saved)
   local last = math.min(#list, scroll + maxRows)
 
   ui.clear()
-  ui.header("DEVICES", ("%d/%d connected  %d-%d"):format(online, #list, first, last))
+  local status = width < 42 and ("%d/%d"):format(online, #list)
+    or ("%d/%d connected  %d-%d"):format(online, #list, first, last)
+  ui.header("DEVICES", status)
   clickTargets, rowTargets = {}, {}
 
   if #list == 0 then
     ui.center(math.floor(height / 2), "No paired devices yet.", ui.theme.dim)
-    ui.center(math.floor(height / 2) + 2, "Open Fleet to begin discovery.", ui.theme.dim)
+    ui.center(math.floor(height / 2) + 2, "Waiting for fleet service.", ui.theme.dim)
   else
     local rows = {}
     for index = first, last do
@@ -177,7 +180,11 @@ local function drawList(saved)
   end
 
   drawNotice(width, height)
-  footer({
+  footer(width < 42 and {
+    { "up", "up" },
+    { "down", "down" },
+    { "actions", "actions" },
+  } or {
     { "up", "up" },
     { "down", "down" },
     { "refresh", "refresh_all" },
@@ -202,8 +209,10 @@ local function drawDevice(saved)
   clickTargets, rowTargets = {}, {}
 
   ui.text(2, 3, ("%-10s %s"):format("state", snap.phase or "unknown"), statusColor(node))
-  addButton(math.max(2, width - 19), 3, "update", "update")
-  addButton(math.max(2, width - 9), 3, "forget", "forget")
+  if width >= 46 then
+    addButton(width - 19, 3, "update", "update")
+    addButton(width - 9, 3, "forget", "forget")
+  end
   ui.text(2, 4, ui.pad(snap.detail or "", width - 3), ui.theme.dim)
   ui.text(
     2,
@@ -265,7 +274,10 @@ local function drawDevice(saved)
   end
 
   drawNotice(width, height)
-  footer({
+  footer(width < 42 and {
+    { "back", "back" },
+    { "actions", "actions" },
+  } or {
     { "back", "back" },
     { "deploy", "deploy" },
     { "recall", "recall" },
@@ -299,15 +311,22 @@ local function drawSettings(saved)
     local field = fields[index]
     local y = 5 + (index - settingsScroll - 1) * 3
     local value = tonumber(settings[field.key]) or 0
-    ui.text(3, y, ui.pad(field.label, 12), ui.theme.fg)
-    ui.text(16, y, ui.pad(value, 7, "right"), ui.theme.accent)
-    local x = math.max(25, width - 15)
+    local compact = width < 42
+    local labelWidth = compact and math.max(6, width - 16) or 12
+    local valueX = compact and math.max(9, width - 13) or 16
+    local valueWidth = compact and 5 or 7
+    ui.text(compact and 2 or 3, y, ui.pad(field.label, labelWidth), ui.theme.fg)
+    ui.text(valueX, y, ui.pad(value, valueWidth, "right"), ui.theme.accent)
+    local x = compact and math.max(valueX + valueWidth + 1, width - 7) or math.max(25, width - 15)
     x = addButton(x, y, "-", "adjust", { field = field.key, value = value - field.step })
     addButton(x, y, "+", "adjust", { field = field.key, value = value + field.step })
   end
 
   drawNotice(width, height)
-  footer({
+  footer(width < 42 and {
+    { "back", "device" },
+    { "actions", "actions" },
+  } or {
     { "back", "device" },
     { "up", "settings_up" },
     { "down", "settings_down" },
@@ -326,7 +345,8 @@ local function draw()
   end
 end
 
-local function act(action, data)
+local act
+act = function(action, data)
   if action == "up" then
     scroll = math.max(0, scroll - 1)
   elseif action == "down" then
@@ -339,6 +359,7 @@ local function act(action, data)
     sendSelected(action == "refresh" and "status_request" or action)
   elseif action == "refresh_all" then
     if net.broadcast("command", { action = "status_request" }) then
+      control.requestSync()
       setNotice("Status requested", true)
       log.info("devices: status refresh requested")
     else
@@ -390,12 +411,34 @@ local function act(action, data)
       end
     end
   elseif action == "forget" and selectedId then
-    local saved = roster()
-    saved[tostring(selectedId)] = nil
-    rosterStore.save(saved)
-    os.queueEvent("icos_forget_device", selectedId)
+    local ok, err = control.forget(selectedId)
     selectedId, view = nil, "list"
-    setNotice("Device forgotten", true)
+    setNotice(ok and "Device forgotten" or err, ok)
+  elseif action == "actions" then
+    local labels, actions
+    if view == "list" then
+      labels = { "Refresh all", "Update all", "Cancel" }
+      actions = { "refresh_all", "update_all" }
+    elseif view == "settings" then
+      labels = { "Deploy", "Back to device", "Cancel" }
+      actions = { "deploy", "device" }
+    else
+      labels = {
+        "Deploy",
+        "Recall",
+        "Configure",
+        "Change job",
+        "Refresh",
+        "Update",
+        "Forget",
+        "Cancel",
+      }
+      actions = { "deploy", "recall", "settings", "job", "refresh", "update", "forget" }
+    end
+    local choice = ui.menu("DEVICE ACTIONS", labels)
+    if choice and actions[choice] then
+      act(actions[choice])
+    end
   end
 end
 
@@ -432,6 +475,8 @@ while running do
       act("settings_down")
     elseif view ~= "list" and (event[2] == keys.backspace or event[2] == keys.left) then
       act(view == "settings" and "device" or "back")
+    elseif event[2] == keys.enter then
+      act("actions")
     end
   elseif kind == "mouse_click" then
     if view == "list" then

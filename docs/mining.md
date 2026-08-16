@@ -29,7 +29,7 @@ arithmetic on both the base and the turtle, so only the plan is ever transmitted
 | sector | one `cellSize` square of ground, with one shaft at its centre |
 | shaft | the single reusable vertical hole into that sector |
 | trunk | a tunnel spanning the sector along world X at the shaft's Z |
-| ribs | perpendicular branches every `branchSpacing`, stopping one block short of the sector edge |
+| ribs | perpendicular branches every `branchSpacing`, reaching each sector edge without crossing it |
 | frontier | how far one profile/depth has completed the sector trunk |
 | lane | one of eight staggered cruise altitudes used to reduce shared airspace |
 
@@ -42,11 +42,17 @@ different depth.
 `mine/registry.lua` runs on the base and owns leases and frontiers. `mine/site.lua` runs
 on the turtle, caches the plan, and asks for a sector at each redeploy. A turtle that
 gets no answer within three seconds keeps the sector it already held, or falls back to
-one derived from its computer ID — losing the base costs coordination, never mining.
-The Fleet app must remain open on the base because its listener answers claims and
-renews leases from the turtles' ordinary status heartbeats.
+one derived from its computer ID. Its per-job fallback advances only after a sector is
+fully exhausted, so offline operation does not stall at the completed frontier or open
+a new hole per ordinary cycle. An explicit refusal from a reachable base remains
+authoritative, preventing an exhausted or replaced grid from being reopened. Losing
+the base costs coordination, never local safety or return behavior.
 
-Configure the mine from the base console:
+The base service starts with ICOS and answers claims even when Fleet is closed. The
+Fleet app is now only a dashboard.
+
+Configure the mine from Operations on the base or Pocket controller, or from the base
+console:
 
 ```text
 mine here              centre it on the base computer, using GPS
@@ -74,6 +80,8 @@ recorded progress, because sector N then refers to different ground.
 
 Every prospecting turtle needs a world origin from the `where` tool, the same
 prerequisite the coordinated quarry has. `ready()` refuses to deploy without one.
+Run `where` again after physically moving or turning a parked turtle; it resets the
+relative home frame and world heading together before another absolute route is used.
 
 ## Job contract
 
@@ -125,7 +133,8 @@ so two vertical blocks are completed per cell.
 
 Quarry is finite. Progress is saved as `layer` plus `cell`. An old relative
 width/length/depth `.quarry` file is marked unconfigured rather than interpreted as
-absolute coordinates.
+absolute coordinates. Recall, fuel, and recoverable error redeploys resume those saved
+counters; a completed run or a changed assignment starts from zero.
 
 ### Rare, Fuel, and Resources
 
@@ -156,9 +165,13 @@ budget and a radius from the entry cell — deliberately not by recursion depth,
 stops part-way along a long vein in whichever direction the recursion happened to try
 first. A small separate gap budget lets it step through one block of waste, because
 large 1.20 ore veins are noisy enough that a strict six-face fill abandons most of one.
+Gap probes begin only after the turtle has entered a wanted block; ordinary trunk and
+rib cells are inspected without excavating exploratory pockets into empty rock.
 
 Running out of budget sets a `truncated` flag. The runner then holds the sector frontier
-where it is, so the next cycle comes back to the same unfinished vein.
+where it is and saves a reachable coordinate beside the remaining ore. The next cycle
+revisits that coordinate before advancing; merely returning to the trunk is insufficient
+because the mined portion of the vein is now an air path rather than adjacent ore.
 On reboot, a miner in the `mining` phase first returns to that durable frontier cell;
 this also recovers safely if power was lost part-way through a rib or recursive vein.
 
@@ -173,7 +186,8 @@ back to normal mining.
 middle Y, default -30. Entering each cell clears the middle block; `digUp` and `digDown`
 clear the other two. A failed vertical dig does not advance the cell checkpoint.
 
-Hollow is finite and saves its current cell.
+Hollow is finite and saves its current cell. Like Quarry, a partial deploy resumes that
+cell, while changed settings or redeploying a completed room starts a fresh sweep.
 
 ## Fuel accounting
 

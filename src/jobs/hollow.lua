@@ -47,6 +47,10 @@ local function targetRelativeY(job)
   return job.targetY - job.surfaceY
 end
 
+local function routeY(job)
+  return math.min(319 - job.surfaceY, math.max(12, targetRelativeY(job) + 1))
+end
+
 local function returnDistance(job)
   local x, y, z = nav.position()
   if y >= job.travelY then
@@ -60,7 +64,8 @@ local function returnDistance(job)
 end
 
 function hollow.minimumFuel(job)
-  local shaft = math.abs(job.travelY) + math.abs(job.travelY - targetRelativeY(job))
+  local travelY = job.active and job.travelY or routeY(job)
+  local shaft = math.abs(travelY) + math.abs(travelY - targetRelativeY(job))
   return 2 * (job.distance + shaft) + hollow.SAFETY_MARGIN + 32
 end
 
@@ -69,19 +74,23 @@ function hollow.estimateFuel(job)
 end
 
 function hollow.ready(job)
-  if fuel.available() >= hollow.minimumFuel(job) then
+  local needed = hollow.minimumFuel(job)
+  local available = fuel.available()
+  if available >= needed then
     return true
   end
   return false,
-    ("needs %d total fuel, has %d including inventory"):format(
-      hollow.minimumFuel(job),
-      math.floor(fuel.available())
-    )
+    ("needs %d total fuel, has %d including inventory"):format(needed, math.floor(available))
 end
 
 function hollow.restart(job)
-  job.travelY = math.min(12, 319 - job.surfaceY)
-  job.cell = 0
+  -- Cruise above both home and the room. A room above home previously crossed
+  -- directly at room level on the way back, tunnelling a second route through
+  -- whatever stood between it and the depot instead of reusing its shaft.
+  job.travelY = routeY(job)
+  if job.cell >= job.width * job.length then
+    job.cell = 0
+  end
   job.active = true
   job.startedAt = os.epoch("utc")
   hollow.save(job)
@@ -103,6 +112,7 @@ function hollow.status(job)
 end
 
 function hollow.configure(job, settings)
+  local updates = {}
   for _, field in ipairs(hollow.settingFields) do
     if settings[field.key] ~= nil then
       local value = tonumber(settings[field.key])
@@ -113,9 +123,18 @@ function hollow.configure(job, settings)
       if value < field.min or value > field.max then
         return false, ("%s must be %d..%d"):format(field.key, field.min, field.max)
       end
-      job[field.key] = value
+      updates[field.key] = value
     end
   end
+  local changed = false
+  for key, value in pairs(updates) do
+    changed = changed or job[key] ~= value
+    job[key] = value
+  end
+  if changed then
+    job.cell = 0
+  end
+  job.travelY = routeY(job)
   hollow.save(job)
   return true
 end
@@ -134,6 +153,7 @@ function hollow.setup(ui)
   job.length = ui.askNumber("Length", job.length)
   job.delivered = 0
   job.haul = {}
+  job.cell = 0
   nav.setHome()
   hollow.restart(job)
   return job

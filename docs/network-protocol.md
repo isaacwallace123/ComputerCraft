@@ -5,6 +5,8 @@
 All fleet traffic uses Rednet protocol `ccfleet`. The base hosts hostname `base`.
 `core/net.lua` prefers a wireless modem and falls back to wired for bench testing.
 Messages are best-effort and must never be required for a turtle to finish or return.
+Base registration is idempotent across modem reconnection. A genuine duplicate `base`
+hostname is logged and retried rather than crashing startup.
 
 Every message has this envelope:
 
@@ -116,10 +118,33 @@ touches do not wait for the next heartbeat.
 Unknown actions are currently ignored. When adding an action, update the receiver,
 the sending UI/console, result handling, and this table.
 
+## Pocket controller synchronization
+
+A Pocket Computer with role `controller` periodically sends `controller` with action
+`subscribe` directly to the hosted base. The base remembers the subscriber for 60
+seconds and replies periodically with `fleet_sync`, containing the authoritative
+device-ID set, automation policy, recent fleet log, base ID, and version. Each roster
+entry follows as a separate `fleet_node` message, keeping large fleets below the modem
+payload limit. The Pocket also listens to ordinary turtle heartbeats, so a missed sync
+does not blank current status.
+
+Controller actions are intentionally separate from turtle commands:
+
+| `controller` action | Fields | Base behavior |
+| --- | --- | --- |
+| `subscribe` | none | register/renew the controller and return `fleet_sync` |
+| `forget` | `target` | remove a device from the authoritative roster |
+| `set_policy` | `fields` | validate and persist fleet automation settings |
+| `operation` | `requestId`, `operation`, `fields` | run validated mine/quarry work on the base |
+
+An operation reply uses `controller_result` with the matching `requestId`, `ok`,
+`message`, and optional data. A controller never hosts hostname `base` and ignores
+`mine` claims; only the stationary service owns sector authority.
+
 ## Discovery and staleness
 
 Turtles resolve the hosted base name periodically but broadcast status even before a
-base is found. Fleet persists the last snapshot in `.fleet`. A device becomes late
+base is found. The always-on base service persists the last snapshot in `.fleet`. A device becomes late
 after 10 seconds and offline after 60 seconds; offline devices remain visible until
 explicitly forgotten.
 

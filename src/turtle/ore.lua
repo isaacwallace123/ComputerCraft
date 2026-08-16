@@ -145,8 +145,21 @@ function ore.follow(nav, isWanted, record, options)
   local gapsLeft = options.gapBudget or ore.DEFAULT_GAP_BUDGET
   local stoppedReason, stoppedKind = nil, nil
   local truncated = false
+  local resume = nil
   local originX, originY, originZ = nav.position()
   local explore
+
+  local function rememberHere()
+    local world = nav.worldPosition and nav.worldPosition()
+    if world then
+      -- World coordinates survive a legitimate `where` recalibration between
+      -- trips; a relative coordinate would point somewhere else after rehoming.
+      resume = { x = world.x, y = world.y, z = world.z, world = true }
+    else
+      local x, y, z = nav.position()
+      resume = { x = x, y = y, z = z, world = false }
+    end
+  end
 
   local DELTA = {
     [0] = { x = 0, z = 1 },
@@ -181,7 +194,7 @@ function ore.follow(nav, isWanted, record, options)
   end
 
   --- Step into a wanted block, work outward from it, and come back.
-  local function consider(inspect, moveIn, moveOut, offset, mayBridge)
+  local function consider(inspect, moveIn, moveOut, offset, childMayBridge)
     if stoppedReason then
       return
     end
@@ -195,11 +208,18 @@ function ore.follow(nav, isWanted, record, options)
     -- caller queues the spot for the next cycle instead of losing it.
     if remaining <= 0 then
       truncated = true
+      rememberHere()
       return
     end
 
     local dx, dy, dz = offset()
-    if not candidateInRange(dx, dy, dz) or not allowed() then
+    if not candidateInRange(dx, dy, dz) then
+      return
+    end
+    if not allowed() then
+      -- We are beside known ore but must stop before entering it. Persist this
+      -- reachable cell so the next trip can revisit the unfinished branch.
+      rememberHere()
       return
     end
 
@@ -207,12 +227,17 @@ function ore.follow(nav, isWanted, record, options)
     if not moved then
       stoppedReason = "could not enter vein: " .. tostring(moveError)
       stoppedKind = moveKind
+      rememberHere()
       return
     end
 
     record(data.name)
     remaining = remaining - 1
-    explore(mayBridge)
+    -- The block we just entered is known ore. Gap probing may start here when
+    -- the caller reached it directly from the tunnel or another ore block, but
+    -- remains disabled for a cluster reached through a gap. That keeps a probe
+    -- exactly one waste block deep instead of chaining across the rock.
+    explore(childMayBridge, childMayBridge)
 
     local returned, returnError = moveOut()
     if not returned then
@@ -242,7 +267,11 @@ function ore.follow(nav, isWanted, record, options)
     end
 
     local dx, dy, dz = offset()
-    if not candidateInRange(dx, dy, dz) or not allowed() then
+    if not candidateInRange(dx, dy, dz) then
+      return
+    end
+    if not allowed() then
+      rememberHere()
       return
     end
 
@@ -252,11 +281,12 @@ function ore.follow(nav, isWanted, record, options)
       if moveKind == "peer" then
         stoppedReason = "fleet traffic blocked vein gap: " .. tostring(moveError)
         stoppedKind = moveKind
+        rememberHere()
       end
       return
     end
 
-    explore(false)
+    explore(false, false)
 
     local returned, returnError = moveOut()
     if not returned then
@@ -266,7 +296,7 @@ function ore.follow(nav, isWanted, record, options)
 
   --- One full six-face sweep. Ore first across every face, then - only if this
   --- cell is part of the vein proper - a second sweep that probes the gaps.
-  explore = function(mayBridge)
+  explore = function(mayBridge, childMayBridge)
     if stoppedReason then
       return
     end
@@ -279,10 +309,14 @@ function ore.follow(nav, isWanted, record, options)
         local ok, data = inspect()
         return ok and isWanted(data.name)
       end
-      truncated = wanted(turtle.inspectDown) or wanted(turtle.inspectUp)
+      local foundHere = wanted(turtle.inspectDown) or wanted(turtle.inspectUp)
       for _ = 1, 4 do
-        truncated = wanted(turtle.inspect) or truncated
+        foundHere = wanted(turtle.inspect) or foundHere
         nav.turnRight()
+      end
+      if foundHere then
+        truncated = true
+        rememberHere()
       end
       return
     end
@@ -294,12 +328,12 @@ function ore.follow(nav, isWanted, record, options)
       return 0, 1, 0
     end
 
-    consider(turtle.inspectDown, nav.down, nav.up, down, mayBridge)
-    consider(turtle.inspectUp, nav.up, nav.down, up, mayBridge)
+    consider(turtle.inspectDown, nav.down, nav.up, down, childMayBridge)
+    consider(turtle.inspectUp, nav.up, nav.down, up, childMayBridge)
 
     -- Four turns brings the turtle back to its original heading.
     for _ = 1, 4 do
-      consider(turtle.inspect, nav.forward, nav.back, forwardOffset, mayBridge)
+      consider(turtle.inspect, nav.forward, nav.back, forwardOffset, childMayBridge)
       nav.turnRight()
     end
 
@@ -315,8 +349,11 @@ function ore.follow(nav, isWanted, record, options)
     end
   end
 
-  explore(true)
-  return total - remaining, stoppedReason, stoppedKind, truncated
+  -- The starting cell is ordinary tunnel, not part of a vein. Inspect it for
+  -- adjacent ore, but never spend gap probes around empty trunk/rib cells. Once
+  -- a real ore block is entered, `childMayBridge` enables the one-block probes.
+  explore(false, true)
+  return total - remaining, stoppedReason, stoppedKind, truncated, resume
 end
 
 return ore

@@ -158,10 +158,12 @@ function plan.sector(p, index)
     trunkFromX = shaftX - half,
     trunkToX = shaftX - half + size - 1,
     trunkLength = size,
-    -- One short of half a cell on purpose. A rib reaching a full `half` from the
-    -- trunk lands on the first block of the next sector, which is how two
-    -- turtles that were given disjoint ground end up nose to nose anyway.
-    ribReach = half - 1,
+    -- Even-sized cells have one more block on the low-Z side of the centred
+    -- trunk than on the high-Z side. Preserve that asymmetry instead of using a
+    -- single reach: `half - 1` left a one-block unmined seam at every low edge,
+    -- while `half` on both sides would overlap the neighbouring sector.
+    ribReachLow = half,
+    ribReachHigh = size - half - 1,
   }
 end
 

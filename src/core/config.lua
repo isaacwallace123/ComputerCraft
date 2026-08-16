@@ -5,6 +5,19 @@
 
 local config = {}
 
+local function readTable(path)
+  if not fs.exists(path) then
+    return nil
+  end
+  local handle = fs.open(path, "r")
+  if not handle then
+    return nil
+  end
+  local ok, saved = pcall(textutils.unserialise, handle.readAll())
+  handle.close()
+  return ok and type(saved) == "table" and saved or nil
+end
+
 --- Read `path`, layered over `defaults`. Always returns a usable table.
 function config.load(path, defaults)
   local result = {}
@@ -12,14 +25,14 @@ function config.load(path, defaults)
     result[key] = value
   end
 
-  local handle = fs.exists(path) and fs.open(path, "r")
-  if handle then
-    local ok, saved = pcall(textutils.unserialise, handle.readAll())
-    handle.close()
-    if ok and type(saved) == "table" then
-      for key, value in pairs(saved) do
-        result[key] = value
-      end
+  -- A completed `.tmp` is left behind only when power was lost after the old
+  -- file was removed but before the rename. Recover it rather than silently
+  -- returning defaults - especially important for `.nav`, where defaults would
+  -- make a displaced turtle believe it was already home.
+  local saved = readTable(path) or readTable(path .. ".tmp")
+  if saved then
+    for key, value in pairs(saved) do
+      result[key] = value
     end
   end
 
@@ -33,12 +46,24 @@ function config.save(path, tbl)
     fs.makeDir(dir)
   end
 
-  local handle = fs.open(path, "w")
+  -- Write and close the replacement completely before touching the live file.
+  -- CC has no replace primitive, so a reboot may occur in the tiny delete/move
+  -- window; config.load's `.tmp` fallback makes that window recoverable.
+  local temporary = path .. ".tmp"
+  if fs.exists(temporary) then
+    fs.delete(temporary)
+  end
+  local handle = fs.open(temporary, "w")
   if not handle then
-    error("could not write " .. path, 0)
+    error("could not write " .. temporary, 0)
   end
   handle.write(textutils.serialise(tbl))
   handle.close()
+
+  if fs.exists(path) then
+    fs.delete(path)
+  end
+  fs.move(temporary, path)
 end
 
 return config

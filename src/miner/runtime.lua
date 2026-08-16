@@ -15,6 +15,13 @@ local function prepareJob(ctx)
   return true
 end
 
+local function readyJob(ctx)
+  if ctx.jobModule.ready then
+    return ctx.jobModule.ready(ctx.job)
+  end
+  return true
+end
+
 function runtime.localControls(ctx)
   while true do
     local event = { os.pullEvent() }
@@ -156,6 +163,16 @@ local function localSetup(ctx, changeJob)
   ctx.job = ctx.jobModule.setup(ui)
   ctx.interactive = false
   if ctx.job.active then
+    local ready, why, kind = readyJob(ctx)
+    if not ready then
+      ctx.job.active = false
+      ctx.jobModule.save(ctx.job)
+      ctx.node.parkKind = kind or "setup"
+      ctx.node.parkReason = why or "setup incomplete"
+      ctx:saveNode()
+      ctx:report("parked", ctx.node.parkReason)
+      return false
+    end
     ctx.node.parked = false
     ctx.node.parkKind = nil
     ctx.node.parkReason = nil
@@ -205,8 +222,8 @@ function runtime.park(ctx, reason, kind)
       local requester = ctx.control.deployFrom
       ctx.control.deployFrom = nil
       local canStart, why, notReadyKind = prepareJob(ctx)
-      if canStart and ctx.jobModule.ready then
-        canStart, why, notReadyKind = ctx.jobModule.ready(ctx.job)
+      if canStart then
+        canStart, why, notReadyKind = readyJob(ctx)
       end
 
       if canStart then
@@ -242,8 +259,8 @@ local function nextMiningCycle(ctx)
   -- claiming the new one afterwards can launch a turtle without its return
   -- reserve.
   local canStart, why, notReadyKind = prepareJob(ctx)
-  if canStart and ctx.jobModule.ready then
-    canStart, why, notReadyKind = ctx.jobModule.ready(ctx.job)
+  if canStart then
+    canStart, why, notReadyKind = readyJob(ctx)
   end
   if not canStart then
     runtime.park(ctx, why or "not enough fuel for another run", notReadyKind or "fuel")
@@ -263,6 +280,14 @@ function runtime.agent(ctx)
     ctx.interactive = true
     ctx.job = ctx.jobModule.setup(ui)
     ctx.interactive = false
+    if ctx.job.active then
+      local ready, why, kind = readyJob(ctx)
+      if not ready then
+        ctx.job.active = false
+        ctx.jobModule.save(ctx.job)
+        runtime.park(ctx, why or "setup incomplete", kind or "setup")
+      end
+    end
     if not ctx.job.active then
       runtime.park(ctx, "setup incomplete", "idle")
     end
@@ -281,7 +306,7 @@ function runtime.agent(ctx)
     local ok, stopped, stopKind = ctx.jobModule.run(ctx.job, jobContext)
     if ctx.control.recall or stopKind == "recalled" then
       ctx.control.recall = false
-      runtime.park(ctx, "recalled - move me, then press deploy", "recalled")
+      runtime.park(ctx, "recalled - deploy again; run where first if moved", "recalled")
     elseif not ok then
       log.error("job stopped: " .. tostring(stopped))
       sound.play("error")

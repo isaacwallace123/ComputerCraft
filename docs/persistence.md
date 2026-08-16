@@ -15,6 +15,9 @@ must stop requiring deleted modules before they are removed from the manifest.
 | `.node` | install/startup/miner context | role, label, selected job, parked state and reason, auto-update |
 | `.nav` | `turtle/nav.lua` | relative position/facing, movement statistics, world origin and heading |
 | `.fleet` | `fleet/roster.lua` | paired device snapshots and last-seen times |
+| `.fleet-policy` | `fleet/policy.lua` | unattended recovery, refresh, sync, and update policy |
+| `.fleet-log` | controller service | recent authoritative base log mirrored to a Pocket controller |
+| `.fleet-responses` | controller service | short-lived request-correlated operation replies |
 | `.mine` | `mine/registry.lua` | base mine plan, leases, and per-profile/depth frontiers |
 | `.site` | `mine/site.lua` | turtle's cached mine plan and most recent sector claim |
 | `.update` | bootstrap/updater | GitHub user, repo, branch, source path, optional token |
@@ -33,6 +36,10 @@ must stop requiring deleted modules before they are removed from the manifest.
 shallow merge. Nested tables are replaced, not recursively merged. Prefer flat saved
 fields for values that need forward-compatible defaults.
 
+Writes go to a temporary sibling first and replace the live file only after the new
+serialization is closed. If power is lost in the replacement window, loading recovers
+the completed temporary file instead of silently falling back to defaults.
+
 Movement state is written after each confirmed movement. Job checkpoints are written
 after completed cells, trunk cells, layers, or phase transitions. This ordering is
 intentional: a crash may repeat already-cleared air, but must not skip unmined blocks.
@@ -46,14 +53,17 @@ intentional: a crash may repeat already-cleared air, but must not skip unmined b
   file shape. Detection of those legacy keys marks the job unconfigured and inactive.
   A fresh absolute assignment is required.
 - Readers must tolerate missing fields because fleet devices update independently.
+- A Pocket Computer saved with the former `fleet` role migrates to `controller` at
+  startup, preventing it from competing with the stationary base hostname.
 - Never delete unknown persisted fields during a migration unless their meaning is
   dangerous. Layering defaults naturally preserves fields older code does not use.
 
 ## Moving a turtle
 
-`nav.setHome()` resets only job-relative coordinates. Absolute quarry navigation also
-depends on the world origin and heading recorded by the Where tool. After physically
-moving a quarry turtle, run Where again before assigning world coordinates.
+`nav.setHome()` resets only job-relative coordinates. Absolute quarry and shared-mine
+navigation also depend on the world origin and heading recorded by the Where tool.
+After physically moving or turning a turtle, run Where again before deploying it. The
+tool resets the relative frame and records the new world origin together.
 
 ## Secrets
 

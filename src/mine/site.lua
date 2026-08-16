@@ -26,6 +26,13 @@ site.CLAIM_TIMEOUT = 3
 
 local mailbox = nil
 
+local function sameGrid(a, b)
+  return a.centreX == b.centreX
+    and a.centreZ == b.centreZ
+    and a.cellSize == b.cellSize
+    and a.minRing == b.minRing
+end
+
 --- Called by the receive loop when the base answers.
 function site.deliver(body)
   mailbox = body
@@ -39,6 +46,7 @@ local function defaults()
     workKey = nil,
     claimedAt = 0,
     fromBase = false,
+    fallbackOffsets = {},
   }
 end
 
@@ -48,6 +56,7 @@ function site.load()
   state.sector = math.max(0, math.floor(tonumber(state.sector) or 0))
   state.frontier = math.max(0, math.floor(tonumber(state.frontier) or 0))
   state.workKey = type(state.workKey) == "string" and state.workKey or nil
+  state.fallbackOffsets = type(state.fallbackOffsets) == "table" and state.fallbackOffsets or {}
   return state
 end
 
@@ -60,9 +69,13 @@ end
 --- Spreading by computer ID is not as good as a lease - two turtles whose IDs are
 --- congruent modulo the sector count would share ground - but it is stable across
 --- reboots, needs no network, and never puts the whole fleet in sector 1.
-function site.fallbackSector(state)
+function site.fallbackSector(state, workKey)
   local capacity = plan.capacity(state.plan)
-  return ((os.getComputerID() - 1) % capacity) + 1
+  local offset = math.max(0, math.floor(tonumber(state.fallbackOffsets[workKey or ""] or 0)))
+  if offset >= capacity then
+    return nil
+  end
+  return ((os.getComputerID() - 1 + offset) % capacity) + 1
 end
 
 --- Ask the base for a sector, then wait briefly for the answer.
@@ -95,9 +108,19 @@ function site.claim(workKey, preferredSector, frontier)
           if reply.ok == false then
             claimError = tostring(reply.message or "base refused a sector")
             log.warn("mine: " .. claimError)
-            break
+            -- A reply is authoritative. Falling back after an explicit refusal
+            -- could resurrect an old grid after the base moved, or reopen a
+            -- worked-out sector after the configured capacity was exhausted.
+            state.claimedAt = os.epoch("utc")
+            state.fromBase = true
+            site.save(state)
+            return state, claimError
           else
-            state.plan = plan.normalise(reply.plan)
+            local receivedPlan = plan.normalise(reply.plan)
+            if not sameGrid(state.plan, receivedPlan) then
+              state.fallbackOffsets = {}
+            end
+            state.plan = receivedPlan
             state.sector = math.floor(tonumber(reply.sector) or 0)
             state.frontier = math.floor(tonumber(reply.frontier) or 0)
             state.workKey = workKey
@@ -112,7 +135,7 @@ function site.claim(workKey, preferredSector, frontier)
     end
   end
 
-  -- No base, no answer, or a refusal. Carry on with what we already know: an
+  -- No base or no answer. Carry on with what we already know: an
   -- unfinished sector we are already standing in is worth far more than a new
   -- one, and re-picking would be exactly the behaviour this design removes.
   --
@@ -120,11 +143,14 @@ function site.claim(workKey, preferredSector, frontier)
   -- is centred on world 0,0, which is a real place and certainly not this base -
   -- so stay unassigned and let the caller refuse to deploy.
   if state.plan.configured then
-    if preferredSector >= 1 and preferredSector <= plan.capacity(state.plan) then
+    local preferred = plan.sector(state.plan, preferredSector)
+    if preferred and frontier < preferred.trunkLength then
       state.sector = preferredSector
       state.frontier = frontier
     elseif state.workKey ~= workKey or state.sector < 1 then
-      state.sector = site.fallbackSector(state)
+      -- The preferred sector is already complete. Advance the stable offline
+      -- cursor instead of repeatedly redeploying to its final trunk cell.
+      state.sector = site.fallbackSector(state, workKey) or 0
       state.frontier = 0
     end
     state.workKey = workKey
@@ -133,7 +159,10 @@ function site.claim(workKey, preferredSector, frontier)
   state.fromBase = false
   site.save(state)
   if not state.plan.configured then
-    return state, claimError or "no mine plan received - keep Fleet open on the configured base"
+    return state, claimError or "no mine plan received - start the configured fleet base"
+  end
+  if state.sector < 1 then
+    return state, claimError or "offline mine capacity exhausted - reconnect the configured base"
   end
   return state, claimError
 end
@@ -151,6 +180,10 @@ function site.report(workKey, sector, frontier, blocks, exhausted)
     if exhausted then
       state.sector = 0
       state.frontier = 0
+      state.fallbackOffsets[workKey] = math.max(
+        0,
+        math.floor(tonumber(state.fallbackOffsets[workKey] or 0))
+      ) + 1
     end
   end
   site.save(state)

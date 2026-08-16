@@ -31,8 +31,9 @@ function network.heartbeat(ctx)
       ctx.baseId = found or ctx.baseId
     end
 
-    net.broadcast("status", ctx:snapshot())
-    ctx:draw()
+    local snapshot = ctx:snapshot()
+    net.broadcast("status", snapshot)
+    ctx:draw(snapshot)
     sleep(HEARTBEAT_SECONDS)
   end
 end

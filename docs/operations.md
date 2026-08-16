@@ -19,6 +19,7 @@ token-bearing command.
 ## Minimum hardware
 
 - Base: advanced computer, modem, and preferably an advanced monitor.
+- Handheld: advanced Pocket Computer with a wireless or ender modem upgrade.
 - Miner: advanced mining turtle with pickaxe and modem.
 - Recommended for unattended mining: ender modems and chunk loading.
 - Optional: speaker, secondary haul monitor, GPS cluster, compatible Geo Scanner.
@@ -26,6 +27,20 @@ token-bearing command.
 The modem is mandatory for control and telemetry but not for the mining loop itself.
 A standard mining turtle cannot simultaneously hold pickaxe, modem, and Geo Scanner
 because it has only two upgrade slots.
+
+## Handheld controller
+
+Install ICOS on an Advanced Pocket Computer and choose **Fleet handheld**. Existing
+Pocket installations that used the old Fleet role migrate automatically. The handheld
+boots into a touch-first shell with a permanent Home/System row and includes Fleet,
+Devices, Automation, Operations, Fleet Log, Update, Terminal, Setup, Power, and Ore
+Scan when a compatible scanner is attached.
+
+The stationary base must be running ICOS, but no dashboard app needs to be open. An
+ender modem is strongly recommended: ordinary wireless range and chunk loading still
+apply. Operations on the handheld execute at the base, so mine plans, sector leases,
+and coordinated quarry assignments remain authoritative rather than becoming a second
+local copy.
 
 ## Normal deployment workflow
 
@@ -48,7 +63,7 @@ can also use Update on the base or update/update-all in Devices.
 1. Park every participating turtle over its chest.
 2. Run the Where system tool on each turtle and enter its world position and heading.
 3. Confirm every turtle appears connected and parked in Devices.
-4. On the physical base console, run:
+4. Use Operations on the base/handheld, or run this on the physical base console:
 
    ```text
    quarry <x1> <z1> <x2> <z2> <topY> <bottomY>

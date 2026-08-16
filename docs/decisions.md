@@ -169,3 +169,22 @@ turtle that arrived while its neighbour was chewing through gravel could be mine
 `src/core/version.lua` is the single installed version. The GitHub workflow serializes
 merges and applies semantic version labels, avoiding conflicting manual bumps across
 parallel feature branches.
+
+## D018 — Fleet networking is a boot service, not a page
+
+**Status:** accepted
+
+Discovery, claim handling, and lease renewal used to live inside `apps/fleet.lua`.
+Closing one dashboard silently disabled the fleet's coordination. `fleet/service.lua`
+now starts beside the UI and is the sole base-side receiver. Apps read persisted state
+and issue commands; their lifecycle no longer controls the fleet's lifecycle.
+
+## D019 — A handheld is a controller, never a second base
+
+**Status:** accepted
+
+Pocket Computers need the full control surface but must not compete for Rednet hostname
+`base` or lease sectors from a private copy of `.mine`. Role `controller` therefore
+uses a touch-first shell, mirrors roster/policy/log state, and sends validated mine and
+quarry operations to the stationary authority. Direct turtle commands remain
+best-effort, while authoritative mutations receive request-correlated results.

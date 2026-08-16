@@ -456,13 +456,14 @@ function nav.goHome()
   return true
 end
 
---- Record where home is in the world, and which way the turtle faced when the
---- job started. `heading` is an index into nav.COMPASS.
+--- Declare the current block as home in both coordinate systems, and record
+--- which way the turtle faces there. `heading` is an index into nav.COMPASS.
 ---
 --- This is what makes real world coordinates possible without GPS. The turtle
 --- already knows its offset from home exactly - every move is only counted once
 --- the game confirms it - so one fixed reference point is all that is missing.
 function nav.setOrigin(x, y, z, heading)
+  state.x, state.y, state.z, state.facing = 0, 0, 0, 0
   state.originSet = true
   state.originX, state.originY, state.originZ = x, y, z
   state.originHeading = heading % 4

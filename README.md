@@ -68,6 +68,7 @@ src/
     config.lua       table persistence with defaults
     console.lua      physical-PC fleet log, prompt, and remote commands
     desktop.lua      monitor desktop, windows, icons, and taskbar
+    handheld.lua     touch-first Pocket Computer shell and app switching
     device.lua       computer/turtle/peripheral capability detection
     display.lua      primary/secondary monitor selection and automatic scaling
     log.lua          capped file log + in-memory ring buffer
@@ -94,12 +95,15 @@ src/
     prospecting/     reusable branch-grid runner and ore profiles
 
   miner/             turtle lifecycle, telemetry, and remote commands
-  fleet/             shared device roster and coordinated assignments
+  fleet/             always-on service, controller sync, policy, roster, assignments
 
   apps/              entry points — the only files that wire things together
     miner.lua        turtle agent: run jobs, report, obey fleet orders
-    fleet.lua        base station: discovery, scalable overview, fleet commands
+    fleet.lua        scalable overview and fleet-wide commands
     devices.lua      paired-device browser, detail pages, remote configuration
+    automation.lua   unattended fleet policy
+    operations.lua   shared-mine and coordinated-quarry control
+    logs.lua         local/handheld fleet log viewer
     power.lua        animated restart and shutdown
     swarm.lua        deploy a line of turtles, then reclaim them
     scan.lua         Geo Scanner ore listing

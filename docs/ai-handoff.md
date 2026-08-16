@@ -126,12 +126,23 @@ large AFK run.
   `sector = 0` will not move: the runner walks home and asks for a sector first, because
   the unset shaft coordinates are `0,0` and that is a real place in the world.
 - Prospecting now requires a world origin (`where`), as the coordinated quarry already
-  did. `ready()` refuses to deploy without one.
-- The base needs `mine here` run once and the Fleet app kept open before it can lease
-  sectors. Prospecting frontiers are keyed by job and target Y; do not collapse them
-  into one sector-wide completion value.
+  did. `ready()` refuses to deploy without one. Where declares the current block as
+  both relative home and world origin in one save; run it again after moving or turning
+  a parked turtle.
+- The base needs a shared mine configured once, through Operations or `mine here`.
+  `fleet/service.lua` leases sectors at boot; Fleet is only a view and need not stay
+  open. Prospecting frontiers are keyed by job and target Y; do not collapse them into
+  one sector-wide completion value.
+- Pocket Computers use role `controller`, run `core/handheld.lua`, and mirror the
+  authoritative base. They must never host the base name or answer `mine` requests.
 - Legacy relative quarry files are intentionally invalidated and require a new
   absolute assignment.
+- Partial Quarry and Hollow runs resume their saved cells after recall/fuel/error;
+  configuration changes and completed redeploys reset them.
+- Prospecting persists a world coordinate beside an unfinished vein. Do not remove it
+  or advance the sector frontier until that pending vein has been revisited.
+- `core/config.lua` replaces state through a completed `.tmp` file. Its load fallback is
+  part of crash-safe navigation; do not revert `.nav` to in-place overwrite.
 - A standard mining turtle cannot carry pickaxe, modem, and Geo Scanner at once.
 - The updater deploys only `src/manifest.json`; documentation remains repository-side.
 

@@ -58,10 +58,20 @@ end
 --- Announce this computer as the fleet base so turtles can find it by name
 --- instead of you hardcoding an ID anywhere.
 function net.hostAsBase()
-  if not net.open() then
-    return false
+  local opened, openError = net.open()
+  if not opened then
+    return false, openError
   end
-  rednet.host(net.PROTOCOL, net.HOSTNAME)
+
+  -- Hosting the same protocol twice throws. This can happen after a modem is
+  -- detached and reattached while the Lua process survives, because the local
+  -- hostname registration outlives the peripheral connection. Re-register from
+  -- a known state and surface a real network name conflict as a normal failure.
+  pcall(rednet.unhost, net.PROTOCOL)
+  local hosted, hostError = pcall(rednet.host, net.PROTOCOL, net.HOSTNAME)
+  if not hosted then
+    return false, tostring(hostError)
+  end
   return true
 end
 

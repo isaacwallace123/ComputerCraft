@@ -2,8 +2,8 @@
 ---
 ---   splash -> automatic update -> hardware-appropriate shell
 ---
---- Computers get the monitor desktop. Turtles get a compact launcher, and a
---- single valid app starts immediately. Holding a key during the splash opens
+--- Computers get the monitor desktop, Pocket Computers get a touch-first shell,
+--- and turtles get a compact launcher. Holding a key during the splash opens
 --- system tools instead, so a broken autorun can never trap the machine.
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
@@ -26,13 +26,22 @@ local node = config.load(NODE_PATH, {
 })
 
 local caps = device.capabilities()
+
+-- Early builds offered the stationary base role to Pocket Computers. Migrate
+-- those installations to the controller role so they never compete with the
+-- real base for the hosted Rednet name.
+if caps.kind == "pocket" and node.role == "fleet" then
+  node.role = "controller"
+  config.save(NODE_PATH, node)
+end
+
 local localScreen = term.current()
 local screen = localScreen
 local monitor, monitorName
 
 -- Turtles keep their own compact screen. Computers promote an attached
 -- monitor to the ICOS desktop and choose the largest readable scale that fits.
-if caps.kind ~= "turtle" then
+if caps.kind ~= "turtle" and caps.kind ~= "pocket" then
   monitor, _, _, _, monitorName = display.attach(42, 18)
   screen = monitor or screen
 end
@@ -150,35 +159,66 @@ if caps.kind == "turtle" then
   end
 end
 
-local desktop = require("core.desktop")
-local desktopApps = apps.available(caps, node, "desktop")
 local modemStatus = caps.modem and (caps.wireless and "wireless modem" or "wired modem")
   or "NO MODEM DETECTED"
 local homeMessage = ("v%s  role %s  %s"):format(boot.VERSION, node.role or "unset", modemStatus)
-local homeWarning = node.role ~= "fleet" or not caps.modem
+local homeWarning = (node.role ~= "fleet" and node.role ~= "controller") or not caps.modem
 
-if monitor then
-  local console = require("core.console")
-  parallel.waitForAny(function()
-    desktop.run(screen, desktopApps, {
+local function interfaceSession()
+  if caps.kind == "pocket" then
+    local handheld = require("core.handheld")
+    handheld.run(screen, apps.available(caps, node, "handheld"), {
       name = boot.NAME,
-      autoLaunch = false,
-      localInput = false,
-      monitorName = monitorName,
       homeMessage = homeMessage,
       homeWarning = homeWarning,
     })
-  end, function()
-    console.run(localScreen, { name = boot.NAME })
-  end)
-else
-  desktop.run(screen, desktopApps, {
-    name = boot.NAME,
-    autoLaunch = false,
-    localInput = true,
-    homeMessage = homeMessage,
-    homeWarning = homeWarning,
-  })
+  else
+    local desktop = require("core.desktop")
+    local desktopApps = apps.available(caps, node, "desktop")
+    if monitor then
+      local console = require("core.console")
+      parallel.waitForAny(function()
+        desktop.run(screen, desktopApps, {
+          name = boot.NAME,
+          autoLaunch = false,
+          localInput = false,
+          monitorName = monitorName,
+          homeMessage = homeMessage,
+          homeWarning = homeWarning,
+        })
+      end, function()
+        console.run(localScreen, { name = boot.NAME })
+      end)
+    else
+      desktop.run(screen, desktopApps, {
+        name = boot.NAME,
+        autoLaunch = false,
+        localInput = true,
+        homeMessage = homeMessage,
+        homeWarning = homeWarning,
+      })
+    end
+  end
+  systemMenu(apps)
 end
 
-systemMenu(apps)
+if node.role == "fleet" or node.role == "controller" then
+  local service = require("fleet.service")
+  local serviceMain = node.role == "fleet" and service.runBase or service.runController
+  local function superviseService()
+    local log = require("core.log")
+    while true do
+      local ok, err = pcall(serviceMain)
+      if not ok and not tostring(err):find("Terminated", 1, true) then
+        log.error("fleet service crashed - " .. tostring(err) .. "; restarting")
+      end
+      sleep(2)
+    end
+  end
+  parallel.waitForAny(superviseService, interfaceSession)
+  if node.role == "fleet" then
+    require("core.net").unhostBase()
+  end
+else
+  interfaceSession()
+end

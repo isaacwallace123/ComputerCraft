@@ -63,11 +63,14 @@ local function copyDefaults(definition)
     trunkFromX = 0,
     trunkToX = 0,
     trunkLength = 48,
+    -- `ribReach` is retained only to migrate a route saved by the first shared-
+    -- mine build. New routes persist the two edge-accurate reaches below.
     ribReach = 24,
     branchSpacing = 3,
 
     phase = "travel",
     returnViaShaft = false,
+    pendingVein = nil,
     haul = {},
     delivered = 0,
     active = false,
@@ -104,13 +107,30 @@ function factory.create(definition)
       return false, "no shared mine sector is available"
     end
 
+    local previousSector = job.sector
+    local pending = job.pendingVein
+    if
+      pending
+      and (
+        (pending.sector or previousSector) ~= sector.index
+        or (pending.shaftX ~= nil and pending.shaftX ~= sector.shaftX)
+        or (pending.shaftZ ~= nil and pending.shaftZ ~= sector.shaftZ)
+        or (pending.targetY ~= nil and pending.targetY ~= job.targetY)
+      )
+    then
+      -- A pending coordinate belongs to one physical route. Never carry it into
+      -- a replacement lease or a mine plan whose sector number moved.
+      job.pendingVein = nil
+    end
+
     job.sector = sector.index
     job.frontier = math.max(0, math.min(state.frontier, sector.trunkLength))
     job.shaftX, job.shaftZ = sector.shaftX, sector.shaftZ
     job.trunkZ = sector.trunkZ
     job.trunkFromX, job.trunkToX = sector.trunkFromX, sector.trunkToX
     job.trunkLength = sector.trunkLength
-    job.ribReach = sector.ribReach
+    job.ribReachLow = sector.ribReachLow
+    job.ribReachHigh = sector.ribReachHigh
     job.branchSpacing = state.plan.branchSpacing
     job.laneY = plan.laneY(state.plan, sector.index)
     job.surfaceY = state.plan.surfaceY
@@ -127,6 +147,21 @@ function factory.create(definition)
 
   function jobType.load()
     local job = config.load(jobType.PATH, defaults)
+
+    if job.ribReachLow == nil then
+      job.ribReachLow = job.ribReach or 24
+    end
+    if job.ribReachHigh == nil then
+      job.ribReachHigh = math.max(0, (job.ribReach or 24) - 1)
+    end
+    if
+      type(job.pendingVein) ~= "table"
+      or type(job.pendingVein.x) ~= "number"
+      or type(job.pendingVein.y) ~= "number"
+      or type(job.pendingVein.z) ~= "number"
+    then
+      job.pendingVein = nil
+    end
 
     -- Files written by the random-bearing builds carry phases that no longer
     -- exist. `shaft` is the direct ancestor of `descend`; anything else unknown
@@ -149,8 +184,18 @@ function factory.create(definition)
     return profiles.matcher(definition.profile, job.extraPatterns)
   end
 
-  function jobType.junkMatcher()
-    return ore.junkMatcher(definition.profile == "resources" and { "andesite" } or {})
+  function jobType.junkMatcher(job)
+    local keep = {}
+    if definition.profile == "resources" then
+      keep[#keep + 1] = "andesite"
+    end
+    -- A manually configured extra target must also be retained as an item. The
+    -- previous split detected (for example) granite as wanted ore, then dropped
+    -- the resulting granite because the junk policy never saw `extraPatterns`.
+    for _, pattern in ipairs(job.extraPatterns or {}) do
+      keep[#keep + 1] = pattern
+    end
+    return ore.junkMatcher(keep)
   end
 
   function jobType.estimateFuel(job)
@@ -158,7 +203,11 @@ function factory.create(definition)
     local spacing = math.max(1, job.branchSpacing)
     local ribCount = math.floor((job.trunkLength or 0) / spacing)
       - math.floor((job.frontier or 0) / spacing)
-    local ribs = ribCount * (job.ribReach or 0) * 4
+    -- Each rib is walked out and back. Low/high reaches differ by one for an
+    -- even cell size so the whole sector is covered without crossing its edge.
+    local low = job.ribReachLow or job.ribReach or 0
+    local high = job.ribReachHigh or math.max(0, low - 1)
+    local ribs = ribCount * (low + high) * 2
     return 2 * routeCost(job) + remaining + ribs + SAFETY_MARGIN
   end
 
@@ -199,20 +248,16 @@ function factory.create(definition)
     end
 
     if (job.sector or 0) < 1 then
-      return false,
-        "no shared mine sector - run `mine here` and keep Fleet open on the base",
-        "setup"
+      return false, "no shared mine sector - configure Operations on the running base", "setup"
     end
 
     local needed = jobType.minimumFuel(job)
-    if fuel.available() >= needed then
+    local available = fuel.available()
+    if available >= needed then
       return true
     end
     return false,
-      ("needs %d total fuel, has %d including inventory"):format(
-        needed,
-        math.floor(fuel.available())
-      ),
+      ("needs %d total fuel, has %d including inventory"):format(needed, math.floor(available)),
       "fuel"
   end
 
@@ -230,7 +275,7 @@ function factory.create(definition)
     local applied, applyError = applyRoute(job, state)
     if not applied then
       return false,
-        claimError or applyError or "no mine plan - run `mine here` and keep Fleet open on the base",
+        claimError or applyError or "no mine plan - configure Operations on the running base",
         "setup"
     end
 
@@ -270,11 +315,14 @@ function factory.create(definition)
         veinRadius = job.veinRadius,
         sector = job.sector,
         frontier = job.frontier,
+        pendingVein = job.pendingVein ~= nil,
       },
     }
   end
 
   function jobType.configure(job, settings)
+    local updates = {}
+    local previousTargetY = job.targetY
     for _, field in ipairs(jobType.settingFields) do
       if settings[field.key] ~= nil then
         local value = tonumber(settings[field.key])
@@ -285,8 +333,14 @@ function factory.create(definition)
         if value < field.min or value > field.max then
           return false, ("%s must be %d..%d"):format(field.key, field.min, field.max)
         end
-        job[field.key] = value
+        updates[field.key] = value
       end
+    end
+    for key, value in pairs(updates) do
+      job[key] = value
+    end
+    if job.targetY ~= previousTargetY then
+      job.pendingVein = nil
     end
     jobType.save(job)
     return true
@@ -323,7 +377,7 @@ function factory.create(definition)
 
     if not prepared then
       printError("\n" .. tostring(prepareError))
-      printError("Run `mine here` on the base console, keep Fleet open,")
+      printError("Configure the shared mine in Operations on the running base,")
       printError("then configure this turtle again.")
       job.active = false
       jobType.save(job)
