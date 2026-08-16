@@ -16,10 +16,13 @@ function inv.isFull()
   return inv.freeSlots() == 0
 end
 
-function inv.itemCount()
+function inv.itemCount(predicate)
   local total = 0
   for slot = 1, 16 do
-    total = total + turtle.getItemCount(slot)
+    local detail = turtle.getItemDetail(slot)
+    if detail and (not predicate or predicate(detail, slot)) then
+      total = total + detail.count
+    end
   end
   return total
 end
@@ -42,6 +45,27 @@ function inv.dropAll(dropFn)
 
   turtle.select(selected)
   return before - inv.itemCount()
+end
+
+--- Drop everything except items accepted by `keep`. This is used at the depot
+--- so fuel remains aboard while ore and empty lava buckets are unloaded.
+function inv.dropAllExcept(keep, dropFn)
+  dropFn = dropFn or turtle.drop
+  local selected = turtle.getSelectedSlot()
+  local dropped = 0
+
+  for slot = 1, 16 do
+    local detail = turtle.getItemDetail(slot)
+    if detail and not keep(detail, slot) then
+      turtle.select(slot)
+      local before = turtle.getItemCount(slot)
+      dropFn()
+      dropped = dropped + before - turtle.getItemCount(slot)
+    end
+  end
+
+  turtle.select(selected)
+  return dropped
 end
 
 --- Throw away everything `isJunk` says is worthless, in place.

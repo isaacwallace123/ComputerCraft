@@ -11,14 +11,10 @@ local net = require("core.net")
 local log = require("core.log")
 local util = require("core.util")
 local sound = require("core.sound")
-local config = require("core.config")
 local display = require("core.display")
+local rosterStore = require("fleet.roster")
 
 local embedded = ({ ... })[1] == "--embedded"
-
-local ROSTER_PATH = ".fleet"
-local LATE_AFTER = 10
-local OFFLINE_AFTER = 60
 
 local COLUMNS = {
   { title = "NAME", width = 11 },
@@ -29,7 +25,7 @@ local COLUMNS = {
   { title = "SEEN", width = 6, align = "right" },
 }
 
-local roster = config.load(ROSTER_PATH, {})
+local roster = rosterStore.load()
 local scroll = 0
 local visibleRows = 1
 local clickTargets = {}
@@ -39,18 +35,18 @@ local auxiliary, auxiliaryName
 local haulPage = 1
 
 local function saveRoster()
-  config.save(ROSTER_PATH, roster)
+  rosterStore.save(roster)
 end
 
 local function age(node)
-  return util.since(node.lastSeen)
+  return rosterStore.age(node)
 end
 
 local function statusColor(node)
   local snap = node.snap or {}
-  if age(node) > OFFLINE_AFTER or snap.phase == "stuck" then
+  if age(node) > rosterStore.OFFLINE_AFTER or snap.phase == "stuck" then
     return ui.theme.bad
-  elseif age(node) > LATE_AFTER then
+  elseif age(node) > rosterStore.LATE_AFTER then
     return ui.theme.warn
   elseif snap.phase == "parked" then
     return ui.theme.accent
@@ -59,22 +55,14 @@ local function statusColor(node)
 end
 
 local function nodes()
-  local list = {}
-  for id, node in pairs(roster) do
-    node.id = tonumber(id) or id
-    list[#list + 1] = node
-  end
-  table.sort(list, function(a, b)
-    return tostring((a.snap and a.snap.label) or a.id) < tostring((b.snap and b.snap.label) or b.id)
-  end)
-  return list
+  return rosterStore.sorted(roster)
 end
 
 local function totals(list)
   local sum = { online = 0, parked = 0, digs = 0, delivered = 0, haul = {} }
   for _, node in ipairs(list) do
     local snap = node.snap or {}
-    if age(node) <= OFFLINE_AFTER then
+    if age(node) <= rosterStore.OFFLINE_AFTER then
       sum.online = sum.online + 1
       if snap.phase == "parked" then
         sum.parked = sum.parked + 1
@@ -272,7 +260,7 @@ local function draw()
         color = statusColor(node),
         cells = {
           snap.label or ("id " .. tostring(node.id)),
-          age(node) > OFFLINE_AFTER and "offline" or (snap.phase or "unknown"),
+          age(node) > rosterStore.OFFLINE_AFTER and "offline" or (snap.phase or "unknown"),
           { text = positionText(snap), color = ui.theme.fg },
           fuelCell(snap),
           ("%d%%"):format(math.floor((snap.progress or 0) * 100)),
@@ -297,22 +285,12 @@ local function listen()
     if sender and kind then
       local key = tostring(sender)
       if kind == "hello" and type(body) == "table" then
-        local previous = roster[key]
-        roster[key] = {
-          snap = body,
-          lastSeen = os.epoch("utc"),
-          pairedAt = previous and previous.pairedAt or os.epoch("utc"),
-        }
+        rosterStore.update(roster, key, body)
         log.info((body.label or key) .. " joined")
         sound.play("ready")
         saveRoster()
       elseif kind == "status" and type(body) == "table" then
-        local previous = roster[key]
-        roster[key] = {
-          snap = body,
-          lastSeen = os.epoch("utc"),
-          pairedAt = previous and previous.pairedAt or os.epoch("utc"),
-        }
+        local previous = rosterStore.update(roster, key, body)
 
         local oldPhase = previous and previous.snap and previous.snap.phase
         if body.phase ~= oldPhase then
