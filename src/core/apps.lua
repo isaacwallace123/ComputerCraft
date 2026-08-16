@@ -16,9 +16,6 @@ local DEFINITIONS = {
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet" },
     surfaces = { "desktop" },
-    needs = function(caps)
-      return caps.modem
-    end,
   },
   {
     id = "devices",
@@ -28,9 +25,6 @@ local DEFINITIONS = {
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet" },
     surfaces = { "desktop" },
-    needs = function(caps)
-      return caps.modem
-    end,
   },
   {
     id = "miner",

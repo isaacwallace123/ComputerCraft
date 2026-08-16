@@ -8,6 +8,7 @@ local log = require("core.log")
 local config = require("core.config")
 local boot = require("core.boot")
 local version = require("core.version")
+local device = require("core.device")
 
 local console = {}
 
@@ -98,6 +99,19 @@ local function openDevice(word)
   log.info("console: opened " .. label .. " on monitor")
 end
 
+local function showSystem()
+  local node = config.load(".node", {})
+  local caps = device.capabilities()
+  local modem = caps.modem and (caps.wireless and "wireless" or "wired") or "MISSING"
+  log.info(("system: ICOS v%s  id #%d  role %s"):format(version, caps.id, node.role or "unset"))
+  log.info(("hardware: modem %s  monitor %s"):format(modem, caps.monitor and "yes" or "none"))
+  if node.role ~= "fleet" then
+    log.warn("system: Fleet apps require role fleet - type `setup`")
+  elseif not caps.modem then
+    log.warn("system: Fleet is offline - attach a modem")
+  end
+end
+
 local HELP = "help | status | recall [all|device] | deploy [all|device] | refresh [all|device]"
 
 function console.run(target, opts)
@@ -171,7 +185,9 @@ function console.run(target, opts)
 
     if command == "help" or command == "?" then
       log.info("console: " .. HELP)
-      log.info("console: open devices <device> | clear | update | setup | reboot | exit")
+      log.info("console: about | open devices <device> | clear | update | setup | reboot | exit")
+    elseif command == "about" or command == "system" then
+      showSystem()
     elseif command == "status" or command == "devices" or command == "list" then
       listDevices()
     elseif command == "recall" or command == "deploy" then
@@ -197,6 +213,7 @@ function console.run(target, opts)
     end
   end
 
+  showSystem()
   log.info("physical console ready - type `help`")
   draw()
   local refresh = os.startTimer(1)

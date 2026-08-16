@@ -266,6 +266,13 @@ only when they can run. Every maximized page owns one title bar, with a Windows-
 taskbar for switching and closing apps. ICOS Home is the permanent page and cannot be
 closed.
 
+ICOS Home shows the installed version, saved role, and detected modem. Fleet and
+Devices remain visible on a fleet-role computer even when the modem is missing, so a
+hardware problem produces an explicit offline screen instead of silently removing the
+apps. If Home reports the wrong role, type `setup` on the physical PC; if it reports
+`NO MODEM DETECTED`, check the modem attachment and reopen Fleet. The PC console's
+`about` command prints the same diagnosis.
+
 The computer's own screen becomes a keyboard-driven console whenever the desktop is
 on a monitor. It shows the same persistent log Fleet writes and accepts commands such
 as `status`, `recall all`, `deploy miner-2`, `refresh`, and
