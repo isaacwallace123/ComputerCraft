@@ -14,9 +14,9 @@
 --- Either way it grabs the two files needed to self-update, then hands off to
 --- update.lua which pulls everything in src/manifest.json.
 
-local USER = "" -- fill in and commit if you like; never commit a token
-local REPO = ""
-local BRANCH = "main"
+local USER = "isaacwallace123" -- safe to commit; never commit a token
+local REPO = "ComputerCraft"
+local BRANCH = "master"
 local PATH = "src"
 
 local user, repo, branch = USER, REPO, BRANCH

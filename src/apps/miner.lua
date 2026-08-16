@@ -48,6 +48,11 @@ local lastLookup = 0
 local control = { recall = false, deploy = false }
 local status = { phase = "idle", detail = "" }
 
+-- Set while a setup prompt is on screen. The heartbeat thread runs alongside
+-- the agent, so without this it would clear the terminal underneath the
+-- questions the player is halfway through answering.
+local interactive = false
+
 --- Ask which job this turtle runs. Only on first boot.
 local function chooseJob()
   local names, labels = {}, {}
@@ -104,6 +109,9 @@ local function snapshot()
 end
 
 local function drawLocal()
+  if interactive then
+    return
+  end
   local snap = snapshot()
   ui.clear()
   ui.header(snap.label, net.isOpen() and (baseId and "linked" or "no base") or "no modem")
@@ -209,7 +217,9 @@ local function agent()
   if node.parked then
     park("parked before reboot")
   elseif not job.active then
+    interactive = true
     job = jobModule.setup(ui)
+    interactive = false
     if not job.active then
       park("setup incomplete")
     end

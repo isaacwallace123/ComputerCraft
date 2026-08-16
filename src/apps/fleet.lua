@@ -122,7 +122,17 @@ local function drawDashboard()
     return
   end
 
-  local wide = width >= 62
+  -- Columns are dropped from the right as the screen narrows, rather than one
+  -- all-or-nothing "wide" layout. A 4x3 monitor at text scale 0.5 lands around
+  -- 57 columns, which is exactly the sort of width a hardcoded cutoff gets
+  -- wrong. Widths are logged at startup so you can see what you actually have.
+  local COL = { name = 2, phase = 13, pos = 22, fuel = 36, done = 44, seen = 49 }
+  local show = {
+    fuel = width >= 43,
+    done = width >= 48,
+    seen = width >= 55,
+    bar = width >= 70,
+  }
 
   -- Reserve the bottom of the screen for the haul panel, but never so much that
   -- the turtle rows get squeezed out on a small monitor.
@@ -130,13 +140,17 @@ local function drawDashboard()
   local haulHeight = (#haul > 0 and height > 14) and math.min(6, #haul + 2) or 0
   local lastRow = height - haulHeight - 1
 
-  ui.text(2, 3, "NAME", ui.theme.dim)
-  ui.text(14, 3, "PHASE", ui.theme.dim)
-  ui.text(25, 3, "POSITION", ui.theme.dim)
-  if wide then
-    ui.text(40, 3, "FUEL", ui.theme.dim)
-    ui.text(50, 3, "DONE", ui.theme.dim)
-    ui.text(width - 5, 3, "SEEN", ui.theme.dim)
+  ui.text(COL.name, 3, "NAME", ui.theme.dim)
+  ui.text(COL.phase, 3, "PHASE", ui.theme.dim)
+  ui.text(COL.pos, 3, "POSITION", ui.theme.dim)
+  if show.fuel then
+    ui.text(COL.fuel, 3, "FUEL", ui.theme.dim)
+  end
+  if show.done then
+    ui.text(COL.done, 3, "DONE", ui.theme.dim)
+  end
+  if show.seen then
+    ui.text(COL.seen, 3, "SEEN", ui.theme.dim)
   end
 
   local row = 4
@@ -149,33 +163,39 @@ local function drawDashboard()
     local color = statusColor(node)
     local seconds = age(node)
 
-    ui.text(2, row, util.fit(snap.label or ("id " .. tostring(node.id)), 11), color)
+    ui.text(COL.name, row, util.fit(snap.label or ("id " .. tostring(node.id)), 10), color)
     ui.text(
-      14,
+      COL.phase,
       row,
-      util.fit(seconds > OFFLINE_AFTER and "offline" or (snap.phase or "?"), 10),
+      util.fit(seconds > OFFLINE_AFTER and "offline" or (snap.phase or "?"), 8),
       color
     )
     ui.text(
-      25,
+      COL.pos,
       row,
       util.fit(
         snap.world and ("%d,%d,%d"):format(snap.world.x, snap.world.y, snap.world.z)
           or ("%d,%d,%d"):format(snap.x or 0, snap.y or 0, snap.z or 0),
-        14
+        13
       ),
       ui.theme.fg
     )
 
-    if wide then
+    if show.fuel then
       if (snap.fuel or 0) < 0 then
-        ui.text(40, row, "unlim", ui.theme.dim)
+        ui.text(COL.fuel, row, "unlim", ui.theme.dim)
       else
-        ui.bar(40, row, 8, snap.fuelFraction or 0)
+        ui.bar(COL.fuel, row, 7, snap.fuelFraction or 0)
       end
-      ui.text(50, row, ("%3d%%"):format(math.floor((snap.progress or 0) * 100)), ui.theme.fg)
-      ui.bar(56, row, math.max(4, width - 63), snap.progress or 0, ui.theme.accent)
-      ui.text(width - 5, row, util.fit(util.duration(seconds), 5), color)
+    end
+    if show.done then
+      ui.text(COL.done, row, ("%3d%%"):format(math.floor((snap.progress or 0) * 100)), ui.theme.fg)
+    end
+    if show.seen then
+      ui.text(COL.seen, row, util.fit(util.duration(seconds), 5), color)
+    end
+    if show.bar then
+      ui.bar(COL.seen + 6, row, width - COL.seen - 6, snap.progress or 0, ui.theme.accent)
     end
 
     row = row + 1
@@ -186,7 +206,7 @@ local function drawDashboard()
     local top = height - haulHeight
     ui.text(2, top, "HAUL", ui.theme.dim)
 
-    local perRow = wide and 3 or 1
+    local perRow = width >= 60 and 3 or (width >= 40 and 2 or 1)
     local columnWidth = math.floor((width - 2) / perRow)
     local index = 0
 
@@ -311,6 +331,18 @@ end
 log.info("base station online, hosting '" .. net.HOSTNAME .. "'")
 if not net.isWireless() then
   log.warn("wired modem - turtles will not reach this")
+end
+
+-- Log the real character dimensions. Monitor size depends on the block layout
+-- AND the text scale, so guessing at it is how dashboards end up clipped.
+if monitor then
+  local mw, mh = monitor.getSize()
+  log.info(("monitor %dx%d chars at scale %s"):format(mw, mh, tostring(settings.textScale)))
+  if mw < 43 then
+    log.warn("narrow monitor - fuel and progress columns hidden")
+  end
+else
+  log.warn("no monitor attached - drawing on this screen")
 end
 
 parallel.waitForAny(listen, redraw, controls)

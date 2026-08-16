@@ -14,9 +14,9 @@ local config = require("core.config")
 local CONFIG_PATH = ".update"
 
 local defaults = {
-  user = "",
-  repo = "",
-  branch = "main",
+  user = "isaacwallace123",
+  repo = "ComputerCraft",
+  branch = "master", -- this repo's default branch is master, not main
   path = "src", -- folder in the repo holding these programs
   token = "", -- only for a PRIVATE repo; see the warning below
 }
@@ -27,21 +27,35 @@ local defaults = {
 -- repository with Contents: Read-only and an expiry date. Never a classic
 -- token, never one you use anywhere else.
 
+-- Prompt on the first run only. Keyed on the file existing rather than on the
+-- fields being blank, so the baked-in defaults above can still be confirmed or
+-- overridden - and so a private repo gets asked for its token.
+local firstRun = not fs.exists(CONFIG_PATH)
 local cfg = config.load(CONFIG_PATH, defaults)
 
-if cfg.user == "" or cfg.repo == "" then
-  print("First run - where does your code live?\n")
-  write("GitHub username: ")
-  cfg.user = read() or ""
-  write("Repository name: ")
-  cfg.repo = read() or ""
-  write("Branch [main]: ")
-  local branch = read() or ""
+if firstRun then
+  print("First run - press enter to accept each default.\n")
+  write("GitHub username [" .. cfg.user .. "]: ")
+  cfg.user = (read() or ""):gsub("^%s*(.-)%s*$", "%1")
+  if cfg.user == "" then
+    cfg.user = defaults.user
+  end
+
+  write("Repository [" .. cfg.repo .. "]: ")
+  cfg.repo = (read() or ""):gsub("^%s*(.-)%s*$", "%1")
+  if cfg.repo == "" then
+    cfg.repo = defaults.repo
+  end
+
+  write("Branch [" .. cfg.branch .. "]: ")
+  local branch = (read() or ""):gsub("^%s*(.-)%s*$", "%1")
   if branch ~= "" then
     cfg.branch = branch
   end
+
   write("Access token (blank if the repo is public): ")
   cfg.token = read("*") or ""
+
   config.save(CONFIG_PATH, cfg)
   print("")
 end
