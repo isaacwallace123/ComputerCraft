@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-16T07:45:23-04:00",
+    "generated":  "2026-08-16T08:03:10-04:00",
     "files":  [
                   "apps/devices.lua",
                   "apps/equip.lua",
@@ -21,6 +21,7 @@
                   "core/sound.lua",
                   "core/ui.lua",
                   "core/util.lua",
+                  "core/version.lua",
                   "install.lua",
                   "jobs/expedition.lua",
                   "jobs/quarry.lua",

@@ -13,6 +13,13 @@ local ui = require("core.ui")
 local config = require("core.config")
 
 local CONFIG_PATH = ".update"
+local RESULT_PATH = ".update-result"
+local rebootAfter = false
+for _, argument in ipairs({ ... }) do
+  if argument == "--reboot" then
+    rebootAfter = true
+  end
+end
 
 local defaults = {
   user = "isaacwallace123",
@@ -32,6 +39,7 @@ local defaults = {
 -- a private repo gets asked for its token.
 local firstRun = not fs.exists(CONFIG_PATH)
 local cfg = config.load(CONFIG_PATH, defaults)
+config.save(RESULT_PATH, { ok = false, message = "update interrupted" })
 
 if firstRun then
   ui.clear()
@@ -210,6 +218,7 @@ local function draw(stage, done, total, current)
 end
 
 local function fail(message, detail)
+  config.save(RESULT_PATH, { ok = false, message = message, detail = detail })
   ui.clear()
   ui.header("ICOS update", "failed")
   ui.text(2, 3, message, ui.theme.bad)
@@ -305,6 +314,14 @@ end
 
 local ok = failed == 0 and #broken == 0
 local width, height = ui.size()
+config.save(RESULT_PATH, {
+  ok = ok,
+  message = ok and "update verified" or "update verification failed",
+  changed = changed,
+  unchanged = unchanged,
+  failed = failed,
+  commit = ref,
+})
 
 ui.clear()
 ui.header("ICOS update", ok and "verified" or "PROBLEMS")
@@ -338,7 +355,9 @@ for _, problem in ipairs(broken) do
   line = line + 1
 end
 
-if ok and changed > 0 then
+if ok and rebootAfter then
+  ui.footer("Update verified - rebooting")
+elseif ok and changed > 0 then
   ui.footer("Updated - reboot to run the new code")
 elseif ok then
   ui.footer("Already up to date")
@@ -351,5 +370,10 @@ end
 pcall(function()
   require("core.sound").play(ok and "ready" or "error")
 end)
+
+if ok and rebootAfter then
+  sleep(1)
+  os.reboot()
+end
 
 term.setCursorPos(1, height)

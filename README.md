@@ -14,6 +14,7 @@ together without hardcoded computer IDs. ✨
   stays touch-friendly.
 - ⛏️ Run resumable expedition and quarry jobs with fuel and return-home safeguards.
 - 🔄 Check for over-the-air updates automatically whenever ICOS boots.
+- 📦 Update one turtle—or every connected turtle—from the Devices app.
 - 🔊 Play short nostalgic boot, shutdown, success, and alert jingles when a speaker
   is attached.
 - 🐢 Adapt the interface to the hardware: computers get the desktop, while turtles
@@ -49,6 +50,7 @@ src/
     sound.lua        optional speaker boot, shutdown, and alert sounds
     ui.lua           drawing, works on a computer term or a monitor
     util.lua         formatting helpers
+    version.lua      installed semantic version, reported by every device
 
   turtle/            turtle hardware, no job knowledge
     nav.lua          position tracking + safe movement
@@ -177,6 +179,41 @@ Regenerates the manifest, runs all checks, commits, and pushes. ICOS checks for 
 update automatically on the next boot. A computer can also open the **Update** app;
 on a turtle, hold a key during the boot animation and choose **Update now**.
 
+### 📡 Fleet-wide over-the-air updates
+
+The **Devices** list shows the ICOS version reported by every turtle. The current
+version is green, a different version is yellow, and `unknown` means the turtle is
+running an older build which predates version telemetry.
+
+- Touch **update all** on the Devices list to update every connected turtle.
+- Open one device and touch **update** to update only that turtle.
+- A parked turtle starts immediately. A working turtle acknowledges the request,
+  returns home through the normal safe recall path, then updates and reboots.
+
+The command uses each turtle's existing `.update` configuration and the same
+SHA-pinned, checksum-verified updater used at boot. The turtle must have HTTP enabled,
+an update source configured, and currently be reachable over Rednet. An offline turtle
+cannot receive the broadcast, but its normal boot-time auto-update catches it the next
+time it starts.
+
+> **One-time rollout note:** turtles showing `unknown` are too old to understand the
+> new remote-update command. Reboot or update those once using their existing boot-time
+> updater; after they report v1.1.0 or newer, all future updates can be sent from
+> Devices.
+
+### 🏷️ ICOS versions
+
+ICOS uses semantic versions from `src/core/version.lua`; this release is **v1.1.0**.
+Every pull request merged into the default `master` branch changes the release version:
+
+- `version:major` → incompatible or breaking change (`2.0.0`)
+- `version:minor` → backward-compatible feature (`1.2.0`)
+- no version label → backward-compatible fix/docs/internal change (`1.1.1`)
+
+The `.github/workflows/icos-version.yml` workflow serializes merge events and commits
+the appropriate bump directly after each merge. A deliberately pre-versioned release
+PR is accepted as-is, which bootstraps this workflow without double-bumping v1.1.0.
+
 ### 🧠 Why the updater resolves a commit SHA first
 
 `raw.githubusercontent.com` caches hard and **cannot be cache-busted**. Both of the
@@ -260,9 +297,9 @@ after 60s, cyan when
 parked and waiting for orders.
 
 Each reporting turtle is treated as a paired device. Touch its Fleet row to switch to
-the **Devices** app focused on that turtle. From there ICOS can deploy or recall only
-that turtle, switch its job, forget its pairing, refresh its state, or edit its job
-settings.
+the **Devices** app focused on that turtle. The device list includes each turtle's ICOS
+version. From its detail page ICOS can update, deploy, or recall only that turtle,
+switch its job, forget its pairing, refresh its state, or edit its job settings.
 Expedition distance, target Y, and tunnel length—and quarry width, length, and depth—
 all have touch-friendly controls. Commands are addressed to that turtle's computer ID
 and acknowledged with a useful success or refusal message.

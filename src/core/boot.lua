@@ -10,11 +10,12 @@
 
 local ui = require("core.ui")
 local sound = require("core.sound")
+local version = require("core.version")
 
 local boot = {}
 
 boot.NAME = "ICOS"
-boot.VERSION = "1.0"
+boot.VERSION = version
 
 local function centreX(text)
   local width = term.getSize()

@@ -10,15 +10,17 @@ local net = require("core.net")
 local log = require("core.log")
 local util = require("core.util")
 local config = require("core.config")
+local version = require("core.version")
 
 local ROSTER_PATH = ".fleet"
 local LATE_AFTER = 10
 local OFFLINE_AFTER = 60
 
 local COLUMNS = {
-  { title = "NAME", width = 13 },
+  { title = "NAME", width = 12 },
+  { title = "VERSION", width = 7 },
   { title = "STATE", width = 9 },
-  { title = "JOB", width = 10 },
+  { title = "JOB", width = 9 },
   { title = "FUEL", width = 7, align = "right" },
   { title = "SEEN", width = 6, align = "right" },
 }
@@ -70,6 +72,16 @@ end
 local function positionText(snap)
   local point = snap.world or snap
   return ("%d,%d,%d"):format(point.x or 0, point.y or 0, point.z or 0)
+end
+
+local function versionCell(snap)
+  if not snap.version then
+    return { text = "unknown", color = ui.theme.dim }
+  end
+  return {
+    text = "v" .. tostring(snap.version),
+    color = snap.version == version and ui.theme.good or ui.theme.warn,
+  }
 end
 
 local function setNotice(message, ok)
@@ -161,6 +173,7 @@ local function drawList(saved)
         color = statusColor(node),
         cells = {
           snap.label or ("id " .. tostring(node.id)),
+          versionCell(snap),
           age(node) > OFFLINE_AFTER and "offline" or (snap.phase or "unknown"),
           snap.job or "none",
           snap.fuel == -1 and "unlim" or util.count(snap.fuel or 0),
@@ -177,6 +190,7 @@ local function drawList(saved)
     { "up", "up" },
     { "down", "down" },
     { "refresh", "refresh_all" },
+    { "update all", "update_all" },
   })
 end
 
@@ -197,8 +211,15 @@ local function drawDevice(saved)
   clickTargets, rowTargets = {}, {}
 
   ui.text(2, 3, ("%-10s %s"):format("state", snap.phase or "unknown"), statusColor(node))
+  addButton(math.max(2, width - 19), 3, "update", "update")
   addButton(math.max(2, width - 9), 3, "forget", "forget")
   ui.text(2, 4, ui.pad(snap.detail or "", width - 3), ui.theme.dim)
+  ui.text(
+    2,
+    5,
+    ("%-10s v%s"):format("version", tostring(snap.version or "unknown")),
+    snap.version == version and ui.theme.good or ui.theme.warn
+  )
   ui.text(2, 6, ("%-10s %s"):format("job", snap.job or "none"))
   ui.text(2, 7, ("%-10s %s"):format("position", positionText(snap)))
 
@@ -330,6 +351,15 @@ local function act(action, data)
     if net.broadcast("command", { action = "status_request" }) then
       setNotice("Status requested", true)
       log.info("devices: status refresh requested")
+    else
+      setNotice("No modem available", false)
+    end
+  elseif action == "update" then
+    sendSelected("update")
+  elseif action == "update_all" then
+    if net.broadcast("command", { action = "update" }) then
+      setNotice("Update queued for connected devices", true)
+      log.warn("devices: update sent to all connected devices")
     else
       setNotice("No modem available", false)
     end

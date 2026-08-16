@@ -7,6 +7,7 @@ local net = require("core.net")
 local log = require("core.log")
 local config = require("core.config")
 local boot = require("core.boot")
+local version = require("core.version")
 
 local console = {}
 
@@ -76,9 +77,10 @@ local function listDevices()
   for _, row in ipairs(rows) do
     local snap = row.node.snap or {}
     log.info(
-      ("  #%s %-12s %-8s fuel %s"):format(
+      ("  #%s %-12s v%-7s %-8s fuel %s"):format(
         tostring(row.id),
         labelFor(row.id, row.node):sub(1, 12),
+        tostring(snap.version or "?"),
         tostring(snap.phase or "unknown"),
         tostring(snap.fuel or "?")
       )
@@ -119,7 +121,7 @@ function console.run(target, opts)
     onTarget(function()
       local width, height = term.getSize()
       ui.clear()
-      ui.header(name .. " CONSOLE", "fleet logs + commands")
+      ui.header(name .. " v" .. version .. " CONSOLE", "fleet logs + commands")
 
       local lines = log.readRecent(math.max(1, height - 3))
       for index, line in ipairs(lines) do
