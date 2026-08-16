@@ -7,11 +7,12 @@ together without hardcoded computer IDs. ✨
 
 ## 🌟 What ICOS can do
 
-- 🖥️ Turn an attached monitor into an auto-scaling desktop with launchable apps.
+- 🖥️ Turn the base computer into a full desktop and attached monitors into
+  auto-scaling, display-only fleet dashboards.
 - 📡 Discover turtles automatically and keep them as persistent paired devices.
 - 🎮 Browse, deploy, recall, and configure individual turtles from the Devices app.
-- ⌨️ Use the physical PC as a live fleet log and command console while the monitor
-  stays touch-friendly.
+- ⌨️ Configure the fleet from keyboard-capable desktop apps while the monitor stays
+  safely read-only.
 - ⛏️ Run five focused mining jobs with automatic fuel and return-home safeguards.
 - 🔄 Check for over-the-air updates automatically whenever ICOS boots.
 - 📦 Update one turtle—or every connected turtle—from the Devices app.
@@ -66,8 +67,8 @@ src/
     apps.lua         capability-aware application registry
     boot.lua         responsive boot/restart animations
     config.lua       table persistence with defaults
-    console.lua      physical-PC fleet log, prompt, and remote commands
-    desktop.lua      monitor desktop, windows, icons, and taskbar
+    console.lua      Fleet Console app backend: logs, prompt, and remote commands
+    desktop.lua      local/monitor desktops, windows, icons, and taskbar
     handheld.lua     touch-first Pocket Computer shell and app switching
     device.lua       computer/turtle/peripheral capability detection
     display.lua      primary/secondary monitor selection and automatic scaling
@@ -98,6 +99,7 @@ src/
   fleet/             always-on service, controller sync, policy, roster, assignments
 
   apps/              entry points — the only files that wire things together
+    console.lua      Fleet Console page for commands and the persistent log
     miner.lua        turtle agent: run jobs, report, obey fleet orders
     fleet.lua        scalable overview and fleet-wide commands
     devices.lua      paired-device browser, detail pages, remote configuration
@@ -296,33 +298,35 @@ rather than base64 — CC has no base64 decoder) whenever a token is configured.
 
 | Role | App | What it does |
 | --- | --- | --- |
-| `fleet` | Fleet desktop app | Hosts rednet, keeps the roster, and renders the dashboard |
+| `fleet` | Fleet service + desktops | Hosts Rednet, keeps the roster, and renders both screens |
 | `miner` | Miner turtle app | Runs the selected job and heartbeats status every 2s |
 | `utility` | Hardware-dependent | Offers only tools supported by that machine |
 
-On computers, an attached monitor becomes the ICOS desktop. Its text scale is chosen
-automatically, and Fleet, Devices, Update, Power, and hardware-specific apps appear
-only when they can run. Every maximized page owns one title bar, with a Windows-style
-taskbar for switching and closing apps. ICOS Home is the permanent page and cannot be
-closed.
+The base computer's own screen always runs the full keyboard-capable ICOS desktop.
+Fleet, Devices, Auto Recovery, Mine Control, Fleet Log, Fleet Console, Update,
+Terminal, Setup, Power, and hardware-specific apps appear when their role and hardware
+requirements are met. Every maximized page owns one title bar, with a Windows-style
+taskbar for switching and closing apps. ICOS Home is permanent and cannot be closed.
+
+An attached monitor runs a separate display-only desktop, automatically scaled to the
+wall. Apps declare whether they require operational input; the registry excludes every
+input app from a surface without a keyboard. The wall auto-opens **Fleet Status** and
+also offers a read-only **Fleet Log**. Harmless touch paging remains available, but the
+monitor cannot deploy, recall, configure, update, run Setup, or open a terminal.
 
 ICOS Home shows the installed version, saved role, and detected modem. Fleet and
 Devices remain visible on a fleet-role computer even when the modem is missing, so a
 hardware problem produces an explicit offline screen instead of silently removing the
-apps. If Home reports the wrong role, type `setup` on the physical PC; if it reports
-`NO MODEM DETECTED`, check the modem attachment and reopen Fleet. The PC console's
-`about` command prints the same diagnosis.
-
-The computer's own screen becomes a keyboard-driven console whenever the desktop is
-on a monitor. It shows the same persistent log Fleet writes and accepts commands such
-as `status`, `recall all`, `deploy miner-2`, `refresh`, and
-`open devices miner-1`. Type `help` there for the complete list. `update`, `setup`,
-`reboot`, and `exit` also live there, so no keyboard-only shell is stranded on a
-touch monitor.
+apps. If Home reports the wrong role, open **Setup** on the base desktop; if it reports
+`NO MODEM DETECTED`, check the modem attachment and reopen Fleet. The optional
+**Fleet Console** app retains commands such as `status`, `recall all`,
+`deploy miner-2`, `refresh`, and `open devices miner-1`; type `help` there for the
+complete list.
 
 With two or more attached monitors, ICOS automatically chooses the physically largest
-wall for the desktop and gives Fleet the largest remaining wall. The main Fleet page
-then uses its full height for miners while the second wall shows the complete haul,
+wall for Fleet Status and gives it the largest remaining wall for Fleet Haul. The main
+status page then uses its full height for miners while the second wall shows the
+complete haul,
 aggregate totals, and touchable previous/next paging. Attach or replace that second
 monitor while Fleet is open and it is detected automatically; unplug it and the compact
 haul summary falls back onto the primary page.
@@ -343,9 +347,10 @@ progress, and time since last heartbeat. Rows go yellow after 10s of silence, re
 after 60s, cyan when
 parked and waiting for orders.
 
-Each reporting turtle is treated as a paired device. Touch its Fleet row to switch to
-the **Devices** app focused on that turtle. The device list includes each turtle's ICOS
-version. From its detail page ICOS can update, deploy, or recall only that turtle,
+Each reporting turtle is treated as a paired device. Select its Fleet row on the local
+desktop or handheld to switch to **Devices** focused on that turtle. Monitor rows are
+deliberately view-only. The device list includes each turtle's ICOS version. From its
+detail page ICOS can update, deploy, or recall only that turtle,
 switch its job, forget its pairing, refresh its state, or edit its job settings.
 Each job publishes its own settings, with touch controls and scrolling for longer
 forms such as the quarry's world-coordinate corners. Commands target that turtle's ID
@@ -362,9 +367,10 @@ If a second monitor is attached, this summary moves to its own **Fleet Haul** wa
 That wall has room for every item type across paged columns, and the reclaimed rows on
 the main monitor are immediately used for more miners.
 
-The footer provides touch controls for scrolling, fleet-wide recall/deploy, and a
-status refresh. The visible range in the header makes a fleet of 10–20 miners
-easy to navigate; mouse wheels and arrow/Page Up/Page Down also work on local screens.
+The interactive Fleet footer on the local desktop/handheld provides scrolling,
+fleet-wide recall/deploy, and status refresh. Fleet Status on the monitor exposes only
+safe previous/next paging and labels itself `VIEW ONLY`. The visible range in the
+header makes a fleet of 10–20 miners easy to navigate.
 
 The roster is persisted, so after a server restart the dashboard still lists every
 known turtle as offline until it checks back in — a turtle that has gone quiet is
@@ -444,7 +450,7 @@ inspection.
 
 Rare, Fuel, and Resources turtles keep working after an unload. Each cycle picks a
 fresh route, mines, returns to the chest, drops only loot, and launches again.
-**Recall** from Fleet, Devices, or the PC console is the stop button: the current cycle
+**Recall** from Fleet, Devices, or Fleet Console is the stop button: the current cycle
 unwinds, the turtle comes home, unloads, and parks. Quarry and Hollow are finite because
 restarting the same cleared volume would only waste fuel.
 
@@ -492,8 +498,8 @@ exact obstruction instead of falsely marking that cell complete.
 ### 🏗️ Coordinated quarry
 
 Quarry uses an absolute Minecraft rectangle and vertical range. First run the **Where**
-app on every worker so it knows its world position and heading. Then type this on the
-base computer's physical console:
+app on every worker so it knows its world position and heading. Then use **Mine
+Control**, or type this in the base desktop's **Fleet Console** app:
 
 ```text
 quarry <x1> <z1> <x2> <z2> <topY> <bottomY>

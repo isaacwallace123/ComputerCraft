@@ -15,7 +15,13 @@ local display = require("core.display")
 local control = require("fleet.control")
 local rosterStore = require("fleet.roster")
 
-local embedded = ({ ... })[1] == "--embedded"
+local flags = {}
+for _, argument in ipairs({ ... }) do
+  flags[argument] = true
+end
+local embedded = flags["--embedded"] == true
+local readonly = flags["--readonly"] == true
+local auxiliaryEnabled = flags["--no-aux"] ~= true
 
 local COLUMNS = {
   { title = "NAME", width = 11 },
@@ -118,23 +124,28 @@ local function drawFooter(width, height)
   ui.row(height, ui.theme.headerBg)
   clickTargets = {}
   local x = 2
-  local buttons = width < 42
-      and {
-        { "up", "up" },
-        { "down", "down" },
-        { "actions", "actions" },
-      }
-    or {
-      { "up", "up" },
-      { "down", "down" },
-      { "recall all", "recall" },
-      { "deploy all", "deploy" },
-      { "sync", "refresh" },
-    }
+  local buttons = readonly and {
+    { "previous", "up" },
+    { "next", "down" },
+  } or width < 42 and {
+    { "up", "up" },
+    { "down", "down" },
+    { "actions", "actions" },
+  } or {
+    { "up", "up" },
+    { "down", "down" },
+    { "recall all", "recall" },
+    { "deploy all", "deploy" },
+    { "sync", "refresh" },
+  }
   for _, button in ipairs(buttons) do
     if x + #button[1] + 1 <= width then
       x = addButton(x, height, button[1], button[2])
     end
+  end
+  if readonly then
+    local label = "VIEW ONLY"
+    ui.text(math.max(x, width - #label), height, label, ui.theme.headerFg, ui.theme.headerBg)
   end
 end
 
@@ -164,7 +175,7 @@ local function drawHaul(haul, sum, width, top, height)
 end
 
 local function ensureAuxiliary()
-  if not embedded or not display.primaryName() then
+  if not embedded or not auxiliaryEnabled or not display.primaryName() then
     return
   end
 
@@ -250,7 +261,7 @@ local function draw()
   ui.clear()
   local status = width < 42 and ("%d/%d  P%d"):format(sum.online, #list, sum.parked)
     or ("%d/%d online  %d parked  %d-%d"):format(sum.online, #list, sum.parked, first, last)
-  ui.header("FLEET", status)
+  ui.header(readonly and "FLEET STATUS" or "FLEET", status)
   rowTargets = {}
 
   if #list == 0 then
@@ -271,7 +282,9 @@ local function draw()
           util.duration(age(node)),
         },
       }
-      rowTargets[#rowTargets + 1] = { y = 3 + #rows, id = node.id }
+      if not readonly then
+        rowTargets[#rowTargets + 1] = { y = 3 + #rows, id = node.id }
+      end
     end
     ui.table(2, 3, width - 2, COLUMNS, rows, visibleRows)
   end
@@ -294,6 +307,9 @@ local function redraw()
 end
 
 local function act(action)
+  if readonly and action ~= "up" and action ~= "down" then
+    return
+  end
   if action == "up" then
     scroll = math.max(0, scroll - 1)
   elseif action == "down" then
@@ -336,7 +352,7 @@ local function controls()
       return
     elseif kind == "icos_forget_device" then
       roster = rosterStore.load()
-    elseif kind == "key" then
+    elseif kind == "key" and not readonly then
       if event[2] == keys.q then
         running = false
         return
@@ -371,10 +387,12 @@ local function controls()
     elseif kind == "monitor_resize" and event[2] == auxiliaryName then
       auxiliary, auxiliaryName = nil, nil
     elseif kind == "mouse_click" then
-      for _, row in ipairs(rowTargets) do
-        if event[4] == row.y then
-          os.queueEvent("icos_open_app", "devices", { deviceId = row.id })
-          break
+      if not readonly then
+        for _, row in ipairs(rowTargets) do
+          if event[4] == row.y then
+            os.queueEvent("icos_open_app", "devices", { deviceId = row.id })
+            break
+          end
         end
       end
       for _, target in ipairs(clickTargets) do

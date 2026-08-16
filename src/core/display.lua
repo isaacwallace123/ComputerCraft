@@ -56,7 +56,7 @@ local function scaleToFit(monitor, minWidth, minHeight)
   return 0.5, width, height
 end
 
---- Pick the physically largest monitor as the primary desktop and scale it to
+--- Pick the physically largest monitor as the primary dashboard and scale it to
 --- fit the requested layout. The peripheral name is returned as the fifth
 --- value so touch events can be routed to the correct wall.
 function display.attach(minWidth, minHeight)
@@ -72,7 +72,7 @@ function display.attach(minWidth, minHeight)
   return selected.monitor, scale, width, height, selected.name
 end
 
---- Largest monitor not being used by the desktop. Fleet uses this for its haul
+--- Largest monitor not being used by the dashboard. Fleet uses this for its haul
 --- wall. Re-running it also handles a newly attached or replaced monitor.
 function display.secondary(minWidth, minHeight)
   local entries = monitorEntries(primaryName)
