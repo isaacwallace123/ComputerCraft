@@ -7,15 +7,36 @@
 
 local apps = {}
 
+-- Operational input means a keyboard-capable surface where configuration and
+-- commands are safe to expose. A monitor still has touch coordinates for
+-- harmless paging and app switching, but is intentionally display-only.
+local INPUT_SURFACES = {
+  desktop = true,
+  handheld = true,
+  launcher = true,
+  tools = true,
+}
+
 local DEFINITIONS = {
   {
     id = "fleet",
     name = "Fleet",
     program = "apps/fleet.lua",
-    args = { "--embedded" },
+    args = { "--embedded", "--no-aux" },
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet", "controller" },
     surfaces = { "desktop", "handheld" },
+    requiresInput = true,
+  },
+  {
+    id = "fleet-status",
+    name = "Fleet Status",
+    program = "apps/fleet.lua",
+    args = { "--embedded", "--readonly" },
+    kinds = { "computer", "command" },
+    roles = { "fleet" },
+    surfaces = { "monitor" },
+    requiresInput = false,
   },
   {
     id = "devices",
@@ -25,6 +46,7 @@ local DEFINITIONS = {
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet", "controller" },
     surfaces = { "desktop", "handheld" },
+    requiresInput = true,
   },
   {
     id = "automation",
@@ -33,6 +55,7 @@ local DEFINITIONS = {
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet", "controller" },
     surfaces = { "desktop", "handheld" },
+    requiresInput = true,
   },
   {
     id = "operations",
@@ -41,6 +64,7 @@ local DEFINITIONS = {
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet", "controller" },
     surfaces = { "desktop", "handheld" },
+    requiresInput = true,
   },
   {
     id = "logs",
@@ -49,6 +73,26 @@ local DEFINITIONS = {
     kinds = { "computer", "pocket", "command" },
     roles = { "fleet", "controller" },
     surfaces = { "desktop", "handheld" },
+    requiresInput = true,
+  },
+  {
+    id = "fleet-log-status",
+    name = "Fleet Log",
+    program = "apps/logs.lua",
+    args = { "--readonly" },
+    kinds = { "computer", "command" },
+    roles = { "fleet" },
+    surfaces = { "monitor" },
+    requiresInput = false,
+  },
+  {
+    id = "fleet-console",
+    name = "Fleet Console",
+    program = "apps/console.lua",
+    kinds = { "computer", "command" },
+    roles = { "fleet" },
+    surfaces = { "desktop" },
+    requiresInput = true,
   },
   {
     id = "miner",
@@ -57,12 +101,14 @@ local DEFINITIONS = {
     kinds = { "turtle" },
     roles = { "miner" },
     surfaces = { "launcher" },
+    requiresInput = true,
   },
   {
     id = "scan",
     name = "Ore Scan",
     program = "apps/scan.lua",
     surfaces = { "desktop", "handheld", "launcher" },
+    requiresInput = true,
     needs = function(caps)
       return caps.geoScanner
     end,
@@ -74,6 +120,7 @@ local DEFINITIONS = {
     kinds = { "turtle" },
     roles = { "utility" },
     surfaces = { "launcher" },
+    requiresInput = true,
   },
   {
     id = "update",
@@ -81,6 +128,7 @@ local DEFINITIONS = {
     program = "update.lua",
     kinds = { "computer", "pocket", "command" },
     surfaces = { "desktop", "handheld" },
+    requiresInput = true,
     needs = function(caps)
       return caps.http
     end,
@@ -91,9 +139,7 @@ local DEFINITIONS = {
     program = "shell",
     kinds = { "computer", "pocket", "command" },
     surfaces = { "desktop", "handheld" },
-    needs = function(caps)
-      return not caps.monitor
-    end,
+    requiresInput = true,
   },
   {
     id = "setup",
@@ -101,9 +147,7 @@ local DEFINITIONS = {
     program = "install.lua",
     kinds = { "computer", "pocket", "command" },
     surfaces = { "desktop", "handheld" },
-    needs = function(caps)
-      return not caps.monitor
-    end,
+    requiresInput = true,
   },
   {
     id = "power",
@@ -111,6 +155,7 @@ local DEFINITIONS = {
     program = "apps/power.lua",
     kinds = { "computer", "pocket", "command" },
     surfaces = { "desktop", "handheld" },
+    requiresInput = true,
   },
   {
     id = "where",
@@ -118,6 +163,7 @@ local DEFINITIONS = {
     program = "apps/where.lua",
     kinds = { "turtle" },
     surfaces = { "tools" },
+    requiresInput = true,
   },
   {
     id = "equip",
@@ -125,6 +171,7 @@ local DEFINITIONS = {
     program = "apps/equip.lua",
     kinds = { "turtle" },
     surfaces = { "tools" },
+    requiresInput = true,
   },
   {
     id = "update-tool",
@@ -132,6 +179,7 @@ local DEFINITIONS = {
     program = "update.lua",
     kinds = { "turtle" },
     surfaces = { "tools" },
+    requiresInput = true,
     needs = function(caps)
       return caps.http
     end,
@@ -142,6 +190,7 @@ local DEFINITIONS = {
     program = "install.lua",
     kinds = { "turtle" },
     surfaces = { "tools" },
+    requiresInput = true,
   },
 }
 
@@ -157,11 +206,22 @@ local function matches(list, value)
   return false
 end
 
+function apps.surfaceHasInput(surface)
+  return surface == nil or INPUT_SURFACES[surface] == true
+end
+
 local function canRun(app, caps, node, surface)
   if not matches(app.kinds, caps.kind) or not matches(app.roles, node and node.role) then
     return false
   end
   if surface and not matches(app.surfaces, surface) then
+    return false
+  end
+  -- Input is a property of the output surface, not just the computer. A base
+  -- computer has a keyboard on its own terminal while its attached monitor has
+  -- touch coordinates only. Unknown apps default to requiring input so a new
+  -- configuration page cannot accidentally appear on a display-only wall.
+  if app.requiresInput ~= false and not apps.surfaceHasInput(surface) then
     return false
   end
   return not app.needs or app.needs(caps) == true

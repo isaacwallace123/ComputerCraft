@@ -8,6 +8,7 @@ local log = require("core.log")
 local config = require("core.config")
 local control = require("fleet.control")
 
+local readonly = ({ ... })[1] == "--readonly"
 local controller = config.load(".node", {}).role == "controller"
 local scroll = 0
 local running = true
@@ -39,7 +40,7 @@ local function draw()
       y = y + 1
     end
   end
-  ui.footer("up older  down newer  Q")
+  ui.footer(readonly and "touch left: older   right: newer" or "up older  down newer  Q")
 end
 
 control.requestSync()
@@ -48,7 +49,7 @@ while running do
   local event = { os.pullEvent() }
   if event[1] == "icos_close" then
     running = false
-  elseif event[1] == "key" then
+  elseif event[1] == "key" and not readonly then
     if event[2] == keys.q then
       running = false
     elseif event[2] == keys.up then

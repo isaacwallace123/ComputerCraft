@@ -28,6 +28,17 @@ The modem is mandatory for control and telemetry but not for the mining loop its
 A standard mining turtle cannot simultaneously hold pickaxe, modem, and Geo Scanner
 because it has only two upgrade slots.
 
+## Base screens
+
+The base computer's own terminal runs the complete ICOS desktop and is the place for
+Devices, Auto Recovery, Mine Control, Update, Setup, Terminal, Power, and Fleet
+Console. An attached monitor is a separate display-only desktop: it opens Fleet Status
+automatically and can switch to a read-only Fleet Log. Monitor touches may page data,
+but cannot send fleet commands or change configuration.
+
+This split is automatic. App definitions declare whether they require operational
+input, and ICOS removes those apps from surfaces without a keyboard.
+
 ## Handheld controller
 
 Install ICOS on an Advanced Pocket Computer and choose **Fleet handheld**. Existing
@@ -80,7 +91,8 @@ can also use Update on the base or update/update-all in Devices.
 1. Park every participating turtle over its chest.
 2. Run the Where system tool on each turtle and enter its world position and heading.
 3. Confirm every turtle appears connected and parked in Devices.
-4. Use Mine Control on the base/handheld, or run this on the physical base console:
+4. Use Mine Control on the base/handheld, or run this in Fleet Console on the base
+   desktop:
 
    ```text
    quarry <x1> <z1> <x2> <z2> <topY> <bottomY>
@@ -98,7 +110,7 @@ the affected worker.
 
 Check the base role and modem first. Home deliberately shows Fleet and Devices for a
 fleet-role computer even without a modem, but other capability-filtered apps can be
-hidden when hardware is absent. Type `setup` on the physical console to correct role.
+hidden when hardware is absent. Open Setup on the physical desktop to correct role.
 
 ### Turtle is parked
 

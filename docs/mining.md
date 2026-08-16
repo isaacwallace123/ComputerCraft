@@ -51,8 +51,8 @@ the base costs coordination, never local safety or return behavior.
 The base service starts with ICOS and answers claims even when Fleet is closed. The
 Fleet app is now only a dashboard.
 
-Configure the mine from Mine Control on the base or Pocket controller, or from the
-base console:
+Configure the mine from Mine Control on the base or Pocket controller, or from Fleet
+Console on the base desktop:
 
 ```text
 mine here              centre it on the base computer, using GPS

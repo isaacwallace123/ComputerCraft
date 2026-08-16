@@ -2,9 +2,11 @@
 ---
 ---   splash -> automatic update -> hardware-appropriate shell
 ---
---- Computers get the monitor desktop, Pocket Computers get a touch-first shell,
---- and turtles get a compact launcher. Holding a key during the splash opens
---- system tools instead, so a broken autorun can never trap the machine.
+--- Computers get a full desktop on their own keyboard terminal and a separate
+--- display-only dashboard on an attached monitor. Pocket Computers get a
+--- touch-first shell, and turtles get a compact launcher. Holding a key during
+--- the splash opens system tools instead, so a broken autorun can never trap
+--- the machine.
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
@@ -39,8 +41,9 @@ local localScreen = term.current()
 local screen = localScreen
 local monitor, monitorName
 
--- Turtles keep their own compact screen. Computers promote an attached
--- monitor to the ICOS desktop and choose the largest readable scale that fits.
+-- Turtles and Pockets keep their own screen. A computer discovers and scales
+-- its monitor for the display-only dashboard; the monitor remains the boot
+-- splash target while the local terminal becomes the full desktop afterward.
 if caps.kind ~= "turtle" and caps.kind ~= "pocket" then
   monitor, _, _, _, monitorName = display.attach(42, 18)
   screen = monitor or screen
@@ -74,14 +77,15 @@ local function autoUpdate()
   end)
 end
 
-local function runApp(apps, app)
-  onScreen(function()
+local function runApp(apps, app, target)
+  display.on(target or localScreen, function()
     ui.clear()
     apps.run(app)
   end)
 end
 
-local function systemMenu(apps)
+local function systemMenu(apps, target)
+  target = target or localScreen
   while true do
     local tools = apps.available(caps, node, "tools")
     local labels = {}
@@ -91,22 +95,22 @@ local function systemMenu(apps)
     labels[#labels + 1] = "Restart ICOS"
     labels[#labels + 1] = "Exit to CraftOS"
 
-    local choice = onScreen(function()
+    local choice = display.on(target, function()
       return ui.menu((node.label or ("id " .. caps.id)) .. " system", labels)
     end)
 
     if not choice or choice == #labels then
-      onScreen(function()
+      display.on(target, function()
         ui.clear()
       end)
       print("Type `startup` to start ICOS again.")
       return
     elseif choice == #labels - 1 then
-      onScreen(boot.reboot)
+      display.on(target, boot.reboot)
       return
     else
-      runApp(apps, tools[choice])
-      onScreen(function()
+      runApp(apps, tools[choice], target)
+      display.on(target, function()
         sound.blip(14)
         print("\nPress any key to return.")
         os.pullEvent("key")
@@ -131,7 +135,7 @@ end
 local apps = require("core.apps")
 
 if interrupted then
-  systemMenu(apps)
+  systemMenu(apps, localScreen)
   return
 end
 
@@ -167,7 +171,7 @@ local homeWarning = (node.role ~= "fleet" and node.role ~= "controller") or not 
 local function interfaceSession()
   if caps.kind == "pocket" then
     local handheld = require("core.handheld")
-    handheld.run(screen, apps.available(caps, node, "handheld"), {
+    handheld.run(localScreen, apps.available(caps, node, "handheld"), {
       name = boot.NAME,
       homeMessage = homeMessage,
       homeWarning = homeWarning,
@@ -176,18 +180,23 @@ local function interfaceSession()
     local desktop = require("core.desktop")
     local desktopApps = apps.available(caps, node, "desktop")
     if monitor then
-      local console = require("core.console")
       parallel.waitForAny(function()
-        desktop.run(screen, desktopApps, {
+        desktop.run(localScreen, desktopApps, {
           name = boot.NAME,
           autoLaunch = false,
+          localInput = true,
+          homeMessage = homeMessage,
+          homeWarning = homeWarning,
+        })
+      end, function()
+        desktop.run(monitor, apps.available(caps, node, "monitor"), {
+          name = boot.NAME,
+          autoLaunch = "fleet-status",
           localInput = false,
           monitorName = monitorName,
           homeMessage = homeMessage,
           homeWarning = homeWarning,
         })
-      end, function()
-        console.run(localScreen, { name = boot.NAME })
       end)
     else
       desktop.run(screen, desktopApps, {
@@ -199,7 +208,7 @@ local function interfaceSession()
       })
     end
   end
-  systemMenu(apps)
+  systemMenu(apps, localScreen)
 end
 
 if node.role == "fleet" or node.role == "controller" then

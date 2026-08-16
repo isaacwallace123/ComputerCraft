@@ -14,7 +14,8 @@ GitHub repository
 Base computer            Pocket controller             Mining turtle
   startup.lua              startup.lua                    startup.lua
   always-on service        handheld shell                 miner runtime
-  desktop + console        synced roster/policy  Rednet   navigation + fuel
+  local full desktop       synced roster/policy  Rednet   navigation + fuel
+  display-only monitor
   authoritative state  ↔  Fleet/Devices/Mine Control ↔  local job safety
 ```
 
@@ -36,7 +37,7 @@ apps → miner / fleet / jobs → turtle / mine → core
   receiving network messages.
 - `miner/` owns the long-running turtle state machine, telemetry, and command handling.
 - `fleet/` owns shared base-side roster and coordination logic.
-- `apps/` contains thin executable entrypoints and interactive views.
+- `apps/` contains thin executable entrypoints, control pages, and display-only views.
 
 Avoid dependencies in the opposite direction. In particular, a turtle primitive
 should not import an app, and a job should not manipulate the desktop.
@@ -46,20 +47,22 @@ should not import an app, and a job should not manipulate the desktop.
 `src/startup.lua` is the installed entrypoint:
 
 1. Load `.node` and detect device capabilities.
-2. Choose the local turtle screen or the best attached computer monitor.
+2. Detect the local terminal and the largest attached computer monitor.
 3. Show a splash. Holding a key opens recovery/system tools.
 4. If enabled, run the automatic updater.
 5. Load the app registry after updating so fresh app definitions are used immediately.
 6. On a turtle, auto-run the only valid launcher app or show the compact launcher.
 7. On a Pocket Computer, start the touch-first handheld shell. On other computers,
-   start the page-based desktop; if it is on a monitor, run the keyboard console on
-   the physical computer in parallel.
+   start the full page-based desktop on the local keyboard terminal. If a monitor is
+   attached, run a second display-only desktop there in parallel.
 8. For `fleet` and `controller` roles, run networking beside the UI. Closing an app
    never stops discovery, sector leasing, telemetry, or controller synchronization.
    Startup supervises and restarts that service if an unexpected runtime error escapes.
 
 `src/install.lua` assigns the device role and label. Capability filtering in
-`src/core/apps.lua` decides which apps and tools are valid for the hardware and role.
+`src/core/apps.lua` decides which apps and tools are valid for the hardware, role, and
+output surface. Every app declares `requiresInput`; unknown apps default to requiring
+input, so a new control page cannot leak onto a monitor accidentally.
 
 ## Desktop model
 
@@ -75,8 +78,17 @@ should not import an app, and a job should not manipulate the desktop.
 - A normally returning app is removed and reveals Home; a crashed app stays open on
   its diagnostic page.
 
-Fleet can claim the largest secondary monitor for its haul view. Display selection and
-text scaling live in `src/core/display.lua`.
+The base runs two independent instances when it has a monitor. Its local terminal has
+keyboard input and receives the complete app set, including configuration, Update,
+Setup, Terminal, and Fleet Console. The monitor surface has no keyboard and receives
+only definitions with `requiresInput = false`: Fleet Status and a read-only Fleet Log.
+Fleet Status launches automatically and removes all deploy, recall, refresh, row-open,
+and configuration actions; touch is retained only for harmless display paging and app
+switching. Events are surface-scoped so a monitor touch cannot click the local desktop.
+
+The monitor Fleet Status page can claim the largest secondary monitor for its haul
+view. The interactive Fleet page on the local desktop does not compete for that wall.
+Display selection and text scaling live in `src/core/display.lua`.
 
 ## Miner model
 

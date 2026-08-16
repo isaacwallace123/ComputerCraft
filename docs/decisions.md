@@ -188,3 +188,18 @@ Pocket Computers need the full control surface but must not compete for Rednet h
 uses a touch-first shell, mirrors roster/policy/log state, and sends validated mine and
 quarry operations to the stationary authority. Direct turtle commands remain
 best-effort, while authoritative mutations receive request-correlated results.
+
+## D020 — Input capability belongs to the UI surface
+
+**Status:** accepted
+
+An attached monitor and the base computer are outputs of the same machine but have
+different input capabilities: the computer terminal receives keyboard events, while
+an Advanced Monitor only reports touch coordinates. Promoting the monitor to the only
+desktop therefore stranded keyboard prompts and reduced the physical computer to a
+special-purpose console.
+
+The base now runs a full desktop on its local terminal and a separate display-only
+desktop on the monitor. App definitions declare `requiresInput`; monitor filtering is
+deny-by-default, with explicit read-only Fleet Status and Fleet Log variants. Display
+pages may accept harmless paging touches but cannot send commands or mutate settings.

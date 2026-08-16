@@ -298,7 +298,12 @@ function desktop.run(parent, appList, opts)
   end
 
   -- Auto-open a single app rather than making the player click one icon.
-  if opts.autoLaunch and #appList == 1 then
+  if type(opts.autoLaunch) == "string" then
+    local initial = availableApp(opts.autoLaunch)
+    if initial then
+      launch(initial)
+    end
+  elseif opts.autoLaunch and #appList == 1 then
     launch(appList[1])
   end
 
@@ -315,9 +320,11 @@ function desktop.run(parent, appList, opts)
       -- A monitor is a mouse with one button. Normalising here means apps never
       -- need to know whether they are on a screen or a wall.
       local monitorInput = kind == "monitor_touch"
-        and (not opts.monitorName or event[2] == opts.monitorName)
+        and opts.monitorName ~= nil
+        and event[2] == opts.monitorName
       local primaryResize = kind == "monitor_resize"
-        and (not opts.monitorName or event[2] == opts.monitorName)
+        and opts.monitorName ~= nil
+        and event[2] == opts.monitorName
       if monitorInput then
         event = { "mouse_click", 1, event[3], event[4] }
         kind = "mouse_click"

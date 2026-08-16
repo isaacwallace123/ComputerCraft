@@ -60,7 +60,7 @@ different tradeoff:
 
 | Goal | Start here |
 | --- | --- |
-| desktop/page/taskbar behavior | `src/core/desktop.lua`, `src/core/apps.lua` |
+| desktop/page/taskbar/input surfaces | `src/core/desktop.lua`, `src/core/apps.lua` |
 | monitor selection/scaling | `src/core/display.lua`, `src/apps/fleet.lua` |
 | device list/detail/configuration | `src/apps/devices.lua`, `src/fleet/roster.lua` |
 | console command | `src/core/console.lua` |
@@ -140,6 +140,9 @@ large AFK run.
 - A peripheral can have multiple types. Use `peripheral.hasType(name, "modem")`; an
   exact comparison with the first `peripheral.getType` result can miss combined Ender
   Pocket upgrades and incorrectly disable the handheld role and Rednet.
+- The base computer terminal and attached monitor run separate desktops. App metadata
+  `requiresInput` is the safety boundary: the monitor receives only display-only
+  variants, while configuration and command apps stay on keyboard-capable surfaces.
 - Legacy relative quarry files are intentionally invalidated and require a new
   absolute assignment.
 - Partial Quarry and Hollow runs resume their saved cells after recall/fuel/error;
