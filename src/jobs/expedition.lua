@@ -144,13 +144,15 @@ function expedition.setup(ui)
   print("Chest goes directly BELOW the turtle.")
   print("It will fly out, dig down, mine, and return.\n")
 
-  -- GPS saves the player reading their own Y off F3, and is exact.
+  -- A known origin (from `where`) or a GPS fix both give the exact surface Y,
+  -- which saves asking and cannot be mistyped.
   local here = nav.worldPosition()
   if here then
     job.surfaceY = here.y
-    print("GPS: standing at Y=" .. here.y .. "\n")
+    print(("Standing at Y=%d%s\n"):format(here.y, nav.hasOrigin() and "" or " (GPS)"))
   else
-    print("No GPS. Press F3 and read your Y coordinate.\n")
+    print("Press F3 and read your Y coordinate.")
+    print("Tip: run `where` once to set this permanently.\n")
     job.surfaceY = ui.askNumber("Current Y", job.surfaceY)
   end
 

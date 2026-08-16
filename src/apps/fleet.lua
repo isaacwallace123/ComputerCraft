@@ -228,16 +228,15 @@ local function drawDashboard()
         break
       end
       local column = 2 + (index % perRow) * columnWidth
-      ui.text(
-        column,
-        line,
-        ("%-*s %s"):format(
-          columnWidth - 7,
-          util.fit(entry.name, columnWidth - 8),
-          util.count(entry.count)
-        ),
-        ui.theme.fg
-      )
+
+      -- Pad by hand. Lua's string.format has no '*' dynamic-width specifier -
+      -- that is a C printf feature, and "%-*s" raises at runtime rather than
+      -- being caught by any linter.
+      local label = util.fit(entry.name, columnWidth - 8)
+      local amount = util.count(entry.count)
+      local gap = math.max(1, columnWidth - 1 - #label - #amount)
+      ui.text(column, line, label .. string.rep(" ", gap) .. amount, ui.theme.fg)
+
       index = index + 1
     end
   end
@@ -305,7 +304,15 @@ end
 --- upward when a turtle goes quiet.
 local function redraw()
   while true do
-    render()
+    -- A drawing bug must never take the base station down with it. Without this
+    -- guard an error in render() kills the coroutine, parallel unwinds, and the
+    -- monitor freezes on its last good frame - which looks exactly like the
+    -- whole fleet having stopped, when in fact the turtles are still mining.
+    local ok, err = pcall(render)
+    if not ok then
+      log.error("draw failed: " .. tostring(err))
+      sleep(2)
+    end
     sleep(1)
   end
 end

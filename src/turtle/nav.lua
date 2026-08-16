@@ -26,6 +26,18 @@ local DELTA = {
   [3] = { x = -1, z = 0 },
 }
 
+-- World compass, for turning job-relative coordinates into real ones.
+-- 0 north (-z), 1 east (+x), 2 south (+z), 3 west (-x) - the order a turtle
+-- turns through when it turns right.
+local WORLD = {
+  [0] = { x = 0, z = -1 },
+  [1] = { x = 1, z = 0 },
+  [2] = { x = 0, z = 1 },
+  [3] = { x = -1, z = 0 },
+}
+
+nav.COMPASS = { "north", "east", "south", "west" }
+
 local state = config.load(STATE_PATH, {
   x = 0,
   y = 0,
@@ -33,6 +45,15 @@ local state = config.load(STATE_PATH, {
   facing = 0,
   moves = 0, -- lifetime counters, for the dashboard
   digs = 0,
+
+  -- Where home actually is in the world, and which way the turtle faced when
+  -- the job began. Flat fields rather than a nested table because config.load
+  -- merges only one level deep.
+  originSet = false,
+  originX = 0,
+  originY = 0,
+  originZ = 0,
+  originHeading = 0,
 })
 
 local function save()
@@ -263,10 +284,54 @@ function nav.goHome()
   return true
 end
 
---- World coordinates, if a GPS cluster is in range. Purely informational - the
---- turtle navigates fine without it, but it makes the dashboard far more useful
---- because you can actually go and find the thing.
+--- Record where home is in the world, and which way the turtle faced when the
+--- job started. `heading` is an index into nav.COMPASS.
+---
+--- This is what makes real world coordinates possible without GPS. The turtle
+--- already knows its offset from home exactly - every move is only counted once
+--- the game confirms it - so one fixed reference point is all that is missing.
+function nav.setOrigin(x, y, z, heading)
+  state.originSet = true
+  state.originX, state.originY, state.originZ = x, y, z
+  state.originHeading = heading % 4
+  save()
+end
+
+function nav.hasOrigin()
+  return state.originSet == true
+end
+
+function nav.origin()
+  if not state.originSet then
+    return nil
+  end
+  return {
+    x = state.originX,
+    y = state.originY,
+    z = state.originZ,
+    heading = state.originHeading,
+  }
+end
+
+--- Real world coordinates.
+---
+--- Prefers dead reckoning from a known origin over GPS, which is the opposite
+--- of the obvious choice and deliberate: GPS needs four computers on plain
+--- wireless modems, reports nil distance through ender modems, and is out of
+--- range exactly where you need it - a turtle at Y=-59 a hundred blocks out is
+--- some 330 blocks from a surface cluster. Dead reckoning costs nothing, works
+--- at any depth, and is as accurate as the navigation itself.
 function nav.worldPosition()
+  if state.originSet then
+    local forward = WORLD[state.originHeading]
+    local right = WORLD[(state.originHeading + 1) % 4]
+    return {
+      x = state.originX + state.z * forward.x + state.x * right.x,
+      y = state.originY + state.y,
+      z = state.originZ + state.z * forward.z + state.x * right.z,
+    }
+  end
+
   local x, y, z = gps.locate(2, false)
   if not x then
     return nil
