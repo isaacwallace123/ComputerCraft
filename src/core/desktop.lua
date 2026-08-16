@@ -205,6 +205,15 @@ function desktop.run(parent, appList, opts)
       if #appList == 0 then
         ui.center(math.floor(height / 2), "No apps available for this machine.", ui.theme.dim)
       end
+
+      if opts.homeMessage then
+        ui.text(
+          2,
+          2,
+          ui.pad(opts.homeMessage, width - 3),
+          opts.homeWarning and ui.theme.warn or ui.theme.dim
+        )
+      end
     end)
   end
 

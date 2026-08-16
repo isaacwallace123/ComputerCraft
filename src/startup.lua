@@ -152,6 +152,10 @@ end
 
 local desktop = require("core.desktop")
 local desktopApps = apps.available(caps, node, "desktop")
+local modemStatus = caps.modem and (caps.wireless and "wireless modem" or "wired modem")
+  or "NO MODEM DETECTED"
+local homeMessage = ("v%s  role %s  %s"):format(boot.VERSION, node.role or "unset", modemStatus)
+local homeWarning = node.role ~= "fleet" or not caps.modem
 
 if monitor then
   local console = require("core.console")
@@ -161,6 +165,8 @@ if monitor then
       autoLaunch = false,
       localInput = false,
       monitorName = monitorName,
+      homeMessage = homeMessage,
+      homeWarning = homeWarning,
     })
   end, function()
     console.run(localScreen, { name = boot.NAME })
@@ -170,6 +176,8 @@ else
     name = boot.NAME,
     autoLaunch = false,
     localInput = true,
+    homeMessage = homeMessage,
+    homeWarning = homeWarning,
   })
 end
 
