@@ -105,25 +105,84 @@ function ore.junkMatcher(keep)
   end
 end
 
+ore.DEFAULT_BUDGET = 256
+ore.DEFAULT_RADIUS = 24
+ore.DEFAULT_GAP_BUDGET = 12
+
 --- Follow a vein out from the turtle's current position and come back to it.
 ---
 --- Recursion does the bookkeeping: step into an ore block, explore from there,
 --- then step back the way we came. Because every branch unwinds, the turtle is
 --- always standing exactly where it started when this returns - which is what
---- lets the caller carry on down a tunnel without re-navigating.
+--- lets the caller carry on down a tunnel without re-navigating. That property
+--- is the reason this stays depth-first: a breadth-first flood fill visits cells
+--- in a nicer order but has to walk back and forth across the vein to do it, and
+--- on a turtle every one of those steps is a fuel unit and a tick.
 ---
---- `budget` caps total blocks so a huge andesite blob cannot swallow the trip.
+--- Two limits replaced the old depth cap, because a depth cap is the wrong shape:
+--- it stops 12 steps along a vein that may be 60 blocks long, in the one
+--- direction the recursion happened to try first.
+---
+---   * `budget` caps blocks mined, so a huge blob cannot swallow the whole trip.
+---     Hitting it sets `truncated`, which tells the caller the vein is still
+---     there and worth coming back for.
+---   * `radius` caps how far from the entry point the turtle may wander, which is
+---     what actually keeps it near its tunnel.
+---
+--- `gapBudget` buys the other half of the problem. Large 1.18 ore veins are
+--- deliberately noisy: clusters sit one block apart, joined diagonally or not at
+--- all. A strict six-face fill takes one cluster and walks away from the rest of
+--- the vein, which looks exactly like a turtle giving up on obvious ore. Probing
+--- one block through solid stone reconnects them.
+---
 --- `beforeMove` applies the same recall/fuel/inventory policy as the main path.
-function ore.follow(nav, isWanted, budget, record, maxDepth, beforeMove)
-  maxDepth = maxDepth or 12
-  local total = budget or 64
+function ore.follow(nav, isWanted, record, options)
+  options = options or {}
+  local total = options.budget or ore.DEFAULT_BUDGET
+  local radius = options.radius or ore.DEFAULT_RADIUS
+  local beforeMove = options.beforeMove
   local remaining = total
-  local stoppedReason = nil
-  local stoppedKind = nil
+  local gapsLeft = options.gapBudget or ore.DEFAULT_GAP_BUDGET
+  local stoppedReason, stoppedKind = nil, nil
+  local truncated = false
+  local originX, originY, originZ = nav.position()
   local explore
 
-  local function consider(inspect, moveIn, moveOut, depth)
-    if remaining <= 0 or stoppedReason then
+  local DELTA = {
+    [0] = { x = 0, z = 1 },
+    [1] = { x = 1, z = 0 },
+    [2] = { x = 0, z = -1 },
+    [3] = { x = -1, z = 0 },
+  }
+
+  local function candidateInRange(dx, dy, dz)
+    local x, y, z = nav.position()
+    return math.max(
+      math.abs(x + dx - originX),
+      math.abs(y + dy - originY),
+      math.abs(z + dz - originZ)
+    ) <= radius
+  end
+
+  local function forwardOffset()
+    local _, _, _, facing = nav.position()
+    return DELTA[facing].x, 0, DELTA[facing].z
+  end
+
+  local function allowed()
+    if not beforeMove then
+      return true
+    end
+    local ok, reason, kind = beforeMove()
+    if not ok then
+      stoppedReason, stoppedKind = reason, kind
+    end
+    return ok
+  end
+
+  --- Step into a wanted block, work outward from it, and come back.
+  local function consider(inspect, moveIn, moveOut, offset, mayBridge)
+    if stoppedReason then
       return
     end
 
@@ -132,42 +191,132 @@ function ore.follow(nav, isWanted, budget, record, maxDepth, beforeMove)
       return
     end
 
-    if beforeMove then
-      local allowed, reason, kind = beforeMove()
-      if not allowed then
-        stoppedReason, stoppedKind = reason, kind
-        return
-      end
-    end
-
-    if moveIn() then
-      record(data.name)
-      remaining = remaining - 1
-      explore(depth + 1)
-      local returned, returnError = moveOut()
-      if not returned then
-        stoppedReason = "could not leave vein: " .. tostring(returnError)
-      end
-    end
-  end
-
-  explore = function(depth)
-    if depth > maxDepth or remaining <= 0 or stoppedReason then
+    -- Ore we can see but have no budget left to take. Worth saying so: the
+    -- caller queues the spot for the next cycle instead of losing it.
+    if remaining <= 0 then
+      truncated = true
       return
     end
 
-    consider(turtle.inspectDown, nav.down, nav.up, depth)
-    consider(turtle.inspectUp, nav.up, nav.down, depth)
+    local dx, dy, dz = offset()
+    if not candidateInRange(dx, dy, dz) or not allowed() then
+      return
+    end
+
+    local moved, moveError, moveKind = moveIn()
+    if not moved then
+      stoppedReason = "could not enter vein: " .. tostring(moveError)
+      stoppedKind = moveKind
+      return
+    end
+
+    record(data.name)
+    remaining = remaining - 1
+    explore(mayBridge)
+
+    local returned, returnError = moveOut()
+    if not returned then
+      stoppedReason = "could not leave vein: " .. tostring(returnError)
+    end
+  end
+
+  --- Step through one block of waste to see whether the vein continues beyond.
+  --- Only ever one block deep, and never chained, so this cannot turn into the
+  --- turtle tunnelling through bedrock looking for hope.
+  local function bridge(inspect, detect, moveIn, moveOut, offset)
+    if stoppedReason or gapsLeft <= 0 or remaining <= 0 then
+      return
+    end
+    if not detect() then
+      return -- air, or already probed and found empty
+    end
+
+    local ok, data = inspect()
+    if not ok or isWanted(data.name) then
+      return -- handled by consider
+    end
+
+    local name = tostring(data.name)
+    if name:find("lava") or name:find("computercraft:") or name:find("chest") then
+      return
+    end
+
+    local dx, dy, dz = offset()
+    if not candidateInRange(dx, dy, dz) or not allowed() then
+      return
+    end
+
+    gapsLeft = gapsLeft - 1
+    local moved, moveError, moveKind = moveIn()
+    if not moved then
+      if moveKind == "peer" then
+        stoppedReason = "fleet traffic blocked vein gap: " .. tostring(moveError)
+        stoppedKind = moveKind
+      end
+      return
+    end
+
+    explore(false)
+
+    local returned, returnError = moveOut()
+    if not returned then
+      stoppedReason = "could not leave vein: " .. tostring(returnError)
+    end
+  end
+
+  --- One full six-face sweep. Ore first across every face, then - only if this
+  --- cell is part of the vein proper - a second sweep that probes the gaps.
+  explore = function(mayBridge)
+    if stoppedReason then
+      return
+    end
+
+    -- When the last permitted block is mined, inspect once more before
+    -- unwinding. Without this, reaching exactly zero at a leaf looks identical
+    -- to finishing the vein and `truncated` is never set.
+    if remaining <= 0 then
+      local function wanted(inspect)
+        local ok, data = inspect()
+        return ok and isWanted(data.name)
+      end
+      truncated = wanted(turtle.inspectDown) or wanted(turtle.inspectUp)
+      for _ = 1, 4 do
+        truncated = wanted(turtle.inspect) or truncated
+        nav.turnRight()
+      end
+      return
+    end
+
+    local down = function()
+      return 0, -1, 0
+    end
+    local up = function()
+      return 0, 1, 0
+    end
+
+    consider(turtle.inspectDown, nav.down, nav.up, down, mayBridge)
+    consider(turtle.inspectUp, nav.up, nav.down, up, mayBridge)
 
     -- Four turns brings the turtle back to its original heading.
     for _ = 1, 4 do
-      consider(turtle.inspect, nav.forward, nav.back, depth)
+      consider(turtle.inspect, nav.forward, nav.back, forwardOffset, mayBridge)
+      nav.turnRight()
+    end
+
+    if not mayBridge then
+      return
+    end
+
+    bridge(turtle.inspectDown, turtle.detectDown, nav.down, nav.up, down)
+    bridge(turtle.inspectUp, turtle.detectUp, nav.up, nav.down, up)
+    for _ = 1, 4 do
+      bridge(turtle.inspect, turtle.detect, nav.forward, nav.back, forwardOffset)
       nav.turnRight()
     end
   end
 
-  explore(0)
-  return total - remaining, stoppedReason, stoppedKind
+  explore(true)
+  return total - remaining, stoppedReason, stoppedKind, truncated
 end
 
 return ore

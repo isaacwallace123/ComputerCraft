@@ -23,11 +23,14 @@ Base computer                         Mining turtle
 The intended dependency flow is:
 
 ```text
-apps → miner / fleet / jobs → turtle → core
+apps → miner / fleet / jobs → turtle / mine → core
 ```
 
 - `core/` contains platform services: configuration, UI, display, logging, networking,
   sound, boot, and app metadata.
+- `mine/` contains the shared worksite: sector geometry (`plan.lua`, pure arithmetic),
+  the base-side lease and frontier store (`registry.lua`), and the turtle-side cache and
+  claim client (`site.lua`). It sits beside `turtle/` because both sides import it.
 - `turtle/` contains hardware primitives and should not know about a particular job.
 - `jobs/` contains mining behavior and accepts callbacks rather than drawing UI or
   receiving network messages.
@@ -100,6 +103,12 @@ on that computer ID.
 `fleet/coordinator.lua` performs multi-turtle assignments. The coordinated quarry
 currently selects connected parked miners, divides the world rectangle into balanced
 non-overlapping cell ranges, and sends one atomic assignment to each worker.
+
+The same module answers shared-mine `mine` requests inline from the Fleet listen loop,
+leasing prospecting sectors and recording their frontiers through `mine/registry.lua`.
+Handling is synchronous and short on purpose: a turtle waits about three seconds before
+falling back to its own cached plan, so nothing here may block. Fleet must remain open
+on the base for this listener to run.
 
 ## Update model
 

@@ -15,6 +15,8 @@ must stop requiring deleted modules before they are removed from the manifest.
 | `.node` | install/startup/miner context | role, label, selected job, parked state and reason, auto-update |
 | `.nav` | `turtle/nav.lua` | relative position/facing, movement statistics, world origin and heading |
 | `.fleet` | `fleet/roster.lua` | paired device snapshots and last-seen times |
+| `.mine` | `mine/registry.lua` | base mine plan, leases, and per-profile/depth frontiers |
+| `.site` | `mine/site.lua` | turtle's cached mine plan and most recent sector claim |
 | `.update` | bootstrap/updater | GitHub user, repo, branch, source path, optional token |
 | `.update-result` | updater/runtime | last update success or failure details |
 | `.log` | `core/log.lua` | capped persistent base log |
@@ -32,7 +34,7 @@ shallow merge. Nested tables are replaced, not recursively merged. Prefer flat s
 fields for values that need forward-compatible defaults.
 
 Movement state is written after each confirmed movement. Job checkpoints are written
-after completed cells, tunnel steps, layers, or phase transitions. This ordering is
+after completed cells, trunk cells, layers, or phase transitions. This ordering is
 intentional: a crash may repeat already-cleared air, but must not skip unmined blocks.
 
 ## Migration rules

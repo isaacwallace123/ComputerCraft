@@ -13,6 +13,67 @@ These rules are more important than any one mining pattern:
 6. Lava, computers, turtles, chests, and barrels are not deliberately mined.
 7. Recall unwinds through the normal return route and is not reported as a failure.
 8. Unexpected modded drops are kept; unknown items are not treated as junk by default.
+9. Another turtle blocking the way is a delay, never a reason to abandon a trip.
+10. A cycle that ends early saves enough state to resume the same ground, not to pick
+    new ground.
+
+## The shared mine
+
+Prospecting jobs do not choose where to dig. `mine/plan.lua` divides the world once into
+a grid of square sectors centred on the base, enumerated ring by ring outward, skipping
+the centre cell where the base sits. Every number below is derived from the plan by pure
+arithmetic on both the base and the turtle, so only the plan is ever transmitted.
+
+| Concept | Meaning |
+| --- | --- |
+| sector | one `cellSize` square of ground, with one shaft at its centre |
+| shaft | the single reusable vertical hole into that sector |
+| trunk | a tunnel spanning the sector along world X at the shaft's Z |
+| ribs | perpendicular branches every `branchSpacing`, stopping one block short of the sector edge |
+| frontier | how far one profile/depth has completed the sector trunk |
+| lane | one of eight staggered cruise altitudes used to reduce shared airspace |
+
+Depth is deliberately **not** part of the plan: Rare wants Y -59 and Resources wants
+Y 16, and both should be able to share a shaft. Each job keeps its own `targetY` and
+extends the shaft vertically if it needs to go higher or lower. Frontiers and exhaustion
+are keyed by job and target Y, so completing Rare never skips Resources ground at a
+different depth.
+
+`mine/registry.lua` runs on the base and owns leases and frontiers. `mine/site.lua` runs
+on the turtle, caches the plan, and asks for a sector at each redeploy. A turtle that
+gets no answer within three seconds keeps the sector it already held, or falls back to
+one derived from its computer ID — losing the base costs coordination, never mining.
+The Fleet app must remain open on the base because its listener answers claims and
+renews leases from the turtles' ordinary status heartbeats.
+
+Configure the mine from the base console:
+
+```text
+mine here              centre it on the base computer, using GPS
+mine at <x> <y> <z>    centre it explicitly
+mine size <blocks>     sector edge length, default 48
+mine rings <1-8>       how far out sectors may be opened, default 3
+mine keepout <blocks>  never dig within this radius of the centre
+mine                   show the plan and every opened sector
+```
+
+The mine surface must be Y -63..310; the upper bound leaves room for all eight
+cruise lanes below the build limit.
+
+There are two ways to keep the digging away from where you live, and they are not the
+same. `mine at` moves the whole worksite somewhere else — the turtles still fly home to
+their own chests, so the commute is paid every cycle. `mine keepout` leaves the mine
+centred on base but refuses the inner rings, which costs a longer commute for the same
+reason but keeps the sector grid anchored to something you can find.
+
+Sectors are leased inner-ring-first, so the cheapest allowed ground is always used
+before anything further out.
+
+Moving the centre, changing the sector size, or changing the keep-out radius clears all
+recorded progress, because sector N then refers to different ground.
+
+Every prospecting turtle needs a world origin from the `where` tool, the same
+prerequisite the coordinated quarry has. `ready()` refuses to deploy without one.
 
 ## Job contract
 
@@ -25,8 +86,10 @@ Jobs are registered in `src/apps/miner.lua`. A job module provides:
 | `setup(ui)` | local interactive configuration |
 | `configure(job, settings)` | remote configuration validation |
 | `ready(job)` | launch-time preflight |
+| `prepare(job)` | optional; acquire route/assignment state needed by preflight |
 | `restart(job)` | prepare a fresh deployment or cycle |
 | `status(job)` | progress, haul, delivered count, and public settings |
+| `status().standing` | optional; progress to report while parked, see below |
 | `minimumFuel(job)` | safe launch threshold shown in Devices |
 | `run(job, ctx)` | perform work and return a result kind |
 | `settingFields` | schema rendered by Devices |
@@ -35,6 +98,20 @@ Jobs are registered in `src/apps/miner.lua`. A job module provides:
 or nil. Result kinds used by runtime are `cycle`, `complete`, `fuel`, and `recalled`.
 Set `continuous = true` only for jobs where choosing a fresh route after unloading is
 useful.
+
+### Progress while parked
+
+A job whose `progress` tracks the current route — as prospecting does, mapping each of
+`travel`/`descend`/`transit`/`mining`/`home` to a fraction — must also return
+`standing`: what remains true when the turtle is not on a route at all. Prospecting
+returns its sector completion.
+
+Without it a recalled turtle reports the `home` phase's 95% for as long as it stays
+parked, which reads as a turtle stuck on the way back and cannot be told apart from one
+that genuinely is. Quarry and Hollow track durable cell counts rather than route phase,
+so they correctly omit `standing` and keep reporting `progress`.
+
+`parkKind == "complete"` still overrides everything to 100%.
 
 ## Current jobs
 
@@ -60,14 +137,30 @@ shared runner:
 - Fuel accepts coal ore only. Default target is Y 96.
 - Resources accepts iron, copper, zinc, and andesite. Default target is Y 16.
 
-Each cycle chooses an independent random bearing, travels at cruise altitude, sinks to
-the configured Y, and mines roughly outward from base. The branch grid has ribs every
-three blocks. Inspecting each tunnel cell and following adjacent veins covers the
-space between ribs without excavating every stone block.
+All three work the shared mine described above. A cycle is five phases:
 
-Vein following is recursive, capped by both depth and block budget, and always unwinds
-to its starting cell and facing. This is what lets the main runner continue without
-reconstructing its path.
+| Phase | What happens |
+| --- | --- |
+| `travel` | fly to the sector shaft at this sector's cruise lane altitude |
+| `descend` | move vertically through the sector shaft to the target Y |
+| `transit` | walk the trunk tunnel out to the sector's saved frontier |
+| `mining` | extend the trunk, cut ribs, follow veins, advance the frontier |
+| `home` | back along the trunk, through the shaft to the lane, then home |
+
+The branch grid has ribs every three blocks. Inspecting each tunnel cell and following
+adjacent veins covers the space between ribs without excavating every stone block.
+
+Vein following is recursive and always unwinds to its starting cell and facing, which is
+what lets the runner continue without reconstructing its path. It is bounded by a block
+budget and a radius from the entry cell — deliberately not by recursion depth, which
+stops part-way along a long vein in whichever direction the recursion happened to try
+first. A small separate gap budget lets it step through one block of waste, because
+large 1.20 ore veins are noisy enough that a strict six-face fill abandons most of one.
+
+Running out of budget sets a `truncated` flag. The runner then holds the sector frontier
+where it is, so the next cycle comes back to the same unfinished vein.
+On reboot, a miner in the `mining` phase first returns to that durable frontier cell;
+this also recovers safely if power was lost part-way through a rib or recursive vein.
 
 If a compatible miner exposes a Geo Scanner, the runner may take short targeted routes
 to matching blocks before the ordinary branch grid. Scanner coordinates are bounded by

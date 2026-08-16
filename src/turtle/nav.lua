@@ -13,8 +13,19 @@
 
 local config = require("core.config")
 local fuel = require("turtle.fuel")
+local peers = require("turtle.peers")
 
 local STATE_PATH = ".nav"
+
+--- How long to stand and wait for another turtle to clear the block ahead.
+--- Right of way goes to the lower computer ID: that turtle waits the full time,
+--- the other gives up quickly so its caller can route around. Both sides reach
+--- the same decision from numbers they already have, with no negotiation, and
+--- the different timeouts break a head-on tie when both peer positions are known.
+--- Bounded route detours handle the fallback when status data is unavailable.
+local PEER_HOLD = 20
+local PEER_YIELD = 3
+local PEER_PAUSE = 0.5
 
 local nav = {}
 
@@ -93,9 +104,14 @@ end
 --- `up` digs. The fleet eats itself and you are left wondering where a turtle
 --- went. Chests are protected for the same reason: that is where the haul goes.
 ---
+--- The second return value separates two situations that used to look identical
+--- and are not: a chest is there forever and the route has to change, whereas a
+--- turtle is there for a few seconds and the route is fine. Both are still
+--- refusals - neither is ever dug - but only one is a reason to give up.
+---
 --- Note this guards `nav` only. `apps/swarm.lua` reclaims workers with raw
 --- `turtle.dig`, which is deliberate and unaffected.
-local function refuses(inspect)
+local function obstacle(inspect)
   local ok, data = inspect()
   if not ok or type(data) ~= "table" then
     return nil
@@ -103,12 +119,52 @@ local function refuses(inspect)
 
   local name = tostring(data.name)
   if name:find("lava") then
-    return "lava"
+    return "lava", "hazard"
+  end
+  if name:find("computercraft:turtle") then
+    return "turtle in the way", "peer"
   end
   if name:find("computercraft:") or name:find("chest") or name:find("barrel") then
-    return "protected block (" .. name .. ")"
+    return "protected block (" .. name .. ")", "protected"
   end
   return nil
+end
+
+--- World block this turtle would occupy after `delta`, or nil without an origin.
+local function targetWorld(delta)
+  if not delta or not state.originSet then
+    return nil
+  end
+  local here = nav.worldPosition()
+  if not here then
+    return nil
+  end
+  local forward = WORLD[state.originHeading]
+  local right = WORLD[(state.originHeading + 1) % 4]
+  local relativeX, relativeZ = delta.x or 0, delta.z or 0
+  local worldX = relativeZ * forward.x + relativeX * right.x
+  local worldZ = relativeZ * forward.z + relativeX * right.z
+  return here.x + worldX, here.y + (delta.y or 0), here.z + worldZ
+end
+
+--- Stand and wait for a peer to move out of the way.
+---
+--- Returns true if the block cleared. The wait length depends on who has right
+--- of way, which is what keeps two turtles from politely blocking each other for
+--- the rest of the session.
+local function waitForPeer(inspect, delta)
+  local blocker = peers.at(targetWorld(delta))
+  local limit = (blocker and peers.yieldsTo(blocker.id)) and PEER_YIELD or PEER_HOLD
+
+  for _ = 1, limit do
+    -- Jitter, so two turtles that met head-on do not sample in lockstep.
+    sleep(PEER_PAUSE + math.random() * 0.4)
+    local _, kind = obstacle(inspect)
+    if kind ~= "peer" then
+      return true
+    end
+  end
+  return false
 end
 
 --- Move one block, clearing whatever is in the way.
@@ -117,13 +173,20 @@ end
 --- retries rather than giving up on the first failure. A block that will not
 --- break after many attempts is bedrock or someone's claim - we report that
 --- instead of grinding forever.
-local function push(move, dig, detect, attack, inspect)
-  local refusal = refuses(inspect)
-  if refusal then
-    return false, refusal
+---
+--- `delta` is this move's direction in job-relative axes, used only to work out
+--- which peer is in the way. It is optional; without it the wait still happens,
+--- just without the right-of-way shortcut.
+local function push(move, dig, detect, attack, inspect, delta)
+  local reason, kind = obstacle(inspect)
+  if kind == "peer" and not waitForPeer(inspect, delta) then
+    return false, reason, "peer"
+  elseif kind and kind ~= "peer" then
+    return false, reason, kind
   end
+
   if not fuel.ensureMove() then
-    return false, "out of fuel"
+    return false, "out of fuel", "fuel"
   end
 
   for attempt = 1, 100 do
@@ -133,10 +196,21 @@ local function push(move, dig, detect, attack, inspect)
     end
 
     if detect() then
-      if not dig() then
-        return false, "unbreakable"
+      -- Re-check before every dig, not just once on entry. A peer that arrives
+      -- while we are chewing through gravel would otherwise be mined up by the
+      -- next swing, which is the one failure this whole guard exists to prevent.
+      local blocked, blockedKind = obstacle(inspect)
+      if blockedKind == "peer" then
+        if not waitForPeer(inspect, delta) then
+          return false, blocked, "peer"
+        end
+      elseif blockedKind then
+        return false, blocked, blockedKind
+      elseif not dig() then
+        return false, "unbreakable", "blocked"
+      else
+        state.digs = state.digs + 1
       end
-      state.digs = state.digs + 1
     else
       -- Nothing solid there, so something alive is standing in it.
       attack()
@@ -148,41 +222,55 @@ local function push(move, dig, detect, attack, inspect)
     end
   end
 
-  return false, "blocked"
+  return false, "blocked", "blocked"
 end
 
 function nav.forward()
-  local ok, err = push(turtle.forward, turtle.dig, turtle.detect, turtle.attack, turtle.inspect)
+  local delta = { x = DELTA[state.facing].x, y = 0, z = DELTA[state.facing].z }
+  local ok, err, kind =
+    push(turtle.forward, turtle.dig, turtle.detect, turtle.attack, turtle.inspect, delta)
   if not ok then
-    return false, err
+    return false, err, kind
   end
-  state.x = state.x + DELTA[state.facing].x
-  state.z = state.z + DELTA[state.facing].z
+  state.x = state.x + delta.x
+  state.z = state.z + delta.z
   save()
   return true
 end
 
 --- Retreat one block without turning and without digging.
 --- Used to unwind after stepping into a vein: the space behind is the one we
---- just came out of, so it is always clear.
+--- just came out of, so it is always clear - unless another turtle has wandered
+--- into it, which is worth waiting out rather than reporting as a dead end.
 function nav.back()
   if not fuel.ensureMove() then
-    return false, "out of fuel"
+    return false, "out of fuel", "fuel"
   end
-  if not turtle.back() then
-    return false, "blocked"
+
+  local delta = { x = -DELTA[state.facing].x, y = 0, z = -DELTA[state.facing].z }
+  local blocker = peers.at(targetWorld(delta))
+  local limit = (blocker and peers.yieldsTo(blocker.id)) and PEER_YIELD or PEER_HOLD
+
+  for attempt = 1, limit do
+    if turtle.back() then
+      state.moves = state.moves + 1
+      state.x = state.x - DELTA[state.facing].x
+      state.z = state.z - DELTA[state.facing].z
+      save()
+      return true
+    end
+    if attempt < limit then
+      sleep(PEER_PAUSE + math.random() * 0.4)
+    end
   end
-  state.moves = state.moves + 1
-  state.x = state.x - DELTA[state.facing].x
-  state.z = state.z - DELTA[state.facing].z
-  save()
-  return true
+  return false, blocker and "turtle in the way" or "blocked", blocker and "peer" or "blocked"
 end
 
 function nav.up()
-  local ok, err = push(turtle.up, turtle.digUp, turtle.detectUp, turtle.attackUp, turtle.inspectUp)
+  local ok, err, kind =
+    push(turtle.up, turtle.digUp, turtle.detectUp, turtle.attackUp, turtle.inspectUp, { y = 1 })
   if not ok then
-    return false, err
+    return false, err, kind
   end
   state.y = state.y + 1
   save()
@@ -190,10 +278,16 @@ function nav.up()
 end
 
 function nav.down()
-  local ok, err =
-    push(turtle.down, turtle.digDown, turtle.detectDown, turtle.attackDown, turtle.inspectDown)
+  local ok, err, kind = push(
+    turtle.down,
+    turtle.digDown,
+    turtle.detectDown,
+    turtle.attackDown,
+    turtle.inspectDown,
+    { y = -1 }
+  )
   if not ok then
-    return false, err
+    return false, err, kind
   end
   state.y = state.y - 1
   save()
@@ -203,9 +297,9 @@ end
 --- Dig the block below without moving. Refuses lava, which we leave sealed
 --- rather than flooding the pit, and refuses chests and computers.
 function nav.digDown()
-  local refusal = refuses(turtle.inspectDown)
+  local refusal, kind = obstacle(turtle.inspectDown)
   if refusal then
-    return false, refusal
+    return false, refusal, kind
   end
   if not turtle.detectDown() then
     return true
@@ -219,9 +313,9 @@ function nav.digDown()
 end
 
 function nav.digUp()
-  local refusal = refuses(turtle.inspectUp)
+  local refusal, kind = obstacle(turtle.inspectUp)
   if refusal then
-    return false, refusal
+    return false, refusal, kind
   end
   if not turtle.detectUp() then
     return true
@@ -259,9 +353,17 @@ function nav.face(facing)
   end
 end
 
+--- How many times a route will step out of the way and re-plan before giving up.
+local DETOUR_ATTEMPTS = 4
+
 --- Walk to a job-relative coordinate.
 --- Rises before travelling and descends last, so the turtle crosses air it has
 --- already mined rather than tunnelling through fresh rock on the way back.
+---
+--- A turtle parked in the corridor is not a failed route. When one is in the way
+--- and we do not have right of way, the route steps aside and re-plans from
+--- wherever that leaves it, rather than reporting the whole trip as stuck - which
+--- is what used to send a miner home the moment it met a colleague.
 function nav.goTo(tx, ty, tz, beforeMove)
   local function checked(move)
     if beforeMove then
@@ -273,41 +375,75 @@ function nav.goTo(tx, ty, tz, beforeMove)
     return move()
   end
 
-  while state.y < ty do
-    local ok, err, kind = checked(nav.up)
-    if not ok then
-      return false, err, kind
-    end
-  end
-
-  if state.x ~= tx then
-    nav.face(state.x < tx and 1 or 3)
-    while state.x ~= tx do
-      local ok, err, kind = checked(nav.forward)
+  --- Rise, cross X, cross Z, descend. Each leg runs to completion or reports why.
+  local function legs()
+    while state.y < ty do
+      local ok, err, kind = checked(nav.up)
       if not ok then
         return false, err, kind
       end
     end
-  end
 
-  if state.z ~= tz then
-    nav.face(state.z < tz and 0 or 2)
-    while state.z ~= tz do
-      local ok, err, kind = checked(nav.forward)
+    if state.x ~= tx then
+      nav.face(state.x < tx and 1 or 3)
+      while state.x ~= tx do
+        local ok, err, kind = checked(nav.forward)
+        if not ok then
+          return false, err, kind
+        end
+      end
+    end
+
+    if state.z ~= tz then
+      nav.face(state.z < tz and 0 or 2)
+      while state.z ~= tz do
+        local ok, err, kind = checked(nav.forward)
+        if not ok then
+          return false, err, kind
+        end
+      end
+    end
+
+    while state.y > ty do
+      local ok, err, kind = checked(nav.down)
       if not ok then
         return false, err, kind
       end
     end
+
+    return true
   end
 
-  while state.y > ty do
-    local ok, err, kind = checked(nav.down)
-    if not ok then
+  --- Get out of the corridor. Up first: overhead is the direction least likely
+  --- to hold another turtle, since traffic runs along tunnels rather than
+  --- through their ceilings.
+  local function sidestep()
+    if checked(nav.up) then
+      return true
+    end
+    for _ = 1, 4 do
+      nav.turnRight()
+      if checked(nav.forward) then
+        return true
+      end
+    end
+    return checked(nav.down)
+  end
+
+  for attempt = 1, DETOUR_ATTEMPTS do
+    local ok, err, kind = legs()
+    if ok then
+      return true
+    end
+    if kind ~= "peer" or attempt == DETOUR_ATTEMPTS then
+      return false, err, kind
+    end
+    if not sidestep() then
       return false, err, kind
     end
   end
 
-  return true
+  return false, "route blocked by fleet traffic", "peer"
 end
 
 --- Back to the starting block, facing the original direction.

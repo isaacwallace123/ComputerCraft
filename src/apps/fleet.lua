@@ -12,6 +12,7 @@ local log = require("core.log")
 local util = require("core.util")
 local sound = require("core.sound")
 local display = require("core.display")
+local coordinator = require("fleet.coordinator")
 local rosterStore = require("fleet.roster")
 
 local embedded = ({ ... })[1] == "--embedded"
@@ -291,6 +292,7 @@ local function listen()
         saveRoster()
       elseif kind == "status" and type(body) == "table" then
         local previous = rosterStore.update(roster, key, body)
+        coordinator.renewMine(sender, body)
 
         local oldPhase = previous and previous.snap and previous.snap.phase
         if body.phase ~= oldPhase then
@@ -303,6 +305,13 @@ local function listen()
           end
         end
         saveRoster()
+      elseif kind == "mine" and type(body) == "table" then
+        -- Sector leasing. Answered inline: a turtle only waits a few seconds
+        -- before falling back to its cached plan, and nothing here blocks.
+        local ok, err = pcall(coordinator.mine, sender, body)
+        if not ok then
+          log.error("fleet: mine request failed - " .. tostring(err))
+        end
       elseif kind == "command_result" and type(body) == "table" then
         local previous = roster[key] or {}
         if type(body.snapshot) == "table" then

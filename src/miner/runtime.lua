@@ -8,6 +8,13 @@ local ui = require("core.ui")
 
 local runtime = {}
 
+local function prepareJob(ctx)
+  if ctx.jobModule.prepare then
+    return ctx.jobModule.prepare(ctx.job)
+  end
+  return true
+end
+
 function runtime.localControls(ctx)
   while true do
     local event = { os.pullEvent() }
@@ -197,9 +204,9 @@ function runtime.park(ctx, reason, kind)
       ctx.control.deploy = false
       local requester = ctx.control.deployFrom
       ctx.control.deployFrom = nil
-      local canStart, why = true, nil
-      if ctx.jobModule.ready then
-        canStart, why = ctx.jobModule.ready(ctx.job)
+      local canStart, why, notReadyKind = prepareJob(ctx)
+      if canStart and ctx.jobModule.ready then
+        canStart, why, notReadyKind = ctx.jobModule.ready(ctx.job)
       end
 
       if canStart then
@@ -209,7 +216,7 @@ function runtime.park(ctx, reason, kind)
 
       log.warn("deploy refused: " .. tostring(why))
       sound.play("error")
-      ctx.node.parkKind = "fuel"
+      ctx.node.parkKind = notReadyKind or "fuel"
       ctx.node.parkReason = why or "not ready"
       ctx:saveNode()
       ctx:report("parked", ctx.node.parkReason)
@@ -230,12 +237,16 @@ function runtime.park(ctx, reason, kind)
 end
 
 local function nextMiningCycle(ctx)
-  local canStart, why = true, nil
-  if ctx.jobModule.ready then
-    canStart, why = ctx.jobModule.ready(ctx.job)
+  -- Route assignment comes before fuel preflight: a newly leased outer sector
+  -- can cost more than the sector just completed. Checking the old route and
+  -- claiming the new one afterwards can launch a turtle without its return
+  -- reserve.
+  local canStart, why, notReadyKind = prepareJob(ctx)
+  if canStart and ctx.jobModule.ready then
+    canStart, why, notReadyKind = ctx.jobModule.ready(ctx.job)
   end
   if not canStart then
-    runtime.park(ctx, why or "not enough fuel for another run", "fuel")
+    runtime.park(ctx, why or "not enough fuel for another run", notReadyKind or "fuel")
     return
   end
 

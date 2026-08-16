@@ -69,7 +69,11 @@ different tradeoff:
 | park/deploy/update lifecycle | `src/miner/runtime.lua` |
 | new prospecting profile | `src/jobs/prospecting/profiles.lua` plus a small definition |
 | mining route/safety | `src/jobs/`, `src/jobs/common/safety.lua` |
+| shared mine geometry | `src/mine/plan.lua` |
+| sector leases and frontiers | `src/mine/registry.lua`, `src/fleet/coordinator.lua` |
+| turtle sector claiming | `src/mine/site.lua` |
 | movement/protected blocks | `src/turtle/nav.lua` |
+| turtle-to-turtle awareness | `src/turtle/peers.lua` |
 | fuel values/selection | `src/turtle/fuel.lua`, `src/turtle/fuel/catalog.lua` |
 | updater/bootstrap | `bootstrap.lua`, `src/update.lua`, manifest tool |
 | version automation | `.github/workflows/icos-version.yml`, `src/core/version.lua` |
@@ -116,6 +120,16 @@ large AFK run.
 
 - `.node.job = "expedition"` migrates to `rare`.
 - Rare retains the `.expedition` file path for existing settings.
+- Prospecting job files from the random-bearing builds keep their old `distance`,
+  `cruise`, `tunnelLength`, `tunnelDone`, and `bearing*` keys harmlessly. Phase `shaft`
+  migrates to `descend`; any other unknown phase restarts the route. A job file with
+  `sector = 0` will not move: the runner walks home and asks for a sector first, because
+  the unset shaft coordinates are `0,0` and that is a real place in the world.
+- Prospecting now requires a world origin (`where`), as the coordinated quarry already
+  did. `ready()` refuses to deploy without one.
+- The base needs `mine here` run once and the Fleet app kept open before it can lease
+  sectors. Prospecting frontiers are keyed by job and target Y; do not collapse them
+  into one sector-wide completion value.
 - Legacy relative quarry files are intentionally invalidated and require a new
   absolute assignment.
 - A standard mining turtle cannot carry pickaxe, modem, and Geo Scanner at once.

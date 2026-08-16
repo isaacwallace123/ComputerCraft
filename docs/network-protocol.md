@@ -44,10 +44,47 @@ Important snapshot fields:
 | `fuelTank`, `fuelReserve`, `fuelRequired` | detailed fuel telemetry |
 | `distanceHome`, `moves`, `digs` | navigation statistics |
 | `progress`, `haul`, `delivered`, `startedAt` | job telemetry |
+| `progress` while parked | durable job progress, not route phase; 1 when `parkKind` is `complete` |
 | `settings`, `settingFields` | values and schema rendered by Devices |
+| `sector`, `workKey` | shared-mine sector and profile/depth key, absent for other jobs |
+| `peers` | how many other miners this turtle can currently hear |
 
 New snapshot fields should be optional on readers because old turtles may not report
 them until updated.
+
+Miners now also listen to each other's `status` broadcasts, not just the base. The
+`world` field is what makes that useful: `turtle/peers.lua` uses it to tell which
+computer is standing in the block ahead, and therefore who has right of way.
+
+### `mine`
+
+Broadcast by a turtle to claim or update a shared-mine sector. Broadcast rather than
+addressed because the base is the only thing that answers, which keeps the turtle from
+having to know a base ID.
+
+| Action | Extra fields | Meaning |
+| --- | --- | --- |
+| `claim` | `requestId`, `workKey`, `sector`, `frontier` | request work; the turtle's cached sector/frontier is preferred |
+| `report` | `workKey`, `sector`, `frontier`, `blocks`, `exhausted` | record progress for one profile/depth |
+| `release` | `sector` | give a lease back without recording progress |
+
+The base replies to `claim` with `mine_result`:
+
+```lua
+{
+  ok = true,
+  requestId = "17:1786914000000:rare@-59",
+  plan = { centreX = 0, centreZ = 0, surfaceY = 64, cellSize = 48, ... },
+  sector = 3,
+  frontier = 17,
+}
+```
+
+`ok = false` carries a `message` and no plan. A turtle waits about three seconds for
+this before falling back to its cached plan, so the handler must not block. Leases
+expire after 15 minutes of silence so a turtle lost to lava does not lock a sector out
+permanently. While a turtle is running, its normal status heartbeat renews the lease;
+a parked turtle eventually releases it by expiry.
 
 ### `command_result`
 

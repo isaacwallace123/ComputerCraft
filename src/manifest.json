@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-16T09:06:29-04:00",
+    "generated":  "2026-08-16T17:59:02-04:00",
     "files":  [
                   "apps/devices.lua",
                   "apps/equip.lua",
@@ -34,6 +34,9 @@
                   "jobs/quarry.lua",
                   "jobs/rare.lua",
                   "jobs/resources.lua",
+                  "mine/plan.lua",
+                  "mine/registry.lua",
+                  "mine/site.lua",
                   "miner/context.lua",
                   "miner/network.lua",
                   "miner/runtime.lua",
@@ -44,6 +47,7 @@
                   "turtle/inv.lua",
                   "turtle/nav.lua",
                   "turtle/ore.lua",
+                  "turtle/peers.lua",
                   "update.lua"
               ]
 }

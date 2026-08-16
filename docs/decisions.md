@@ -111,6 +111,57 @@ Scanner availability, energy, cooldown, and upgrade slots vary by hardware. It c
 provide targeted shortcuts, but the branch grid remains complete without it. A scanner
 failure must degrade to ordinary mining instead of stopping a prospecting cycle.
 
+## D015 — Prospecting shares a fixed grid of shafts
+
+**Status:** accepted
+
+Each prospecting cycle used to roll an independent random bearing, fly out, and sink a
+fresh shaft. The number of holes near a base therefore grew with the number of cycles
+run, without bound, and nothing was ever reused.
+
+The world is now divided once into square sectors around the base (`mine/plan.lua`).
+Each sector has one shaft at its centre, extended vertically on first use and reused thereafter, and
+one trunk tunnel with ribs that stays strictly inside the sector bounds. Hole count is
+now bounded by sectors opened, not cycles run, and every later trip into a sector walks
+tunnels that already exist.
+
+The trade is longer commutes to outer rings and a hard requirement that every
+prospecting turtle has a world origin, the same prerequisite the coordinated quarry
+already had. Sectors are handed out inner-ring-first so the cheap ground is used first.
+
+## D016 — A sector frontier is what makes work resumable
+
+**Status:** accepted
+
+Ending a cycle used to discard the route. A turtle that filled its inventory beside a
+large vein went home, re-randomised, and never returned — the visible symptom being ore
+left obviously unmined.
+
+Each sector now stores a `frontier` for each job/depth key: how far along that trunk the
+fleet has mined. This lets different profiles share a shaft without sharing completion.
+It is held at the base (`mine/registry.lua`) and cached on the turtle (`mine/site.lua`), and
+survives unload, reboot, recall, and fuel aborts. A cycle that ends early resumes at the
+same tunnel. When a vein outlasts the vein budget the frontier is deliberately not
+advanced past it, so the next cycle re-enters the same ore.
+
+## D017 — Another turtle is a delay, not a failure
+
+**Status:** accepted
+
+Navigation refuses to mine computers, and every such refusal used to end the trip. Two
+turtles meeting in a tunnel therefore sent at least one of them home. As a fleet grows
+this becomes the dominant cause of abandoned cycles.
+
+`nav` now classifies obstacles: hazards and protected blocks still end a route, but a
+turtle is a transient obstacle. The blocked turtle waits, and `goTo` steps aside and
+re-plans rather than reporting failure. Right of way goes to the lower computer ID —
+derivable by both sides with no negotiation and asymmetric when both positions are
+current. Peers are tracked from the status broadcasts every miner already sends; stale
+or unavailable peer data falls back to bounded waits and route detours.
+
+The refusal check also moved inside the dig retry loop. Checking only on entry meant a
+turtle that arrived while its neighbour was chewing through gravel could be mined up.
+
 ## D014 — Version changes happen at merge
 
 **Status:** accepted
