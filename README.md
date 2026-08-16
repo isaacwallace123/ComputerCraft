@@ -146,6 +146,32 @@ the first.
 Regenerates the manifest, runs all checks, commits, pushes. Then run `update` on any
 in-game machine and reboot.
 
+### Why the updater resolves a commit SHA first
+
+`raw.githubusercontent.com` caches hard and **cannot be cache-busted**. Both of the
+usual tricks were measured still serving a file from before the push:
+
+| Approach | Result |
+| --- | --- |
+| `?t=<timestamp>` query string | stale |
+| `Cache-Control: no-cache` header | stale |
+| **commit SHA in the URL path** | **correct** |
+
+So `update.lua` spends one API call on `/repos/USER/REPO/branches/BRANCH` to resolve
+the branch to the commit it currently points at, then fetches every file from
+SHA-pinned paths. Those URLs are immutable, so they are never stale — and every push
+produces a new SHA, which is a new URL. If the lookup fails it falls back to the branch
+name and says so.
+
+### manifest.json must not have a BOM
+
+`tools\make-manifest.ps1` writes it with `[System.IO.File]::WriteAllText` and an
+explicit no-BOM encoder, **not** `Set-Content -Encoding utf8` — Windows PowerShell 5.1
+always adds a BOM there, and a leading `EF BB BF` makes CC's `textutils.unserialiseJSON`
+reject the file. That surfaces as "manifest.json is malformed" on every machine at
+once, which looks like a bad push rather than an encoding problem. `update.lua` also
+strips a BOM defensively.
+
 ### Private repos
 
 `raw.githubusercontent.com` ignores auth headers, so `update.lua` switches to the
