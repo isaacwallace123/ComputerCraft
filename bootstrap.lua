@@ -32,13 +32,28 @@ write("Access token (blank if the repo is public): ")
 local token = read("*") or ""
 local private = token ~= ""
 
-local headers = private
-    and {
-      ["Authorization"] = "Bearer " .. token,
-      ["Accept"] = "application/vnd.github.raw",
-      ["User-Agent"] = "cc-tweaked-updater",
-    }
-  or nil
+local headers = { ["User-Agent"] = "cc-tweaked-updater" }
+if private then
+  headers["Authorization"] = "Bearer " .. token
+  headers["Accept"] = "application/vnd.github.raw"
+end
+
+--- Resolve the branch to a commit SHA. raw.githubusercontent caches hard and
+--- cannot be busted - neither a ?t= query string nor Cache-Control: no-cache
+--- works, both measured serving stale files minutes after a push. A SHA in the
+--- path is immutable, so it is always exactly what was pushed.
+local ref = branch
+do
+  local url = ("https://api.github.com/repos/%s/%s/branches/%s"):format(user, repo, branch)
+  local response = http.get(url, headers)
+  if response then
+    local data = textutils.unserialiseJSON((response.readAll():gsub("^\239\187\191", "")))
+    response.close()
+    if data and data.commit and type(data.commit.sha) == "string" then
+      ref = data.commit.sha
+    end
+  end
+end
 
 local function urlFor(name)
   if private then
@@ -47,10 +62,10 @@ local function urlFor(name)
       repo,
       PATH,
       name,
-      branch
+      ref
     )
   end
-  return ("https://raw.githubusercontent.com/%s/%s/%s/%s/%s"):format(user, repo, branch, PATH, name)
+  return ("https://raw.githubusercontent.com/%s/%s/%s/%s/%s"):format(user, repo, ref, PATH, name)
 end
 
 local function grab(name)

@@ -62,44 +62,18 @@ end
 
 local private = cfg.token ~= ""
 
---- Public repos come off the raw CDN. Private repos must go through the API,
---- which honours an Authorization header - raw.githubusercontent does not. The
---- timestamp defeats caching, which otherwise serves stale files for a few
---- minutes after you push.
-local function urlFor(name)
-  local bust = "t=" .. tostring(os.epoch("utc"))
-  if private then
-    return ("https://api.github.com/repos/%s/%s/contents/%s/%s?ref=%s&%s"):format(
-      cfg.user,
-      cfg.repo,
-      cfg.path,
-      name,
-      cfg.branch,
-      bust
-    )
-  end
-  return ("https://raw.githubusercontent.com/%s/%s/%s/%s/%s?%s"):format(
-    cfg.user,
-    cfg.repo,
-    cfg.branch,
-    cfg.path,
-    name,
-    bust
-  )
+--- GitHub's API rejects requests without a User-Agent, and needs the token when
+--- the repo is private. vnd.github.raw makes the contents endpoint return the
+--- plain file rather than JSON with base64 content - CC has no base64 decoder,
+--- so that matters.
+local headers = { ["User-Agent"] = "cc-tweaked-updater" }
+if private then
+  headers["Authorization"] = "Bearer " .. cfg.token
+  headers["Accept"] = "application/vnd.github.raw"
 end
 
---- vnd.github.raw makes the API return the plain file rather than JSON with
---- base64 content - CC has no base64 decoder, so this matters.
-local headers = private
-    and {
-      ["Authorization"] = "Bearer " .. cfg.token,
-      ["Accept"] = "application/vnd.github.raw",
-      ["User-Agent"] = "cc-tweaked-updater",
-    }
-  or nil
-
-local function fetch(name)
-  local response, err, failed = http.get(urlFor(name), headers)
+local function get(url)
+  local response, err, failed = http.get(url, headers)
   if not response then
     local code = failed and failed.getResponseCode()
     if code == 401 then
@@ -112,6 +86,63 @@ local function fetch(name)
   local body = response.readAll()
   response.close()
   return body
+end
+
+--- Resolve the branch to the commit it currently points at.
+---
+--- This exists because raw.githubusercontent caches hard and CANNOT be busted:
+--- a ?t= query string is ignored, and so is Cache-Control: no-cache. Both were
+--- measured serving a stale file minutes after a push. A commit SHA in the path
+--- is immutable, so it is never stale and never cached wrongly - and a new push
+--- produces a new SHA, which is a new URL. One extra API call per update buys
+--- correctness that no cache-busting trick can.
+local function resolveRef()
+  local url = ("https://api.github.com/repos/%s/%s/branches/%s"):format(
+    cfg.user,
+    cfg.repo,
+    cfg.branch
+  )
+  local body = get(url)
+  if not body then
+    return nil
+  end
+  local data = textutils.unserialiseJSON((body:gsub("^\239\187\191", "")))
+  if data and data.commit and type(data.commit.sha) == "string" then
+    return data.commit.sha
+  end
+  return nil
+end
+
+print("Updating from " .. cfg.user .. "/" .. cfg.repo .. " (" .. cfg.branch .. ")")
+
+local ref = resolveRef()
+if not ref then
+  print("Could not resolve " .. cfg.branch .. "; falling back to the branch name.")
+  print("Files may be a few minutes out of date.")
+  ref = cfg.branch
+end
+
+local function urlFor(name)
+  if private then
+    return ("https://api.github.com/repos/%s/%s/contents/%s/%s?ref=%s"):format(
+      cfg.user,
+      cfg.repo,
+      cfg.path,
+      name,
+      ref
+    )
+  end
+  return ("https://raw.githubusercontent.com/%s/%s/%s/%s/%s"):format(
+    cfg.user,
+    cfg.repo,
+    ref,
+    cfg.path,
+    name
+  )
+end
+
+local function fetch(name)
+  return get(urlFor(name))
 end
 
 local function readLocal(path)
@@ -137,7 +168,7 @@ local function writeLocal(path, body)
   handle.close()
 end
 
-print("Updating from " .. cfg.user .. "/" .. cfg.repo .. " (" .. cfg.branch .. ")")
+print("At commit " .. tostring(ref):sub(1, 7))
 
 local manifestBody, err = fetch("manifest.json")
 if not manifestBody then
