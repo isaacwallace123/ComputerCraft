@@ -128,11 +128,15 @@ local function applyAssignment(ctx)
 end
 
 local function localSetup(ctx, changeJob)
+  -- The heartbeat runs in parallel and redraws the status screen every two
+  -- seconds. Suppress it before opening the job picker as well as during that
+  -- job's setup prompts, otherwise both screens continually paint over each
+  -- other while the user is choosing.
+  ctx.interactive = true
   if changeJob then
     ctx:selectJob(ctx:chooseJob(), false)
   end
 
-  ctx.interactive = true
   ctx.job = ctx.jobModule.setup(ui)
   ctx.interactive = false
   if ctx.job.active then
