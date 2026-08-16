@@ -32,6 +32,7 @@ local function menu()
     end
     entries[#entries + 1] = { label = "Scan for ore", program = "apps/scan.lua" }
     if turtle then
+      entries[#entries + 1] = { label = "Swarm deploy/reclaim", program = "apps/swarm.lua" }
       entries[#entries + 1] = { label = "Swap modem", program = "apps/equip.lua" }
     end
     entries[#entries + 1] = { label = "Update from GitHub", program = "update.lua" }

@@ -1,21 +1,24 @@
 ﻿{
-    "generated":  "2026-08-16T05:32:47-04:00",
+    "generated":  "2026-08-16T05:46:02-04:00",
     "files":  [
                   "apps/equip.lua",
                   "apps/fleet.lua",
                   "apps/miner.lua",
                   "apps/scan.lua",
+                  "apps/swarm.lua",
                   "core/config.lua",
                   "core/log.lua",
                   "core/net.lua",
                   "core/ui.lua",
                   "core/util.lua",
                   "install.lua",
+                  "jobs/expedition.lua",
                   "jobs/quarry.lua",
                   "startup.lua",
                   "turtle/fuel.lua",
                   "turtle/inv.lua",
                   "turtle/nav.lua",
+                  "turtle/ore.lua",
                   "update.lua"
               ]
 }

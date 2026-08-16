@@ -117,6 +117,20 @@ function nav.forward()
   return true
 end
 
+--- Retreat one block without turning and without digging.
+--- Used to unwind after stepping into a vein: the space behind is the one we
+--- just came out of, so it is always clear.
+function nav.back()
+  if not turtle.back() then
+    return false, "blocked"
+  end
+  state.moves = state.moves + 1
+  state.x = state.x - DELTA[state.facing].x
+  state.z = state.z - DELTA[state.facing].z
+  save()
+  return true
+end
+
 function nav.up()
   local ok, err = push(turtle.up, turtle.digUp, turtle.detectUp, turtle.attackUp, turtle.inspectUp)
   if not ok then

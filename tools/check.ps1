@@ -58,10 +58,17 @@ $selene = Find-Tool "selene.exe"
 if ($selene) {
   Push-Location $repo
   $out = & $selene src 2>&1
+  $code = $LASTEXITCODE
   Pop-Location
-  $summary = $out | Select-Object -Last 1
-  Write-Host "  $summary"
-  if ($LASTEXITCODE -ne 0) { $failed = $true }
+  if ($code -ne 0) {
+    # Print everything - the trailing "Results" block alone hides which file
+    # and line the warning is actually on.
+    $out | ForEach-Object { "  $_" }
+    $failed = $true
+  }
+  else {
+    Write-Host "  clean"
+  }
 }
 else {
   Write-Host "  skipped (open a .lua file once so the extension downloads it)" -ForegroundColor DarkGray

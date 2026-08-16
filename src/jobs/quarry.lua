@@ -94,8 +94,33 @@ local function unload(job)
   return true
 end
 
---- Run before every move: enough fuel to get home, and somewhere to put ore.
-local function checkpoint(job)
+--- Reset progress but keep the configured dimensions. Used when the base sends
+--- a deploy order - there is nobody at the keyboard to answer setup questions.
+function quarry.restart(job)
+  job.layer = 0
+  job.delivered = 0
+  job.active = true
+  job.startedAt = os.epoch("utc")
+  quarry.save(job)
+  return job
+end
+
+function quarry.status(job)
+  return {
+    progress = quarry.progress(job),
+    haul = {},
+    delivered = job.delivered,
+  }
+end
+
+--- Run before every move: not recalled, enough fuel to get home, and somewhere
+--- to put ore.
+local function checkpoint(job, ctx)
+  local abort = ctx.aborted()
+  if abort then
+    return false, abort
+  end
+
   local needed = nav.distanceHome() + SAFETY_MARGIN
   if fuel.level() < needed and not fuel.refuelTo(needed + 500) then
     return false, "out of fuel"
@@ -111,8 +136,8 @@ local function checkpoint(job)
   return true
 end
 
-local function advance(job)
-  local ok, err = checkpoint(job)
+local function advance(job, ctx)
+  local ok, err = checkpoint(job, ctx)
   if not ok then
     return false, err
   end
@@ -120,11 +145,11 @@ local function advance(job)
 end
 
 --- Boustrophedon sweep: up one column, shuffle sideways, back down the next.
-local function sweepLayer(job, report)
+local function sweepLayer(job, ctx)
   local right = true
 
   for column = 1, job.width do
-    report(
+    ctx.report(
       "mining",
       ("layer %d/%d  column %d/%d"):format(job.layer + 1, quarry.layers(job), column, job.width)
     )
@@ -132,7 +157,7 @@ local function sweepLayer(job, report)
     for cell = 1, job.length do
       nav.digDown()
       if cell < job.length then
-        local ok, err = advance(job)
+        local ok, err = advance(job, ctx)
         if not ok then
           return false, err
         end
@@ -142,7 +167,7 @@ local function sweepLayer(job, report)
     if column < job.width then
       local turn = right and nav.turnRight or nav.turnLeft
       turn()
-      local ok, err = advance(job)
+      local ok, err = advance(job, ctx)
       if not ok then
         return false, err
       end
@@ -188,32 +213,40 @@ function quarry.setup(ui)
   return job
 end
 
---- Run the job to completion. `report(phase, detail)` is called often enough to
---- drive a live dashboard.
-function quarry.run(job, report)
+--- Run the job to completion.
+--- `ctx.report(phase, detail)` drives the live dashboard; `ctx.aborted()`
+--- returns a reason string when the base has recalled the fleet.
+function quarry.run(job, ctx)
+  local stopped = nil
+
   while job.layer < quarry.layers(job) do
-    report("returning", "to start of layer " .. (job.layer + 1))
+    ctx.report("returning", "to start of layer " .. (job.layer + 1))
     local ok, err = nav.goHome()
     if not ok then
       return false, err
     end
 
-    report("descending", "to layer " .. (job.layer + 1))
+    ctx.report("descending", "to layer " .. (job.layer + 1))
     ok, err = descendToLayer(job.layer)
     if not ok then
       if err == "unbreakable" then
-        report("finishing", "hit bedrock")
+        ctx.report("finishing", "hit bedrock")
         break
       end
       return false, err
     end
 
-    ok, err = sweepLayer(job, report)
+    ok, err = sweepLayer(job, ctx)
     if not ok then
+      -- A recall is not a failure: stop cleanly and go home with the haul.
+      if err == ctx.aborted() then
+        stopped = err
+        break
+      end
       return false, err
     end
 
-    report("returning", "layer " .. (job.layer + 1) .. " done")
+    ctx.report("returning", "layer " .. (job.layer + 1) .. " done")
     ok, err = nav.goHome()
     if not ok then
       return false, err
@@ -224,14 +257,15 @@ function quarry.run(job, report)
     quarry.save(job)
   end
 
-  report("returning", "job complete")
+  ctx.report("returning", stopped or "job complete")
   if nav.goHome() then
     dumpIntoChest(job)
   end
 
-  job.active = false
+  -- A recalled job stays active so it resumes where it left off.
+  job.active = stopped ~= nil
   quarry.save(job)
-  return true
+  return true, stopped
 end
 
 return quarry

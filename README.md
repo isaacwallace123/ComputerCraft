@@ -26,15 +26,19 @@ src/
   turtle/            turtle hardware, no job knowledge
     nav.lua          position tracking + safe movement
     fuel.lua         fuel level, limit, refuelling
-    inv.lua          inventory queries and dumping
+    inv.lua          inventory queries, dumping, junk disposal
+    ore.lua          what is worth mining + vein following
 
   jobs/              what a turtle does, no I/O of its own
-    quarry.lua       rectangular pit, resumable
+    quarry.lua       rectangular pit near base, resumable
+    expedition.lua   travel out, sink a shaft, branch mine, come home
 
   apps/              entry points — the only files that wire things together
-    miner.lua        turtle agent: run a job, report to base
-    fleet.lua        base station: roster + monitor dashboard
+    miner.lua        turtle agent: run jobs, report, obey fleet orders
+    fleet.lua        base station: roster, dashboard, fleet commands
+    swarm.lua        deploy a line of turtles, then reclaim them
     scan.lua         Geo Scanner ore listing
+    equip.lua        guarded modem swap
 
 bootstrap.lua        one-shot installer for a fresh machine
 tools/               PowerShell helpers, run from the repo root
@@ -167,9 +171,16 @@ escape hatch — a turtle with a broken job is never an unrecoverable brick.
 
 ## The dashboard
 
-`fleet` shows one row per turtle: name, phase, position, fuel bar, layer progress, and
-time since last heartbeat. Rows go yellow after 10s of silence and red after 60s. The
-footer aggregates blocks mined, items delivered, and total moves across the fleet.
+`fleet` shows one row per turtle: name, phase, position, fuel bar, progress, and time
+since last heartbeat. Rows go yellow after 10s of silence, red after 60s, cyan when
+parked and waiting for orders.
+
+Below that is the **haul panel** — the fleet's combined take, most plentiful first.
+This is the number actually worth watching: not how many blocks were dug, but how much
+diamond, iron and andesite came back. Turtles report their haul with every heartbeat,
+and the base sums it across the whole fleet.
+
+The footer aggregates blocks dug and items delivered, and lists the command keys.
 
 The roster is persisted, so after a server restart the dashboard still lists every
 known turtle as offline until it checks back in — a turtle that has gone quiet is
@@ -178,6 +189,69 @@ exactly the one you want to see. Press `R` on the base to clear the roster.
 If a GPS cluster is in range, turtles report **world** coordinates instead of
 job-relative ones, so you can actually go and find the thing. Without GPS it falls
 back to coordinates relative to that turtle's own start point.
+
+## Fleet control
+
+From the base station:
+
+| Key | |
+| --- | --- |
+| `X` | **Recall** — every turtle abandons its job, walks home, and parks |
+| `G` | **Deploy** — every parked turtle re-homes where it stands and starts a fresh job |
+| `R` | Clear the roster |
+| `Q` | Quit |
+
+Orders are broadcast, not addressed, so a turtle that never completed a handshake
+still hears them.
+
+Turtles **park** rather than exit when a job ends, is recalled, or fails. A parked
+turtle is still on the dashboard and still listening — which is what makes both of
+these one keypress instead of a walk around the base.
+
+**Moving your operation** is the reason recall exists: press `X`, wait for everyone to
+come home and park, physically pick up and re-place the turtles and chests wherever
+you like, then press `G`. On deploy each turtle calls `nav.setHome()` where it now
+stands, so the new spot becomes its reference point — no reconfiguration.
+
+A recall is not treated as a failure. The turtle finishes its walk home, empties its
+inventory into the chest, and keeps its haul.
+
+## Jobs
+
+Each turtle picks a job on first boot (`.node` remembers it). Both expose the same
+interface — `load`, `save`, `setup`, `restart`, `status`, `run(job, ctx)` — where
+`ctx.report(phase, detail)` drives the dashboard and `ctx.aborted()` returns a reason
+when the base has recalled the fleet. That is the whole contract; adding a third job
+means adding one file.
+
+### expedition — the ore hunter
+
+Travels a **random bearing** `distance` blocks out (random per turtle, so a fleet fans
+out instead of queueing down one hole), sinks a shaft to the target Y, then branch
+mines: a main corridor with ribs every few blocks, following any vein it touches.
+
+Defaults to **Y = -59**, the best diamond band in 1.20.1.
+
+> **Coal does not spawn below Y=0.** At diamond level you get diamond, redstone, gold,
+> lapis and deepslate iron — but no coal. This is why the turtle vein-follows *during
+> the shaft descent* as well: the shaft cuts through every ore band on the way down,
+> and that is where your coal and copper come from.
+
+**Junk is dropped where it is mined.** A round trip from Y=-59 a hundred blocks out is
+~250 moves each way, so a turtle hauling deepslate home would spend its whole fuel
+budget commuting. `turtle/ore.lua` keeps two separate lists for this, because
+`turtle.inspect` reports *block* names (`deepslate_iron_ore`) while the inventory holds
+*drops* (`raw_iron`) — mixing those up is the classic bug here. Anything unrecognised
+is kept, so a modded drop errs towards coming home.
+
+Setup reads your Y from GPS if a cluster is in range, otherwise asks. It also estimates
+the fuel the round trip needs and refuses to leave without it.
+
+**Chest goes directly BELOW the turtle** for this job — see the swarm section for why.
+
+### quarry — the bulk digger
+
+Rectangular pit next to base. Chest **behind** the turtle. Covered further down.
 
 ## The quarry
 
@@ -206,6 +280,31 @@ The pit extends forward and to the right. Each pass clears two layers, so depth 
 - **A full inventory triggers a round trip** home and back to the exact block it left.
 
 Ctrl+T is safe at any time.
+
+## Swarm — deploying and eating turtles
+
+`apps/swarm.lua` turns one turtle into a deployer. Load it with turtle items and
+chests, run `swarm`, pick **Deploy**: it walks out and every `spacing` blocks plants a
+chest with a worker turtle standing on top of it. Each worker boots into its own
+`startup`, joins the fleet, and appears on the dashboard. Press `G` on the base and
+they all start mining.
+
+**Reclaim** walks the same line in reverse: empties each chest, digs up the worker,
+digs up the chest, and brings everything home. The chest is emptied *before* it is
+broken — break it first and the contents scatter on the ground and despawn.
+
+Placed turtles keep their computer ID and their entire filesystem, so a reclaimed
+turtle redeployed later is still configured. That is the "cannibalising" loop: build a
+squad once, then carry it around as items.
+
+> **Why chest-underneath, not chest-behind.** A turtle placed by another turtle ends up
+> facing a direction we cannot control, so "drop behind me" is a coin flip. "Drop below
+> me" always hits the chest it is standing on. That is why the expedition job empties
+> downwards while the quarry — which you place by hand — still uses a chest behind.
+
+**What this is not:** turtles crafting brand-new turtles out of ore they just mined.
+That needs smelting, and turtles cannot smelt. These are pre-built turtles being
+carried, planted, and picked back up.
 
 ## Tools
 
