@@ -114,6 +114,40 @@ it("terrain higher than the plan's surface is capped at the real ground", functi
   expect.equal(atY, groundY + 6, "capped at the hilltop, not the plan surface")
 end)
 
+it("a head under water is relocated along the trunk instead of parking", function()
+  local w, sector = newMiner()
+  -- A pond sitting exactly over the sector's nominated shaft.
+  w:fill(sector.shaftX - 1, GROUND, sector.shaftZ - 1, sector.shaftX + 1, GROUND, sector.shaftZ + 1, "minecraft:water")
+
+  local ok, outcome = scenario.cycle(w)
+  expect.truthy(ok, "cycle ran: " .. tostring(outcome))
+  expect.truthy(outcome.ok, "cycle succeeded: " .. tostring(outcome.reason))
+
+  local rare = require("jobs.rare")
+  local job = rare.load()
+  expect.truthy(math.abs(job.shaftOffset) >= 2, "head moved clear of the pond")
+
+  local headX = sector.shaftX + job.shaftOffset
+  expect.truthy(w:solid(headX, GROUND, sector.shaftZ), "relocated head is capped")
+  expect.truthy(headX >= sector.trunkFromX, "head stayed on the trunk")
+  expect.truthy(headX <= sector.trunkToX, "head stayed inside the sector")
+
+  -- And the water is undisturbed: the turtle went around, not through.
+  expect.equal(w:get(sector.shaftX, GROUND, sector.shaftZ), "minecraft:water", "pond intact")
+end)
+
+it("a sector with no sealable head anywhere reports which sector and why", function()
+  local w, sector = newMiner()
+  w:fill(sector.trunkFromX, GROUND, sector.shaftZ, sector.trunkToX, GROUND, sector.shaftZ, "minecraft:water")
+
+  local ok, outcome = scenario.cycle(w)
+  expect.truthy(ok, "cycle ran: " .. tostring(outcome))
+  expect.falsy(outcome.ok, "the cycle failed")
+  expect.contains(outcome.reason, "sector " .. sector.index, "names the sector")
+  expect.contains(outcome.reason, "water", "names what is in the way")
+  expect.equal(w.x .. "," .. w.z, "0,0", "still came home")
+end)
+
 --- The one that cannot be argued, only run.
 ---
 --- Power is cut after every single world interaction of a complete cycle, one
