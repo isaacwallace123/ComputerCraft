@@ -47,22 +47,45 @@ to be chosen to suit that, not fight it.
 
 ---
 
-## 3. What "React for CC" should and should not mean
+## 3. Fusion, not React
 
-Worth being precise, because copying React wholesale would be a mistake.
+The model is [Fusion](https://elttob.uk/Fusion/) — the Roblox library — rather than
+React. That is not a vocabulary preference. The two have genuinely different
+architectures, and Fusion's is the better fit here for reasons that matter on a machine
+with a tick budget.
 
-**Take:** declarative component tree, props and state, re-render on change, keyed lists,
-composition over inheritance, hooks for local state and effects.
+**React re-runs components and diffs the result.** State changes, the component function
+runs again, the output is compared to last time, the differences are applied.
 
-**Leave:** fibers, concurrent mode, suspense, synthetic event pooling, a virtual DOM
-diffed as a tree. A tree diff is the wrong tool when the output is a 164×81 grid of
-cells — **diff the cells, not the tree.**
+**Fusion binds state directly to properties.** State changes, the one property bound to
+it updates. The component function never runs again. There is no re-render and nothing to
+diff at the tree level, because the framework already knows exactly what changed.
 
-That single decision shapes the whole renderer. Components re-render freely and cheaply
-into a buffer; the expensive step (talking to the terminal) is driven entirely by which
-*cells* changed. It makes correctness easy — a component never has to know what it
-previously drew — and it makes animation nearly free, because a moving element dirties
-only the cells it entered and left.
+Four consequences, all of which improve this design:
+
+- **Less CPU per update.** A fuel reading ticking over updates one bar and one label, and
+  executes no component code at all. On a server that is also reconciling ten turtles,
+  that is the difference between an idle dashboard being free and being a tax.
+- **Precise invalidation.** Because the binding knows *which property* changed, it knows
+  whether layout has to be re-solved. A colour change repaints; only a size or text
+  change re-runs the layout solver. React's model cannot make that distinction.
+- **Animation stops being special.** In Fusion a `Spring` is just a state object that
+  moves towards a goal. Anything that can consume a value can consume an animated one, so
+  animating a colour requires no different code from setting it. §8 is short as a result.
+- **No rules of hooks.** Hook ordering was a flagged risk in the React version of this
+  plan — no linter catches a conditional `useState`, and Lua has no JSX-era tooling to
+  help. Fusion has no hooks, so the whole class of bug is gone rather than mitigated.
+
+Lua is also simply the right shape for it. Fusion is Luau, uses `:get()`/`:set()` and
+table-of-properties construction, and reads like Lua rather than like JavaScript wearing
+a Lua costume.
+
+**What the cell diff is still for.** Diffing the cell buffer stays, but its job changes.
+It is no longer how the framework detects change — the bindings do that — it is how many
+small updates in one frame get batched into as few `term.blit` calls as possible. Twenty
+values changing across the screen still present as one coalesced frame.
+
+**Working name: Facet.** A mining word, and each bound property is one. Rename freely.
 
 ---
 
@@ -74,7 +97,8 @@ only the cells it entered and left.
   ui/components/              Button, List, Table, Modal, Sparkline, …
       │
   ┌───┴────────────────────────────────────────────┐
-  │  ui/runtime      tree, state, effects, frames  │
+  │  ui/reactive     Value, Computed, Spring, …    │
+  │  ui/runtime      retained tree, dirty queue    │
   │  ui/layout       flex solver → boxes           │
   │  ui/anim         tweens, easing, timelines     │
   │  ui/input        hit-testing, focus, gestures  │
@@ -141,37 +165,72 @@ them is needed for a dashboard or a card table.
 
 ---
 
-## 7. Components and hooks
+## 7. Reactive primitives
 
-Function components returning an element tree:
+The Fusion vocabulary, adapted. Roblox has a retained scene graph of Instances to bind
+against; we do not, so `New` builds nodes in a retained tree of our own, and those nodes
+are what the layout solver and painter walk.
+
+| Primitive | Purpose |
+| --- | --- |
+| `Value(v)` | mutable state. `:get()`, `:set(v)` |
+| `Computed(fn)` | derived state; dependencies declared with an explicit `use` |
+| `Observer(state)` | run a side effect when a state changes |
+| `Spring(goal, speed, damping)` | state that physically follows a goal |
+| `Tween(goal, info)` | state that eases to a goal over a duration |
+| `ForPairs` / `ForValues` | reactive lists, with per-item scopes |
+| `New "Kind" { … }` | construct a node; any property may be a state object |
+| `Children`, `OnEvent`, `Out` | special keys, as in Fusion |
+| `scoped()` | lifetime; closing an app destroys its scope and every binding in it |
+
+Dependency tracking is **explicit** (`Computed(function(use) … end)`), following Fusion
+0.3 rather than 0.2's implicit capture. Less magic, far easier to implement correctly in
+plain Lua, and the dependency set is readable at the call site.
 
 ```lua
-local function FuelBar(props)
-  local pulse = ui.useTween(props.low and 1 or 0, { duration = 400, loop = true })
+local scope = facet.scoped()
 
-  return ui.Row({ gap = 1 }, {
-    ui.Text({ text = "fuel", color = "muted" }),
-    ui.Bar({ grow = 1, value = props.fraction, tint = props.low and pulse or nil }),
-    ui.Text({ text = ui.count(props.value), align = "right", width = 6 }),
-  })
-end
+local fuel  = scope:Value(51000)
+local low   = scope:Computed(function(use) return use(fuel) < 800 end)
+local tint  = scope:Spring(scope:Computed(function(use)
+  return use(low) and theme.bad or theme.good
+end), 20, 0.9)
+
+scope:New "Row" {
+  Gap = 1,
+  Children = {
+    scope:New "Text" { Text = "fuel", Color = theme.muted },
+    scope:New "Bar"  { Grow = 1, Value = fraction, Tint = tint },
+    scope:New "Text" {
+      Width = 6, Align = "right",
+      Text = scope:Computed(function(use) return util.count(use(fuel)) end),
+    },
+  },
+}
 ```
 
-Hooks, implemented with a per-instance hook index — the same trick React uses, and the
-reason the rules-of-hooks constraint exists there will exist here too:
+`fuel:set(50999)` updates the bar's fill and six characters of text. No function in that
+block runs again except the one `Computed` that formats the number.
 
-| Hook | Purpose |
-| --- | --- |
-| `useState` | local state; setting it schedules a re-render |
-| `useEffect` | run on mount / on dependency change, with cleanup |
-| `useTween` | animated value, drives frames only while running |
-| `useInterval` | timer that respects the frame loop instead of `sleep` |
-| `useStore` | subscribe to a service's state (fleet, devices, drop-offs) |
-| `useFocus` | participate in keyboard focus order |
+### Scheduling and coalescing
 
-`useStore` is the join between this framework and the OS: services own state, apps read
-it. A component subscribes; when the service updates, only the subscribed components
-re-render.
+Bindings do not paint immediately, which is the detail that makes this fast:
+
+1. A `:set()` marks each dependent node **paint-dirty** or **layout-dirty**, by property.
+2. Dirty nodes go on a queue; a frame is scheduled if one is not already pending.
+3. On the frame: re-solve layout **only if** something layout-dirty exists, paint dirty
+   regions into the back buffer, diff, blit, present.
+
+So a service handler that updates twenty values produces **one** frame, not twenty. This
+is a hard requirement — without coalescing, fine-grained reactivity is slower than
+re-rendering, not faster.
+
+### The join to the OS
+
+`scope:Store(service, selector)` subscribes to a service's state. This is where §8 of
+[`icos-2.md`](icos-2.md) lands: services own state, apps read it, and a component that
+reads `devices` re-binds when discovery updates it — without the app polling and without
+the service knowing any app exists.
 
 ### Component library
 
@@ -185,20 +244,33 @@ Graphics: `Canvas`, `Sprite`, `Logo`.
 
 ## 8. Animation
 
-A tween engine driven by the frame loop, not by `sleep`:
+Short, because §7 already did the work. `Spring` and `Tween` are state objects, so
+anything that accepts a value accepts an animated one. There is no separate animation
+API, no `animate()` call, and no imperative timeline for the common case.
 
-- easings: `linear`, `easeOut`, `easeInOut`, `spring`
-- `useTween(target, { duration, easing })` retargets smoothly mid-flight
-- timelines for sequencing (deal card 1, then 2, then flip)
-- transitions on mount/unmount so a list insert slides in rather than appearing
+```lua
+Width = scope:Spring(scope:Computed(function(use)
+  return use(selected) and 24 or 12
+end), 25, 1)
+```
 
-**The frame loop only runs while something is animating.** Idle screens are purely
-event-driven and cost nothing, which matters on a server that is also reconciling a
-fleet. This is a hard requirement, not an optimisation.
+That is the whole of it. The spring re-targets whenever its goal changes, including
+mid-flight.
 
-Motion budget, given 20 FPS: 150ms for state feedback, 250–300ms for transitions, and
-nothing continuous except a deliberate pulse on an alert. Long or elaborate motion will
-read as jank at this frame rate — restraint is a technical requirement here, not taste.
+- Easings for `Tween`: `linear`, `easeOut`, `easeInOut`, `back`.
+- `Spring(goal, speed, damping)` for anything interruptible — selection, resizing,
+  anything a person can change their mind about halfway through.
+- Sequencing (deal, deal, flip) uses staggered goals or an explicit timeline helper; only
+  the game needs it.
+- Mount and unmount transitions so a list insert slides rather than appears.
+
+**A spring that has settled unschedules itself.** The frame loop runs only while at least
+one animation is in flight; an idle screen is purely event-driven and costs nothing. On a
+server that is also reconciling a fleet, this is a hard requirement, not an optimisation.
+
+Motion budget, given 20 FPS: 150ms for state feedback, 250–300ms for transitions, nothing
+continuous except a deliberate pulse on an alert. Long or elaborate motion reads as jank
+at this frame rate — restraint here is a technical requirement, not taste.
 
 ---
 
@@ -217,7 +289,35 @@ One normalised event model over `key`, `char`, `mouse_click`, `mouse_drag`,
 
 ---
 
-## 10. Theming
+## 10. Surfaces beyond the screen
+
+Advanced Peripherals adds no new display hardware, but it adds three things that are
+genuinely part of the interface, and treating them as ports rather than one-off calls is
+what makes them usable from an app.
+
+**Confirm each against the Advanced Peripherals docs before building on it.**
+
+| Peripheral | Port | What it gives the UI |
+| --- | --- | --- |
+| Chat Box | `ports/chat` | Notifications that reach you anywhere. `miner-7 parked: no cap block` in chat beats a red row on a monitor you are not standing in front of. |
+| Player Detector | `ports/presence` | Who is nearby, and how near. A wall can show the summary at distance and detail when someone walks up. |
+| Inventory Manager | `ports/carried` | Read and move the player's own inventory — refuel a turtle, take the haul, without opening a chest. |
+
+Presence is the interesting one. A monitor that shows a dense table nobody is close
+enough to read is wasted; the same monitor can show three large numbers at ten blocks and
+the full fleet table at two. That is a real use of reactivity — `distance` is just
+another state object, and the layout is `Computed` from it.
+
+Chat matters for a different reason. Every failure mode built so far — an unsealable
+shaft head, a full depot, a turtle that gave up after four barren cycles — currently
+waits for someone to look at a screen. A chat line is the only channel that finds the
+player. It should be a service on the Server, driven by the same state the dashboard
+reads, with a severity threshold so it is not noise.
+
+None of this is required for the framework to ship. It is the argument for why the ports
+layer is worth having: adding a chat notifier should not mean touching any app.
+
+## 11. Theming
 
 `term.setPaletteColor` gives sixteen arbitrary RGB slots on advanced hardware. Budget:
 
@@ -235,7 +335,7 @@ palette is rendered at a size where subtle neutrals disappear.
 
 ---
 
-## 11. Performance budget
+## 12. Performance budget
 
 Explicit targets, verified by a bench in the spec suite:
 
@@ -251,7 +351,7 @@ the thing it exists for. Measure it in phase 1, not at the end.
 
 ---
 
-## 12. The showcase: Blackjack
+## 13. The showcase: Blackjack
 
 Chosen because it exercises nearly every layer, not because it is a card game:
 
@@ -276,17 +376,17 @@ Not on Server, and not on a turtle.
 
 ---
 
-## 13. Phasing
+## 14. Phasing
 
 | # | Phase | Delivers |
 | --- | --- | --- |
 | 1 | `ports/screen`, `ui/buffer`, diff + blit, bench | Flicker-free painting, measured |
-| 2 | `ui/layout` + `ui/runtime` + core components | Rebuild one existing app (Devices) on it |
+| 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app (Devices) on it |
 | 3 | `ui/input`, focus, gestures | Full interaction parity with today |
-| 4 | `ui/anim` + transitions | Motion, frame loop gated on activity |
+| 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity |
 | 5 | `ui/canvas` + sprites + theming | Imagery and real palettes |
 | 6 | Blackjack | Showcase and soak test |
-| 7 | Port remaining apps | Old `core/ui.lua` deleted |
+| 7 | Port remaining apps, add AP ports | Old `core/ui.lua` deleted; chat notifications |
 
 Phase 2 rebuilding **Devices specifically** is deliberate: it is the densest existing
 screen, with a list, a detail view, a settings editor, and scrolling. If it does not come
@@ -295,12 +395,19 @@ should be revisited before phase 3.
 
 ---
 
-## 14. Risks
+## 15. Risks
 
 - **Performance is the whole bet.** If the diff cannot repaint a large monitor in a tick,
   none of the rest matters. Benched in phase 1 for exactly that reason.
-- **Hook rules in Lua.** No linter will catch a conditional `useState`. Needs a documented
-  rule and a dev-mode runtime assertion on hook count per render.
+- **Leaks, which is the price of fine-grained reactivity.** React's model cleans up by
+  virtue of re-rendering; a binding graph does not. Every `Computed`, `Observer`, and
+  `Spring` holds a reference until its scope is destroyed, and a component that
+  subscribes to a service and is never torn down keeps that service's updates flowing
+  into dead nodes forever. `scoped()` is not optional decoration — it is the whole
+  lifetime story, and closing an app must destroy its scope. Worth a dev-mode counter of
+  live bindings so a leak shows up as a number rather than as a slow machine.
+- **Cyclic dependencies.** `Computed` graphs can be made to depend on themselves. Detect
+  it during evaluation and fail loudly with the cycle named, rather than hanging.
 - **Scope.** A component library is a bottomless pit. The list in §7 is the whole of it
   for ICOS 2; anything else waits for a second app that needs it.
 - **Two rendering models.** Cell components and pixel canvas can look inconsistent if
@@ -328,9 +435,16 @@ Read these completely before changing anything:
   src/apps/devices.lua      <- the app you will rebuild in phase 2
   tools/spec/               <- the existing simulated-world spec suite
 
+The framework is modelled on Fusion (the Roblox library), NOT React: state
+objects bind directly to node properties, there is no component re-render,
+and dependency tracking is explicit via a `use` function as in Fusion 0.3.
+Read section 3 of the plan carefully before designing anything, and read
+Fusion's own docs if you do not already know it.
+
 Goal: implement PHASE 1 ONLY of docs/ui-framework.md — the screen port, the
 cell buffer, the diff-and-blit renderer, and a performance bench. Do not
-start phases 2+. Do not touch mining, fleet, or job code.
+start phases 2+. No reactivity yet; phase 1 is deliberately the layer
+underneath it. Do not touch mining, fleet, or job code.
 
 Deliverables:
 1. ports/screen: the only module allowed to call `term`. A CC adapter and a
@@ -358,7 +472,7 @@ Constraints, all non-negotiable:
   origin/master. Open a DRAFT PR. Do not merge.
 
 Report at the end: measured bench numbers, any plan claims that turned out to
-be wrong, and whether the 1-tick full-repaint budget in section 11 was met.
+be wrong, and whether the 1-tick full-repaint budget in section 12 was met.
 If it was not met, stop and say so rather than continuing to phase 2 — that
 budget is the premise the whole framework rests on.
 ```
