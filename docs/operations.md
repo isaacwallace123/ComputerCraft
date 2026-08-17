@@ -96,6 +96,12 @@ Peripherals chunk loading is enabled, the loader for the shared host chunk. The 
 three hosts can be ordinary computers. Keep all four powered. Test from the ICOS base
 Terminal with `gps locate`; it should print three coordinates.
 
+GPS host setup displays X, Y, and Z on a separate confirmation screen before saving.
+If a host configured by ICOS v1.2.5 lost a negative Y or Z sign, update it and run
+**Setup / change role → GPS host** again on that device. Re-enter its F3 Targeted Block
+coordinates and verify every sign on the confirmation screen. All four hosts must
+advertise their real coordinates before `gps locate` can be trusted.
+
 The stationary base must be running ICOS, but no dashboard app needs to be open. An
 ender modem is strongly recommended: ordinary wireless range and chunk loading still
 apply. Mine Control actions on the handheld execute at the base, so mine plans, sector
