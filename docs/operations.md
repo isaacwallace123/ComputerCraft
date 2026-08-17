@@ -90,6 +90,10 @@ to enter that computer or turtle block's exact X/Y/Z when prompted—not the mod
 position. The role saves those coordinates in `.gps` and boots directly into the GPS
 beacon; it does not run the fleet desktop or register as a base.
 
+Setup always offers **GPS host** on turtles so a dedicated Chunky Turtle can be given
+its role before its upgrades are arranged. It still needs an equipped wireless or
+Ender modem to serve requests; Setup shows a warning when one is not detected.
+
 One host may be a stationary Chunky Turtle with an Ender modem in its other upgrade
 slot. Selecting **GPS host** makes it both a coordinate beacon and, when Advanced
 Peripherals chunk loading is enabled, the loader for the shared host chunk. The other
