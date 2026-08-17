@@ -13,6 +13,7 @@ local boot = require("core.boot")
 local sound = require("core.sound")
 local device = require("core.device")
 local config = require("core.config")
+local util = require("core.util")
 local version = require("core.version")
 
 local NODE_PATH = ".node"
@@ -93,8 +94,7 @@ if role.key == "gps" then
     ui.text(2, 4, "Enter the COMPUTER/TURTLE block, not modem.", ui.theme.dim)
     term.setCursorPos(1, 6)
     local answer = ui.ask("Position as x y z", default)
-    local x, y, z = tostring(answer):match("(-?%d+)%D+(-?%d+)%D+(-?%d+)")
-    x, y, z = tonumber(x), tonumber(y), tonumber(z)
+    local x, y, z = util.coordinates(answer)
     if
       x
       and y
@@ -104,11 +104,20 @@ if role.key == "gps" then
       and y >= -64
       and y <= 319
     then
-      config.save(GPS_PATH, { x = x, y = y, z = z })
-      break
+      local confirmed = ui.menu("CONFIRM GPS POSITION", { "Save this position", "Re-enter" }, {
+        ("X %d"):format(x),
+        ("Y %d"):format(y),
+        ("Z %d"):format(z),
+      })
+      if confirmed == 1 then
+        config.save(GPS_PATH, { x = x, y = y, z = z })
+        break
+      end
+      default = ("%d %d %d"):format(x, y, z)
+    else
+      printError("Enter three valid Minecraft block coordinates.")
+      sleep(1.2)
     end
-    printError("Enter three valid Minecraft block coordinates.")
-    sleep(1.2)
   end
 end
 

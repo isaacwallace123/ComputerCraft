@@ -38,6 +38,23 @@ function util.clamp(value, low, high)
   return math.max(low, math.min(high, value))
 end
 
+--- Read the first three signed integers from a coordinate string.
+---
+--- Do not parse this as `number + non-digits + number`: a greedy non-digit
+--- separator also consumes the minus sign belonging to the next coordinate.
+--- Tokenising each signed number independently preserves negative Y/Z values
+--- in common inputs such as `42 79 -1080` and `42 / 79 / -1080`.
+function util.coordinates(text)
+  local values = {}
+  for token in tostring(text or ""):gmatch("[+-]?%d+") do
+    values[#values + 1] = tonumber(token)
+    if #values == 3 then
+      return values[1], values[2], values[3]
+    end
+  end
+  return nil
+end
+
 --- Seconds since a millisecond epoch stamp, floored at zero.
 function util.since(epochMillis)
   if not epochMillis then

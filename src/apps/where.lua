@@ -18,6 +18,7 @@ if not turtle then
 end
 
 local ui = require("core.ui")
+local util = require("core.util")
 local nav = require("turtle.nav")
 
 ui.clear()
@@ -39,8 +40,9 @@ end
 -- typing, and it cannot be wrong.
 write("Checking for GPS... ")
 local located = nil
-if not nav.hasOrigin() then
-  located = nav.worldPosition()
+local gpsX, gpsY, gpsZ = gps.locate(2, false)
+if gpsX then
+  located = { x = math.floor(gpsX), y = math.floor(gpsY), z = math.floor(gpsZ) }
 end
 print(located and "found" or "none")
 print("")
@@ -55,13 +57,13 @@ else
   print("standing where the turtle is.\n")
 
   local answer = ui.ask("Position as  x y z", nil)
-  local px, py, pz = tostring(answer):match("(-?%d+)%D+(-?%d+)%D+(-?%d+)")
+  local px, py, pz = util.coordinates(answer)
   if not px then
     printError("Could not read three numbers from that.")
     print("Example:  40 83 -1089")
     return
   end
-  x, y, z = tonumber(px), tonumber(py), tonumber(pz)
+  x, y, z = px, py, pz
 end
 
 print("")

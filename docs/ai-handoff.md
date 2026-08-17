@@ -135,6 +135,11 @@ large AFK run.
 - The `gps` role is available to non-Pocket devices with a wireless/Ender modem. Setup
   saves the advertised block coordinates in `.gps`; startup runs only
   `apps/gps_host.lua`. A Chunky Turtle may be one host and load the shared host chunk.
+- ICOS v1.2.5 GPS setup used a greedy separator that could swallow a negative sign on
+  Y or Z. Existing `.gps` values cannot be corrected automatically because their
+  intended sign is unknowable. After updating, re-run GPS Setup on affected hosts and
+  verify the explicit X/Y/Z confirmation screen. Coordinate inputs must use
+  `core.util.coordinates`, never a `%D+` separator between signed numbers.
 - The base needs a shared mine configured once, through Mine Control or `mine here`.
   `fleet/service.lua` leases sectors at boot; Fleet is only a view and need not stay
   open. Prospecting frontiers are keyed by job and target Y; do not collapse them into
