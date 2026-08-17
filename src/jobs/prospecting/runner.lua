@@ -21,6 +21,7 @@
 --- fuel reserve still describes the route the turtle actually flies.
 
 local access = require("turtle.access")
+local depot = require("turtle.depot")
 local fuel = require("turtle.fuel")
 local geo = require("turtle.geo")
 local inv = require("turtle.inv")
@@ -246,7 +247,10 @@ function runner.run(jobType, job, ctx)
     end
 
     ctx.report("travel", ("sector %d, lane Y %d"):format(job.sector, job.laneY))
-    local ok, err, kind = nav.goTo(head.x, head.y, head.z, guard)
+    -- Fly over the ground rather than through it. The cruise lane is set from
+    -- the base's surface, so a sector on a hillside sits above it, and the old
+    -- straight crossing bored a tunnel through the hill on the first visit.
+    local ok, err, kind = nav.goTo(head.x, head.y, head.z, guard, { climb = nav.CLIMB_LIMIT })
     if not ok then
       return false, err, kind
     end
@@ -721,27 +725,23 @@ function runner.run(jobType, job, ctx)
   local home, homeError = nav.goHome()
   local depotFull = false
   if home then
-    job.delivered = job.delivered
-      -- Fuel stays aboard, and so does the reserved cap slot: next cycle's first
-      -- act is to seal a shaft behind itself, and the cheapest way to guarantee
-      -- it can is to keep the stack of cobblestone it already carries.
-      + inv.dropAllExcept(function(detail, slot)
-        return fuel.isFuel(detail, slot)
-          or (slot == access.SLOT and access.isFiller(detail, slot, isWanted))
-      end, turtle.dropDown)
+    -- Fuel stays aboard, and so does the reserved cap slot: next cycle's first
+    -- act is to seal a shaft behind itself, and the cheapest way to guarantee it
+    -- can is to keep the stack of cobblestone it already carries.
+    local keep = function(detail, slot)
+      return fuel.isFuel(detail, slot)
+        or (slot == access.SLOT and access.isFiller(detail, slot, isWanted))
+    end
 
     -- With a shared depot this is the failure that actually happens: the chest
     -- backs up, the drop silently does nothing, and the turtle would otherwise
     -- park looking healthy while carrying a full load it can never put down.
-    if
-      inv.itemCount(function(detail, slot)
-        if slot == access.SLOT and access.isFiller(detail, slot, isWanted) then
-          return false -- deliberately retained, not a failed delivery
-        end
-        return not fuel.isFuel(detail, slot)
-      end) > 0
-    then
-      depotFull = true
+    -- Every adjacent container is tried before saying so.
+    local delivered, remaining, used = depot.unload(keep)
+    job.delivered = job.delivered + delivered
+    depotFull = remaining > 0
+    if #used > 1 then
+      ctx.report("returning", "home chest full - overflowed " .. table.concat(used, ", "))
     end
   end
 

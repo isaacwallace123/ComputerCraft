@@ -316,7 +316,15 @@ function world:install()
     local block = self_:get(x, y, z)
     local moved = math.min(count or stack.count, stack.count)
 
-    if block and block:find("chest") then
+    local isContainer = block
+      and (
+        block:find("chest")
+        or block:find("barrel")
+        or block:find("box")
+        or block:find("crate")
+        or block:find("drawer")
+      )
+    if isContainer then
       local chest = self_.chests[key(x, y, z)]
         or { capacity = self_.chestCapacity or 1000, stored = 0 }
       self_.chests[key(x, y, z)] = chest

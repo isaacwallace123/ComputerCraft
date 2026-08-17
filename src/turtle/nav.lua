@@ -378,7 +378,15 @@ nav.ROUTE_AROUND = {
 --- and we do not have right of way, the route steps aside and re-plans from
 --- wherever that leaves it, rather than reporting the whole trip as stuck - which
 --- is what used to send a miner home the moment it met a colleague.
-function nav.goTo(tx, ty, tz, beforeMove)
+--- How far above the requested altitude a terrain-following route may climb.
+--- Enough for any ordinary hill; a mountain taller than this is dug through as
+--- before, because a turtle circling a peak forever is worse than a tunnel.
+nav.CLIMB_LIMIT = 40
+
+function nav.goTo(tx, ty, tz, beforeMove, options)
+  options = options or {}
+  local ceiling = ty + (options.climb or 0)
+
   local function checked(move)
     if beforeMove then
       local allowed, reason, kind = beforeMove()
@@ -387,6 +395,40 @@ function nav.goTo(tx, ty, tz, beforeMove)
       end
     end
     return move()
+  end
+
+  --- Cross one axis, optionally going over the ground rather than through it.
+  ---
+  --- Rising only when the block overhead is already air is the whole point: it
+  --- costs nothing to fly over a hill, whereas digging one produces a horizontal
+  --- bore through the hillside and, worse, a vertical hole if the turtle climbs
+  --- out. Terrain that is genuinely enclosed still gets tunnelled.
+  local function cross(axis, target, facing)
+    if axis() == target then
+      return true
+    end
+    nav.face(facing)
+    while axis() ~= target do
+      if options.climb and state.y < ceiling and turtle.detect() and not turtle.detectUp() then
+        local lifted, liftError, liftKind = checked(nav.up)
+        if not lifted then
+          return false, liftError, liftKind
+        end
+      else
+        local ok, err, kind = checked(nav.forward)
+        if not ok then
+          return false, err, kind
+        end
+        -- Sink back towards the requested altitude as soon as the way is clear,
+        -- so one hill does not leave the rest of the crossing flown high.
+        while options.climb and state.y > ty and not turtle.detectDown() do
+          if not checked(nav.down) then
+            break
+          end
+        end
+      end
+    end
+    return true
   end
 
   --- Rise, cross X, cross Z, descend. Each leg runs to completion or reports why.
@@ -398,24 +440,18 @@ function nav.goTo(tx, ty, tz, beforeMove)
       end
     end
 
-    if state.x ~= tx then
-      nav.face(state.x < tx and 1 or 3)
-      while state.x ~= tx do
-        local ok, err, kind = checked(nav.forward)
-        if not ok then
-          return false, err, kind
-        end
-      end
+    local crossedX, xError, xKind = cross(function()
+      return state.x
+    end, tx, state.x < tx and 1 or 3)
+    if not crossedX then
+      return false, xError, xKind
     end
 
-    if state.z ~= tz then
-      nav.face(state.z < tz and 0 or 2)
-      while state.z ~= tz do
-        local ok, err, kind = checked(nav.forward)
-        if not ok then
-          return false, err, kind
-        end
-      end
+    local crossedZ, zError, zKind = cross(function()
+      return state.z
+    end, tz, state.z < tz and 0 or 2)
+    if not crossedZ then
+      return false, zError, zKind
     end
 
     while state.y > ty do
