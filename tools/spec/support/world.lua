@@ -617,7 +617,11 @@ function world:install()
           return tostring(a) < tostring(b)
         end)
         for _, name in ipairs(names) do
-          parts[#parts + 1] = ("%s[%s] = %s,"):format(pad, encode(name, pad), encode(item[name], pad))
+          parts[#parts + 1] = ("%s[%s] = %s,"):format(
+            pad,
+            encode(name, pad),
+            encode(item[name], pad)
+          )
         end
         if #parts == 0 then
           return "{}"
@@ -717,7 +721,12 @@ end
 --- is precisely what a reboot does: code fresh, state persisted.
 function world.reboot()
   for name in pairs(package.loaded) do
-    if name:find("^turtle%.") or name:find("^core%.") or name:find("^jobs%.") or name:find("^mine%.") then
+    if
+      name:find("^turtle%.")
+      or name:find("^core%.")
+      or name:find("^jobs%.")
+      or name:find("^mine%.")
+    then
       package.loaded[name] = nil
     end
   end

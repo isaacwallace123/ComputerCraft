@@ -105,7 +105,15 @@ it("terrain higher than the plan's surface is capped at the real ground", functi
 
   -- A hill at the sector, six blocks proud of the base's surface.
   for y = groundY + 1, groundY + 6 do
-    w:fill(sector.shaftX - 3, y, sector.shaftZ - 3, sector.shaftX + 3, y, sector.shaftZ + 3, "minecraft:stone")
+    w:fill(
+      sector.shaftX - 3,
+      y,
+      sector.shaftZ - 3,
+      sector.shaftX + 3,
+      y,
+      sector.shaftZ + 3,
+      "minecraft:stone"
+    )
   end
 
   expect.truthy(scenario.cycle(w), "cycle into a hill")
@@ -117,7 +125,15 @@ end)
 it("a head under water is relocated along the trunk instead of parking", function()
   local w, sector = newMiner()
   -- A pond sitting exactly over the sector's nominated shaft.
-  w:fill(sector.shaftX - 1, GROUND, sector.shaftZ - 1, sector.shaftX + 1, GROUND, sector.shaftZ + 1, "minecraft:water")
+  w:fill(
+    sector.shaftX - 1,
+    GROUND,
+    sector.shaftZ - 1,
+    sector.shaftX + 1,
+    GROUND,
+    sector.shaftZ + 1,
+    "minecraft:water"
+  )
 
   local ok, outcome = scenario.cycle(w)
   expect.truthy(ok, "cycle ran: " .. tostring(outcome))
@@ -138,7 +154,15 @@ end)
 
 it("a sector with no sealable head anywhere reports which sector and why", function()
   local w, sector = newMiner()
-  w:fill(sector.trunkFromX, GROUND, sector.shaftZ, sector.trunkToX, GROUND, sector.shaftZ, "minecraft:water")
+  w:fill(
+    sector.trunkFromX,
+    GROUND,
+    sector.shaftZ,
+    sector.trunkToX,
+    GROUND,
+    sector.shaftZ,
+    "minecraft:water"
+  )
 
   local ok, outcome = scenario.cycle(w)
   expect.truthy(ok, "cycle ran: " .. tostring(outcome))

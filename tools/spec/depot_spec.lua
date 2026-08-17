@@ -64,6 +64,33 @@ it("travel flies over a hill instead of tunnelling through it", function()
   expect.equal(("%d,%d,%d"):format(x, y, z), "8,4,0", "arrived at the lane")
 end)
 
+it("travel does not climb and sink over stepped terrain", function()
+  local w = scenario.new({ groundY = GROUND, x = 0, y = GROUND + 1, z = 0, facing = 0 })
+  local nav = require("turtle.nav")
+  nav.setOrigin(0, GROUND + 1, 0, 0)
+
+  -- A staircase shoreline: ground steps up and down every couple of blocks,
+  -- which is what a real coast or ravine wall looks like from the air.
+  for step = 1, 12 do
+    local height = GROUND + ((step % 3 == 0) and 6 or 1)
+    for y = GROUND + 1, height do
+      w:fill(step, y, -6, step, y, 6, "minecraft:stone")
+    end
+  end
+
+  local before = w.moves
+  expect.truthy(nav.goTo(14, 3, 0, nil, { climb = nav.CLIMB_LIMIT }), "crossed the steps")
+  local spent = w.moves - before
+
+  -- Fourteen forward plus one climb up and one descent back down is the honest
+  -- cost. Sinking back to the lane after every step turns this into dozens.
+  expect.truthy(spent <= 30, "crossing cost " .. spent .. " moves, expected no thrashing")
+  expect.equal(w.digs, 0, "and nothing was dug")
+
+  local x, y, z = nav.position()
+  expect.equal(("%d,%d,%d"):format(x, y, z), "14,3,0", "arrived at the lane")
+end)
+
 it("travel still tunnels when the ground is genuinely enclosed", function()
   local w = scenario.new({ groundY = GROUND, x = 0, y = GROUND - 4, z = 0, facing = 0 })
   local nav = require("turtle.nav")

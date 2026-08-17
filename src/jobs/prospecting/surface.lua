@@ -72,7 +72,29 @@ function surface:capRelY()
   if not self.state.y then
     return nil
   end
+  -- A recorded head that is nowhere near the worksite surface describes some
+  -- other ground: a previous lease, a job file carried over from a turtle that
+  -- was re-homed, a plan whose centre moved. Acting on it means doing cap work
+  -- at a coordinate that is not a shaft, and near a base that is a computer or a
+  -- chest. Discard it and let the way out find the head by probing.
+  if math.abs(self.state.y - self.job.surfaceY) > access.HEAD_TOLERANCE then
+    return nil
+  end
   return self.state.y - self.trip.originY
+end
+
+--- Is the turtle standing in the column it believes it capped?
+---
+--- Cap work breaks and replaces blocks directly above and below the turtle, so
+--- doing it anywhere other than the shaft is how a mining job ends up trying to
+--- mine the base. Every path into it checks this first; nothing about the
+--- persisted record is trusted to imply position.
+function surface:inHeadColumn()
+  local here = nav.worldPosition()
+  if not here then
+    return false
+  end
+  return here.x == self:headX() and here.z == self:headZ()
 end
 
 --- Relative coordinate of the head column at the cap's height.
@@ -402,6 +424,14 @@ function surface:leave()
   local column = self:column()
   local _, y = nav.position()
 
+  -- Never move a cap from outside the shaft. If the turtle is not standing in
+  -- its own head column, whatever is above and below it belongs to somebody
+  -- else - at the depot that is the base computer and the haul chests.
+  if not self:inHeadColumn() then
+    self:record("unknown", nil)
+    return true
+  end
+
   if self.state.state == "legacy" or not capY or not column then
     return self:probeAndSeal()
   end
@@ -503,7 +533,9 @@ function surface:restore()
   -- further away means the record no longer describes this turtle. Refuse to
   -- navigate to it: `goTo` climbs before it crosses, and from mining depth that
   -- would cut a second vertical hole to the surface in the wrong place.
-  if not capY or not column or math.abs(y - capY) > 2 then
+  if not capY or not column or math.abs(y - capY) > 2 or not self:inHeadColumn() then
+    -- Nothing actionable, or the turtle is not in the shaft. Either way this
+    -- record cannot be resolved from here; find the head on the way out.
     self:record("legacy", nil)
     return true
   end
