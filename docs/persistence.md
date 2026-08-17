@@ -13,6 +13,7 @@ must stop requiring deleted modules before they are removed from the manifest.
 | File | Owner | Contents |
 | --- | --- | --- |
 | `.node` | install/startup/miner context | role, label, selected job, parked state and reason, auto-update |
+| `.gps` | install/GPS host | absolute X/Y/Z advertised by a device with the `gps` role |
 | `.nav` | `turtle/nav.lua` | relative position/facing, movement statistics, world origin and heading |
 | `.fleet` | `fleet/roster.lua` | paired device snapshots and last-seen times |
 | `.fleet-policy` | `fleet/policy.lua` | unattended recovery, refresh, sync, and update policy |

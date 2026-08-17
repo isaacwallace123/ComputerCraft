@@ -529,12 +529,11 @@ end
 
 --- Real world coordinates.
 ---
---- Prefers dead reckoning from a known origin over GPS, which is the opposite
---- of the obvious choice and deliberate: GPS needs four computers on plain
---- wireless modems, reports nil distance through ender modems, and is out of
---- range exactly where you need it - a turtle at Y=-59 a hundred blocks out is
---- some 330 blocks from a surface cluster. Dead reckoning costs nothing, works
---- at any depth, and is as accurate as the navigation itself.
+--- Prefers dead reckoning from a known origin over GPS, which is deliberate:
+--- GPS needs four loaded hosts and does not provide heading. Ender modems make
+--- an excellent long-range constellation, but the saved origin keeps movement
+--- independent of host chunk loading, radio range, and temporary network loss.
+--- Dead reckoning costs nothing and is as accurate as the navigation itself.
 function nav.worldPosition()
   if state.originSet then
     local forward = WORLD[state.originHeading]

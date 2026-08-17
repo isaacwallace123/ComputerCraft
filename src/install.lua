@@ -16,6 +16,7 @@ local config = require("core.config")
 local version = require("core.version")
 
 local NODE_PATH = ".node"
+local GPS_PATH = ".gps"
 
 local node = config.load(NODE_PATH, {
   role = nil,
@@ -78,6 +79,39 @@ end
 node.label = ui.ask("Name this machine", suggested)
 os.setComputerLabel(node.label)
 
+if role.key == "gps" then
+  local saved = config.load(GPS_PATH, {})
+  local default = nil
+  if saved.x ~= nil and saved.y ~= nil and saved.z ~= nil then
+    default = ("%d %d %d"):format(saved.x, saved.y, saved.z)
+  end
+
+  while true do
+    ui.clear()
+    ui.header("GPS HOST POSITION")
+    ui.text(2, 3, "Use F3 Targeted Block on this machine.", ui.theme.dim)
+    ui.text(2, 4, "Enter the COMPUTER/TURTLE block, not modem.", ui.theme.dim)
+    term.setCursorPos(1, 6)
+    local answer = ui.ask("Position as x y z", default)
+    local x, y, z = tostring(answer):match("(-?%d+)%D+(-?%d+)%D+(-?%d+)")
+    x, y, z = tonumber(x), tonumber(y), tonumber(z)
+    if
+      x
+      and y
+      and z
+      and math.abs(x) <= 30000000
+      and math.abs(z) <= 30000000
+      and y >= -64
+      and y <= 319
+    then
+      config.save(GPS_PATH, { x = x, y = y, z = z })
+      break
+    end
+    printError("Enter three valid Minecraft block coordinates.")
+    sleep(1.2)
+  end
+end
+
 node.autoUpdate = ui.menu("Auto-update on every boot?", { "Yes (recommended)", "No" }) ~= 2
 config.save(NODE_PATH, node)
 
@@ -112,6 +146,14 @@ elseif role.key == "controller" then
     baseId and ("Connected to fleet base " .. tostring(baseId) .. ".")
       or "Base not found yet - it will keep looking.",
     baseId and ui.theme.good or ui.theme.dim
+  )
+elseif role.key == "gps" then
+  local host = config.load(GPS_PATH, {})
+  ui.text(
+    2,
+    line,
+    ("GPS host configured at %d, %d, %d."):format(host.x, host.y, host.z),
+    ui.theme.good
   )
 end
 

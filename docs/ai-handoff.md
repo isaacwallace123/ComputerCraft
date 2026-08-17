@@ -129,6 +129,12 @@ large AFK run.
   did. `ready()` refuses to deploy without one. Where declares the current block as
   both relative home and world origin in one save; run it again after moving or turning
   a parked turtle.
+- Ender modems are valid and recommended GPS hosts in CC: Tweaked 1.113.1. GPS still
+  requires four loaded hosts and cannot determine a stationary turtle's heading, so
+  `where` saves the origin and facing for durable dead reckoning.
+- The `gps` role is available to non-Pocket devices with a wireless/Ender modem. Setup
+  saves the advertised block coordinates in `.gps`; startup runs only
+  `apps/gps_host.lua`. A Chunky Turtle may be one host and load the shared host chunk.
 - The base needs a shared mine configured once, through Mine Control or `mine here`.
   `fleet/service.lua` leases sectors at boot; Fleet is only a view and need not stay
   open. Prospecting frontiers are keyed by job and target Y; do not collapse them into

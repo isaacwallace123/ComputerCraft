@@ -4,11 +4,11 @@
 --- Run it once per turtle, standing where the turtle is. It only needs saying
 --- again if you physically move the turtle to a new home.
 ---
---- Why this instead of GPS: a GPS cluster is four computers on plain wireless
---- modems (ender modems report nil distance, so they cannot host), and even
---- then a turtle at Y=-59 a hundred blocks out is far outside wireless range.
---- The turtle already tracks its offset from home exactly - it only ever needs
---- one fixed reference point, and you can read that off F3 in five seconds.
+--- Why save an origin even when GPS exists: GPS needs four loaded host
+--- computers and cannot determine which way a stationary turtle faces. Ender
+--- modems are excellent GPS hosts, while ordinary wireless hosts may be out of
+--- range underground. Once position and heading are saved, dead reckoning works
+--- at any depth and through a temporary network or chunk-loading outage.
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 

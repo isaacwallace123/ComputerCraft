@@ -6,6 +6,11 @@ local mineRegistry = require("mine.registry")
 
 local operations = {}
 
+local DIAMOND_TARGET_Y = -59
+local QUICK_CELL_SIZE = 48
+local QUICK_MAX_RING = 3
+local QUICK_KEEPOUT = 64
+
 local function integer(value)
   value = tonumber(value)
   return value and math.floor(value) or nil
@@ -61,10 +66,64 @@ local function placeMine(x, y, z)
   return true, message, mineState()
 end
 
+--- Configure the safe ordinary prospecting grid in one write, then atomically
+--- assign Rare to every parked miner. Keeping grid placement and assignment in
+--- one operation prevents setup auto-retry from launching a turtle in the brief
+--- gap between setting the centre and applying the base keepout.
+local function startDiamonds(fields)
+  local state = coordinator.mineState()
+  local placedNow = false
+
+  if not state.plan.configured then
+    local x, y, z = fields.x, fields.y, fields.z
+    if x == nil or y == nil or z == nil then
+      x, y, z = gps.locate(2, false)
+      if not x then
+        return false, "GPS unavailable; choose Enter base coordinates", mineState()
+      end
+    end
+
+    x, y, z = integer(x), integer(y), integer(z)
+    if not (x and y and z) then
+      return false, "mine coordinates must be numbers", mineState()
+    end
+    if math.abs(x) > 30000000 or math.abs(z) > 30000000 then
+      return false, "mine coordinates exceed the world border", mineState()
+    end
+    if y < -63 or y > 310 then
+      return false, "surface Y must be between -63 and 310", mineState()
+    end
+
+    local minRing = minePlan.ringForKeepout({ cellSize = QUICK_CELL_SIZE }, QUICK_KEEPOUT)
+    coordinator.setMine({
+      centreX = x,
+      centreZ = z,
+      surfaceY = y,
+      cruiseY = y + 8,
+      cellSize = QUICK_CELL_SIZE,
+      maxRing = QUICK_MAX_RING,
+      minRing = minRing,
+    })
+    state = coordinator.mineState()
+    placedNow = true
+  end
+
+  local ok, message = coordinator.assignParked("rare", { targetY = DIAMOND_TARGET_Y })
+  if not ok then
+    local prefix = placedNow and "mine configured; " or ""
+    return false, prefix .. message, mineState()
+  end
+
+  local prefix = placedNow and "mine configured; " or ""
+  return true, prefix .. message .. " at Y " .. DIAMOND_TARGET_Y, mineState()
+end
+
 function operations.perform(action, fields)
   fields = type(fields) == "table" and fields or {}
   if action == "mine_state" then
     return true, "mine state refreshed", mineState()
+  elseif action == "start_diamonds" then
+    return startDiamonds(fields)
   elseif action == "mine_here" then
     local x, y, z = gps.locate(2, false)
     if not x then

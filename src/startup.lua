@@ -44,7 +44,7 @@ local monitor, monitorName
 -- Turtles and Pockets keep their own screen. A computer discovers and scales
 -- its monitor for the display-only dashboard; the monitor remains the boot
 -- splash target while the local terminal becomes the full desktop afterward.
-if caps.kind ~= "turtle" and caps.kind ~= "pocket" then
+if caps.kind ~= "turtle" and caps.kind ~= "pocket" and node.role ~= "gps" then
   monitor, _, _, _, monitorName = display.attach(42, 18)
   screen = monitor or screen
 end
@@ -135,6 +135,14 @@ end
 local apps = require("core.apps")
 
 if interrupted then
+  systemMenu(apps, localScreen)
+  return
+end
+
+-- GPS hosts are infrastructure appliances, not tiny fleet bases. They run one
+-- blocking beacon program on both computers and stationary Chunky Turtles.
+if node.role == "gps" then
+  runApp(apps, apps.byId("gps-host"), localScreen)
   systemMenu(apps, localScreen)
   return
 end

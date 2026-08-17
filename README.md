@@ -299,8 +299,15 @@ rather than base64 — CC has no base64 decoder) whenever a token is configured.
 | Role | App | What it does |
 | --- | --- | --- |
 | `fleet` | Fleet service + desktops | Hosts Rednet, keeps the roster, and renders both screens |
+| `controller` | Handheld shell | Mirrors the base and provides mobile fleet control |
 | `miner` | Miner turtle app | Runs the selected job and heartbeats status every 2s |
+| `gps` | GPS host | Runs one stationary coordinate beacon with no fleet desktop or service |
 | `utility` | Hardware-dependent | Offers only tools supported by that machine |
+
+The GPS role is offered on a stationary computer or turtle with a wireless/Ender
+modem. Setup asks for that machine block's F3 coordinates once, then every boot starts
+the beacon automatically. A Chunky Turtle with an Ender modem can use this role as one
+of the four hosts while keeping the whole constellation's chunk loaded.
 
 The base computer's own screen always runs the full keyboard-capable ICOS desktop.
 Fleet, Devices, Auto Recovery, Mine Control, Fleet Log, Fleet Console, Update,
@@ -376,9 +383,10 @@ The roster is persisted, so after a server restart the dashboard still lists eve
 known turtle as offline until it checks back in — a turtle that has gone quiet is
 exactly the one you want to see. Use **forget** on a device page to remove its pairing.
 
-If a GPS cluster is in range, turtles report **world** coordinates instead of
-job-relative ones, so you can actually go and find the thing. Without GPS it falls
-back to coordinates relative to that turtle's own start point.
+Run **System tools → Set position** once on each turtle so it can report absolute world
+coordinates and navigate the shared mine. A GPS constellation fills in the position
+automatically; you still select the turtle's facing once. ICOS then uses saved dead
+reckoning, so tracking continues underground even if GPS later becomes unavailable.
 
 ## 🎮 Controlling the fleet
 
@@ -387,7 +395,7 @@ From the base station:
 | Key | |
 | --- | --- |
 | `X` | **Recall** — every turtle abandons its job, walks home, and parks |
-| `G` | **Deploy** — every parked turtle re-homes where it stands and starts a fresh job |
+| `G` | **Deploy** — every ready parked turtle starts its configured job |
 | `R` | Request fresh status from every turtle |
 | `Q` | Quit |
 
@@ -404,8 +412,9 @@ these one keypress instead of a walk around the base.
 
 **Moving your operation** is the reason recall exists: press `X`, wait for everyone to
 come home and park, physically pick up and re-place the turtles and chests wherever
-you like, then press `G`. On deploy each turtle calls `nav.setHome()` where it now
-stands, so the new spot becomes its reference point — no reconfiguration.
+you like, then run **System tools → Set position** on each moved or turned turtle before
+deploying. This updates its home block and world heading together; deploying without
+that recalibration is intentionally refused.
 
 A recall is not treated as a failure. The turtle finishes its walk home, empties its
 inventory into the chest, and keeps its haul.
@@ -431,10 +440,17 @@ later from its Devices page or with `J` on the turtle. There are five modes:
 | **Hollow** | Y -30 | A rectangular, three-block-high empty floor |
 | **Resources** | Y 16 | Iron, copper, zinc, and andesite |
 
+For the ordinary diamond workflow, open **Mine Control → Start diamond mining**. On a
+new base, choose GPS or enter the base coordinates once. ICOS creates the shared grid
+with safe defaults, assigns Rare at Y -59 to every connected parked miner, and queues
+their deployment. The remaining Mine Control entries are advanced tuning and quarry
+controls, not prerequisites.
+
 The three prospecting modes use the same efficient branch grid: one main corridor,
 ribs every three blocks, and recursive vein following. That spacing exposes every
-block in the volume without blindly excavating all the stone. Turtles take independent
-random bearings, so a fleet spreads out instead of duplicating one tunnel.
+block in the volume without blindly excavating all the stone. The base leases a
+different fixed sector to each worker, so the fleet spreads out without duplicating a
+tunnel or creating a new random shaft every cycle.
 
 If a prospecting turtle exposes an Advanced Peripherals Geo Scanner, it first targets
 matching blocks within its scan radius, then runs the complete branch grid as a
@@ -448,8 +464,8 @@ inspection.
 
 ### ♻️ Autonomous fuel and repeat runs
 
-Rare, Fuel, and Resources turtles keep working after an unload. Each cycle picks a
-fresh route, mines, returns to the chest, drops only loot, and launches again.
+Rare, Fuel, and Resources turtles keep working after an unload. Each cycle resumes its
+leased sector, mines, returns to the chest, drops only loot, and launches again.
 **Recall** from Fleet, Devices, or Fleet Console is the stop button: the current cycle
 unwinds, the turtle comes home, unloads, and parks. Quarry and Hollow are finite because
 restarting the same cleared volume would only waste fuel.
@@ -479,7 +495,7 @@ branch in advance: the live guard can shorten a cycle, and mined coal can extend
 Rare deliberately excludes coal, iron, copper, zinc, and andesite so its vein budget
 is spent on valuable targets. Resources keeps those common building ores instead.
 Fuel matches coal ores only and runs high by default, where coal is plentiful. You can
-adjust distance, target Y, and tunnel length per turtle from Devices; modpack-specific
+adjust target Y, vein budget, and vein radius per turtle from Devices; modpack-specific
 rare blocks that contain `_ore` are detected automatically.
 
 Junk is dropped where it is mined. `turtle.inspect` reports block names such as
@@ -626,10 +642,10 @@ module instead of maintaining duplicate pairing and timeout rules.
 
 | Upgrade | Why |
 | --- | --- |
-| **Ender modems** | Prerequisite for any tracking at depth. Do this first. |
+| **Ender modems** | Long-range fleet control and excellent GPS hosts. Do this first. |
 | **Chunky Turtle** (AP) | Keeps its own chunk loaded, so turtles mine while you're away. The real "mine for me" unlock. |
 | **Geo Scanner** (AP) | Optional targeted prospecting on hardware that can expose it alongside mining. |
-| **GPS cluster** | 4 computers + 4 modems high up. World coordinates on the dashboard. |
+| **GPS constellation** | Install four `gps` hosts with Ender modems in 3D; one may be a Chunky Turtle that loads their shared chunk. |
 | **Inventory Manager** (AP) | Push items straight into your own inventory. |
 
 ## ⌨️ Handy in-game commands
