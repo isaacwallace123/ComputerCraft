@@ -45,6 +45,7 @@ function device.capabilities()
     speaker = peripheral.find("speaker") ~= nil,
     monitor = peripheral.find("monitor") ~= nil,
     geoScanner = (peripheral.find("geoScanner") or peripheral.find("geo_scanner")) ~= nil,
+    chunky = peripheral.find("chunky") ~= nil,
   }
 
   for _, name in ipairs(peripheral.getNames()) do
@@ -93,6 +94,20 @@ device.ROLES = {
       end
       if not caps.wireless then
         return "wired modem: turtles will not reach this"
+      end
+      return nil
+    end,
+  },
+  {
+    key = "gps",
+    label = "GPS host",
+    detail = "Always-on coordinate beacon",
+    requires = function(caps)
+      return caps.kind ~= "pocket" and caps.wireless
+    end,
+    warn = function(caps)
+      if caps.kind == "turtle" and not caps.chunky then
+        return "not Chunky: keep this turtle's chunk loaded another way"
       end
       return nil
     end,
@@ -160,6 +175,9 @@ function device.describe(caps)
   lines[#lines + 1] = ("%-10s %s"):format("speaker", yn(caps.speaker, "yes", "none"))
   if caps.geoScanner then
     lines[#lines + 1] = ("%-10s %s"):format("scanner", "geo scanner")
+  end
+  if caps.chunky then
+    lines[#lines + 1] = ("%-10s %s"):format("loader", "chunky")
   end
 
   return lines

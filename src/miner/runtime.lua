@@ -267,7 +267,7 @@ local function nextMiningCycle(ctx)
     return
   end
 
-  ctx:report("cycling", "unloaded - choosing a fresh route")
+  ctx:report("cycling", "unloaded - resuming assigned sector")
   log.info("automatic mining cycle starting")
   nav.setHome()
   ctx.job = ctx.jobModule.restart(ctx.job)

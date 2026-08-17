@@ -54,6 +54,12 @@ Fleet app is now only a dashboard.
 Configure the mine from Mine Control on the base or Pocket controller, or from Fleet
 Console on the base desktop:
 
+For the normal case, choose **Mine Control → Start diamond mining**. If the mine has
+not been placed yet, choose GPS or enter the base coordinates once. The single base
+operation atomically creates 48-block sectors with a requested 64-block base keepout,
+sets every connected parked miner to Rare at Y -59, and queues deployment. Existing
+mine geometry is respected. The controls and commands below are advanced tuning.
+
 ```text
 mine here              centre it on the base computer, using GPS
 mine at <x> <y> <z>    centre it explicitly

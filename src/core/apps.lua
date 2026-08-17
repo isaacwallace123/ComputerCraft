@@ -104,6 +104,14 @@ local DEFINITIONS = {
     requiresInput = true,
   },
   {
+    id = "gps-host",
+    name = "GPS Host",
+    program = "apps/gps_host.lua",
+    kinds = { "computer", "command", "turtle" },
+    roles = { "gps" },
+    requiresInput = false,
+  },
+  {
     id = "scan",
     name = "Ore Scan",
     program = "apps/scan.lua",
@@ -177,7 +185,7 @@ local DEFINITIONS = {
     id = "update-tool",
     name = "Update now",
     program = "update.lua",
-    kinds = { "turtle" },
+    kinds = { "computer", "command", "turtle" },
     surfaces = { "tools" },
     requiresInput = true,
     needs = function(caps)
@@ -186,9 +194,9 @@ local DEFINITIONS = {
   },
   {
     id = "setup-tool",
-    name = "Change role",
+    name = "Setup / change role",
     program = "install.lua",
-    kinds = { "turtle" },
+    kinds = { "computer", "command", "turtle" },
     surfaces = { "tools" },
     requiresInput = true,
   },

@@ -21,7 +21,7 @@ local function call(action, fields)
   ui.header("MINE CONTROL", ok and "done" or "failed")
   ui.text(2, 3, ui.pad(message, select(1, ui.size()) - 3), ok and ui.theme.good or ui.theme.bad)
   sleep(1.2)
-  return ok
+  return ok, message
 end
 
 local function number(prompt, default)
@@ -41,6 +41,55 @@ local function confirmGridChange()
       == 1
 end
 
+local function startDiamonds()
+  local plan = state and state.plan or {}
+  local fields = {}
+
+  if plan.configured then
+    local choice = ui.menu("START DIAMOND MINING?", { "Start parked miners", "Cancel" }, {
+      "Uses the existing shared mine.",
+      "Sets Rare prospecting to Y -59.",
+      "Only connected parked miners start.",
+      "Each turtle needs Set position once.",
+    })
+    if choice ~= 1 then
+      return
+    end
+  else
+    local choice = ui.menu(
+      "START DIAMOND MINING",
+      { "Locate base with GPS", "Enter base coordinates", "Cancel" },
+      {
+        "Creates a safe mine automatically:",
+        "48-block sectors, 64-block keepout,",
+        "Rare prospecting at Y -59.",
+        "Each turtle needs Set position once.",
+      }
+    )
+    if choice == 2 then
+      fields.x = number("Base X", 0)
+      fields.y = number("Surface Y", 64)
+      fields.z = number("Base Z", 0)
+    elseif choice ~= 1 then
+      return
+    end
+  end
+
+  local ok, message = call("start_diamonds", fields)
+  if not ok and message == "GPS unavailable; choose Enter base coordinates" then
+    local fallback = ui.menu("GPS NOT FOUND", { "Enter base coordinates", "Back" }, {
+      "GPS is optional.",
+      "F3 coordinates work just as well.",
+    })
+    if fallback == 1 then
+      fields.x = number("Base X", 0)
+      fields.y = number("Surface Y", 64)
+      fields.z = number("Base Z", 0)
+      call("start_diamonds", fields)
+    end
+  end
+end
+
 call("mine_state")
 while true do
   local plan = state and state.plan or {}
@@ -53,38 +102,41 @@ while true do
     summary.active or 0
   )
   local labels = {
+    "Start diamond mining",
     "Refresh status",
-    "Set mine centre from GPS",
-    "Set mine centre manually",
-    "Sector size (area per shaft)",
-    "Outer rings (mine capacity)",
-    "Keepout (protect the base)",
-    "Assign quarry to parked fleet",
+    "Advanced: centre from GPS",
+    "Advanced: centre manually",
+    "Advanced: sector size",
+    "Advanced: outer rings",
+    "Advanced: base keepout",
+    "Quarry (clears a whole area)",
     "Back to Home",
   }
   local choice = ui.menu("MINE CONTROL", labels, {
-    "Shared prospecting + quarry.",
+    "Quick mining + advanced controls.",
     mineLabel,
     sectorLabel,
   })
-  if not choice or choice == 8 then
+  if not choice or choice == 9 then
     break
   elseif choice == 1 then
+    startDiamonds()
+  elseif choice == 2 then
     call("mine_state")
-  elseif choice == 2 and confirmGridChange() then
-    call("mine_here")
   elseif choice == 3 and confirmGridChange() then
+    call("mine_here")
+  elseif choice == 4 and confirmGridChange() then
     local x = number("Mine centre X", plan.centreX or 0)
     local y = number("Surface Y", plan.surfaceY or 64)
     local z = number("Mine centre Z", plan.centreZ or 0)
     call("mine_at", { x = x, y = y, z = z })
-  elseif choice == 4 and confirmGridChange() then
+  elseif choice == 5 and confirmGridChange() then
     call("mine_config", { cellSize = number("Sector size", plan.cellSize or 48) })
-  elseif choice == 5 then
+  elseif choice == 6 then
     call("mine_config", { maxRing = number("Outer ring", plan.maxRing or 4) })
-  elseif choice == 6 and confirmGridChange() then
+  elseif choice == 7 and confirmGridChange() then
     call("mine_config", { keepout = number("Keepout blocks", 96) })
-  elseif choice == 7 then
+  elseif choice == 8 then
     local x1 = number("First X", plan.centreX or 0)
     local z1 = number("First Z", plan.centreZ or 0)
     local x2 = number("Last X", x1)

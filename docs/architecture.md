@@ -64,6 +64,11 @@ should not import an app, and a job should not manipulate the desktop.
 output surface. Every app declares `requiresInput`; unknown apps default to requiring
 input, so a new control page cannot leak onto a monitor accidentally.
 
+The `gps` role is a deliberately smaller appliance path. On a stationary computer or
+turtle with a wireless/Ender modem, startup runs only `apps/gps_host.lua` with the
+coordinates saved in `.gps`. It does not start a desktop, fleet service, miner, or
+Rednet hostname. A held key during boot still reaches update and role recovery tools.
+
 ## Desktop model
 
 `src/core/desktop.lua` implements maximized pages rather than nested windows:

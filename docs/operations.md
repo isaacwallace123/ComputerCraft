@@ -64,6 +64,38 @@ one-use shafts. It chooses the grid centre, sector size, outer extent, and prote
 radius around the base. Its separate quarry action replaces the jobs of currently
 connected, parked miners with one bounded coordinated quarry after confirmation.
 
+### Starting diamond mining
+
+Open **Mine Control → Start diamond mining**. On the first run, choose **Locate base
+with GPS** or **Enter base coordinates**. ICOS then performs the formerly separate
+steps as one operation: it creates the standard shared grid, protects the base with a
+64-block requested keepout, assigns Rare prospecting at Y -59 to all connected parked
+miners, and queues them to start. If a mine already exists, the shortcut preserves its
+geometry and only assigns the parked fleet.
+
+Each turtle still needs its one-time world heading. Run **System tools → Set position**
+on a turtle after placing it, or after physically moving or turning it. With GPS, ICOS
+fills the coordinates automatically and only asks which way the turtle faces.
+
+### Building a GPS constellation
+
+GPS is optional, but it removes coordinate typing. Build it in one permanently loaded
+chunk using four hosts and four Ender modems (ordinary wireless modems work only at
+limited range). Keep the hosts in the same dimension as the fleet. Arrange them in
+three dimensions: three must not be in a straight line, and the fourth must be above
+or below their plane. A roughly 5×5×5 or 10×10×10 arrangement works well.
+
+Install ICOS on each host and choose **GPS host** in Setup. Use F3 **Targeted Block**
+to enter that computer or turtle block's exact X/Y/Z when prompted—not the modem's
+position. The role saves those coordinates in `.gps` and boots directly into the GPS
+beacon; it does not run the fleet desktop or register as a base.
+
+One host may be a stationary Chunky Turtle with an Ender modem in its other upgrade
+slot. Selecting **GPS host** makes it both a coordinate beacon and, when Advanced
+Peripherals chunk loading is enabled, the loader for the shared host chunk. The other
+three hosts can be ordinary computers. Keep all four powered. Test from the ICOS base
+Terminal with `gps locate`; it should print three coordinates.
+
 The stationary base must be running ICOS, but no dashboard app needs to be open. An
 ender modem is strongly recommended: ordinary wireless range and chunk loading still
 apply. Mine Control actions on the handheld execute at the base, so mine plans, sector

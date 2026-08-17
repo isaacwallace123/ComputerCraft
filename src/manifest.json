@@ -1,11 +1,12 @@
 {
-    "generated":  "2026-08-16T19:55:33-04:00",
+    "generated":  "2026-08-16T20:44:46-04:00",
     "files":  [
                   "apps/automation.lua",
                   "apps/console.lua",
                   "apps/devices.lua",
                   "apps/equip.lua",
                   "apps/fleet.lua",
+                  "apps/gps_host.lua",
                   "apps/logs.lua",
                   "apps/miner.lua",
                   "apps/operations.lua",

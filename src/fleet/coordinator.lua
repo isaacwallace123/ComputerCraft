@@ -21,6 +21,36 @@ local function availableMiners()
   return miners
 end
 
+--- Give every connected parked miner the same job and launch it.
+---
+--- `assign_job` is deliberately used instead of separate set/configure/deploy
+--- messages. The miner applies the whole assignment while parked and only then
+--- queues deployment, so it cannot start between those steps with stale settings.
+function coordinator.assignParked(job, settings)
+  local miners = availableMiners()
+  if #miners == 0 then
+    return false, "no connected parked miners are available"
+  end
+
+  local sent = 0
+  for _, node in ipairs(miners) do
+    if
+      net.send(tonumber(node.id), "command", {
+        action = "assign_job",
+        job = job,
+        settings = settings,
+      })
+    then
+      sent = sent + 1
+    end
+  end
+
+  if sent == 0 then
+    return false, "assignments could not be sent - check the modem"
+  end
+  return true, ("queued %s on %d/%d parked miners"):format(job, sent, #miners)
+end
+
 function coordinator.quarry(settings)
   local miners = availableMiners()
   if #miners == 0 then

@@ -203,3 +203,25 @@ The base now runs a full desktop on its local terminal and a separate display-on
 desktop on the monitor. App definitions declare `requiresInput`; monitor filtering is
 deny-by-default, with explicit read-only Fleet Status and Fleet Log variants. Display
 pages may accept harmless paging touches but cannot send commands or mutate settings.
+
+## D021 — Common mining starts from intent, not grid internals
+
+**Status:** accepted
+
+Sector size, ring count, keepout, job selection, target depth, and deployment are
+useful expert controls but poor prerequisites for the fleet's most common request:
+mine diamonds. Mine Control therefore exposes one guided action that atomically
+creates a safe default grid when needed, assigns Rare at Y -59 to connected parked
+miners, and queues deployment. Existing mine geometry is never silently replaced;
+the detailed controls remain available and are explicitly labelled advanced.
+
+## D022 — GPS hosts are appliances, not fleet bases
+
+**Status:** accepted
+
+A GPS constellation needs four permanently running coordinate beacons, but those
+machines do not need a desktop, roster, miner runtime, or fleet hostname. ICOS exposes
+a dedicated `gps` role on stationary modem-equipped computers and turtles. Setup saves
+the host block coordinates once and startup runs only the beacon, while preserving the
+normal updater and held-key recovery path. This also lets a Chunky + Ender Turtle serve
+as one host and keep the other three hosts' shared chunk loaded.
