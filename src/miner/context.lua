@@ -182,6 +182,11 @@ function Context:snapshot()
     sector = jobStatus.sector,
     workKey = jobStatus.workKey,
     peers = peers.count(),
+    -- Whether this turtle knows where it is in the world. Every shared-mine job
+    -- refuses to deploy without it, so a fleet-wide order silently skips any
+    -- turtle that has never been given its position. Reported so the base can
+    -- name them instead of the operator having to open each one in turn.
+    located = nav.hasOrigin(),
   }
 end
 

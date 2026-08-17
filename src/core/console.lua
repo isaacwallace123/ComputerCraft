@@ -9,6 +9,7 @@ local config = require("core.config")
 local boot = require("core.boot")
 local version = require("core.version")
 local device = require("core.device")
+local util = require("core.util")
 local coordinator = require("fleet.coordinator")
 local minePlan = require("mine.plan")
 local mineRegistry = require("mine.registry")
@@ -69,7 +70,7 @@ local function listDevices()
     rows[#rows + 1] = { id = id, node = node }
   end
   table.sort(rows, function(a, b)
-    return labelFor(a.id, a.node) < labelFor(b.id, b.node)
+    return util.naturalLess(labelFor(a.id, a.node), labelFor(b.id, b.node))
   end)
 
   if #rows == 0 then

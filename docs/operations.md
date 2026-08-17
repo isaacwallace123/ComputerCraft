@@ -77,6 +77,13 @@ Each turtle still needs its one-time world heading. Run **System tools → Set p
 on a turtle after placing it, or after physically moving or turning it. With GPS, ICOS
 fills the coordinates automatically and only asks which way the turtle faces.
 
+**A turtle without a world position will not deploy.** The shared mine is defined in
+world coordinates, so every prospecting job refuses to launch without one. This is the
+usual reason a fleet-wide order starts some turtles and not others — newly added miners
+have never been given theirs. Start diamond mining now names them in its result, and
+Devices shows `run where on this turtle` as the park reason. Run Set position on each and
+deploy again.
+
 ### Building a GPS constellation
 
 GPS is optional, but it removes coordinate typing. Build it in one permanently loaded

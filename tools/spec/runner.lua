@@ -16,6 +16,7 @@ package.path = table.concat({
 local spec = require("support.spec")
 
 local SPECS = {
+  "util_spec",
   "nav_spec",
   "fuel_spec",
   "access_spec",
