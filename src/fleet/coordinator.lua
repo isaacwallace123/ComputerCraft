@@ -21,6 +21,26 @@ local function availableMiners()
   return miners
 end
 
+--- Turtles that have never been told where they are.
+---
+--- Every shared-mine job refuses to deploy without a world origin, so a
+--- fleet-wide order reaches them, is accepted, and then quietly does nothing.
+--- The count said "queued on 10/10" while six of them sat still, and the only
+--- way to find out why was to open each one in Devices. Naming them here turns
+--- that into a sentence on the screen you already pressed the button on.
+---
+--- `located` is absent on snapshots from older builds, so only an explicit false
+--- counts; an unknown turtle is left alone rather than accused.
+local function unlocated(miners)
+  local names = {}
+  for _, node in ipairs(miners) do
+    if node.snap and node.snap.located == false then
+      names[#names + 1] = tostring(node.snap.label or node.id)
+    end
+  end
+  return names
+end
+
 --- Give every connected parked miner the same job and launch it.
 ---
 --- `assign_job` is deliberately used instead of separate set/configure/deploy
@@ -48,7 +68,16 @@ function coordinator.assignParked(job, settings)
   if sent == 0 then
     return false, "assignments could not be sent - check the modem"
   end
-  return true, ("queued %s on %d/%d parked miners"):format(job, sent, #miners)
+
+  local message = ("queued %s on %d/%d parked miners"):format(job, sent, #miners)
+  local missing = unlocated(miners)
+  if #missing > 0 then
+    local named = table.concat(missing, ", ")
+    log.warn(("mine: %d miners have no world position: %s"):format(#missing, named))
+    local shown = table.concat(missing, ", ", 1, math.min(4, #missing))
+    message = message .. ("; %d need Set position first: %s"):format(#missing, shown)
+  end
+  return true, message
 end
 
 function coordinator.quarry(settings)

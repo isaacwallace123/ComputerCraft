@@ -7,6 +7,7 @@
 local log = require("core.log")
 local net = require("core.net")
 local config = require("core.config")
+local util = require("core.util")
 local version = require("core.version")
 local coordinator = require("fleet.coordinator")
 local operations = require("fleet.operations")
@@ -65,7 +66,8 @@ local function sendSync(id, devices, fleetPolicy)
     deviceIds[#deviceIds + 1] = key
     nodesById[key] = node
   end
-  table.sort(deviceIds)
+  -- Numeric order, so the handheld receives #10 after #9 rather than after #1.
+  table.sort(deviceIds, util.naturalLess)
 
   local sent = net.send(id, "fleet_sync", {
     deviceIds = deviceIds,
