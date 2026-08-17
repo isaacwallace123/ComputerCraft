@@ -31,8 +31,11 @@ function roster.sorted(devices)
     node.id = tonumber(id) or id
     list[#list + 1] = node
   end
+  -- Natural order, so miner-10 follows miner-9 instead of miner-1.
   table.sort(list, function(a, b)
-    return tostring((a.snap and a.snap.label) or a.id) < tostring((b.snap and b.snap.label) or b.id)
+    local left = (a.snap and a.snap.label) or a.id
+    local right = (b.snap and b.snap.label) or b.id
+    return util.naturalLess(left, right)
   end)
   return list
 end

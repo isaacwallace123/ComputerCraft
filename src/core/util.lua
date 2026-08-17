@@ -55,6 +55,52 @@ function util.coordinates(text)
   return nil
 end
 
+--- Compare two labels the way a person reads them.
+---
+--- A plain string comparison puts `miner-10` between `miner-1` and `miner-2`,
+--- because it compares "1" against "2" one character at a time and never gets to
+--- the "0". On a ten-turtle fleet that makes the dashboard genuinely hard to
+--- read, and it gets worse as the fleet grows.
+---
+--- Each string is walked as alternating runs of digits and non-digits: digit
+--- runs compare as numbers, everything else compares as text. Leading zeros
+--- therefore do not change the order, and two labels that differ only by them
+--- fall back to a raw comparison so the result stays deterministic - `table.sort`
+--- is not stable, and a comparator that calls two different strings equal can
+--- reorder rows between refreshes for no visible reason.
+function util.naturalLess(a, b)
+  a, b = tostring(a or ""), tostring(b or "")
+  if a == b then
+    return false
+  end
+
+  local at, bt = 1, 1
+  while true do
+    local aDigits = a:match("^%d+", at)
+    local bDigits = b:match("^%d+", bt)
+
+    if aDigits and bDigits then
+      local aNumber, bNumber = tonumber(aDigits), tonumber(bDigits)
+      if aNumber ~= bNumber then
+        return aNumber < bNumber
+      end
+      at, bt = at + #aDigits, bt + #bDigits
+    else
+      local aChar, bChar = a:sub(at, at), b:sub(bt, bt)
+      if aChar == "" or bChar == "" then
+        if aChar == bChar then
+          return a < b -- same apart from leading zeros
+        end
+        return aChar == "" -- the shorter one comes first
+      end
+      if aChar ~= bChar then
+        return aChar < bChar
+      end
+      at, bt = at + 1, bt + 1
+    end
+  end
+end
+
 --- Seconds since a millisecond epoch stamp, floored at zero.
 function util.since(epochMillis)
   if not epochMillis then

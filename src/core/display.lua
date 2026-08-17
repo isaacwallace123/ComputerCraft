@@ -6,6 +6,8 @@
 --- picks the LARGEST scale that still fits - biggest readable text, nothing cut
 --- off, whatever size the wall happens to be.
 
+local util = require("core.util")
+
 local display = {}
 local primaryName = nil
 
@@ -15,7 +17,9 @@ local SCALES = { 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5 }
 
 local function monitorEntries(excludedName)
   local names = peripheral.getNames()
-  table.sort(names)
+  -- monitor_10 belongs after monitor_9, so a fleet with ten walls picks the same
+  -- one every boot rather than whichever the alphabet happened to favour.
+  table.sort(names, util.naturalLess)
   local entries = {}
   for _, name in ipairs(names) do
     if name ~= excludedName and peripheral.getType(name) == "monitor" then
@@ -35,7 +39,7 @@ local function monitorEntries(excludedName)
   end
   table.sort(entries, function(a, b)
     if a.area == b.area then
-      return a.name < b.name
+      return util.naturalLess(a.name, b.name)
     end
     return a.area > b.area
   end)
