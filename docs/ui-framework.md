@@ -420,59 +420,99 @@ should be revisited before phase 3.
 
 ## Appendix — kickoff prompt
 
-Paste this into a fresh chat to begin phase 1.
+Phase 1 of this plan and phase 1 of [`icos-2.md`](icos-2.md) are the same work: both
+establish `ports/` and `adapters/`, neither changes live behaviour, and the bench proves
+the renderer premise before anything is built on it. One session covers both.
+
+Paste into a fresh chat.
 
 ```text
-Work in C:\Users\isaac\Desktop\ComputerCraft (ICOS, CC: Tweaked / Minecraft 1.20.1).
+Work in C:\Users\isaac\Desktop\ComputerCraft — ICOS, a fleet operating system for
+CC: Tweaked (Minecraft 1.20.1, Valhelsia 6). A live 10-turtle mining fleet is
+running the current release. Nothing this session does may change its behaviour.
 
-Read these completely before changing anything:
+We are starting ICOS 2. Read these completely before writing anything:
+
   AGENTS.md
-  docs/ai-handoff.md
-  docs/architecture.md
-  docs/ui-framework.md      <- the plan you are implementing
-  docs/icos-2.md            <- the OS split this fits into
-  src/core/ui.lua           <- what you are replacing
-  src/apps/devices.lua      <- the app you will rebuild in phase 2
-  tools/spec/               <- the existing simulated-world spec suite
+  docs/ai-handoff.md        conventions, invariants, verification commands
+  docs/architecture.md      what exists today
+  docs/decisions.md         D001-D026: why things are the way they are
+  docs/icos-2.md            the OS split, services, desired state     <- the plan
+  docs/ui-framework.md      the UI framework                          <- the plan
+  src/core/ui.lua           what the UI framework replaces
+  tools/spec/               the existing simulated-world spec suite
 
-The framework is modelled on Fusion (the Roblox library), NOT React: state
-objects bind directly to node properties, there is no component re-render,
-and dependency tracking is explicit via a `use` function as in Fusion 0.3.
-Read section 3 of the plan carefully before designing anything, and read
-Fusion's own docs if you do not already know it.
+The UI framework is modelled on Fusion (the Roblox library), NOT React. State
+objects bind directly to node properties and components never re-run. Read
+section 3 of docs/ui-framework.md carefully, and Fusion's own docs if you do
+not already know it.
 
-Goal: implement PHASE 1 ONLY of docs/ui-framework.md — the screen port, the
-cell buffer, the diff-and-blit renderer, and a performance bench. Do not
-start phases 2+. No reactivity yet; phase 1 is deliberately the layer
-underneath it. Do not touch mining, fleet, or job code.
+## This session: the foundation
 
-Deliverables:
-1. ports/screen: the only module allowed to call `term`. A CC adapter and a
-   recording adapter for tests.
-2. ui/buffer: double-buffered cell grid ({char, fg, bg}), painting API,
-   present() that diffs against the front buffer and emits one term.blit per
-   contiguous changed run.
-3. Specs against the recording adapter: an unchanged frame emits zero calls;
-   a one-character change emits one blit; a full-screen change emits at most
-   one blit per row. Assert cell contents directly.
-4. A bench (tools/bench.ps1 or a spec case) reporting blit counts and elapsed
-   time for: idle, a typical dashboard update, and a full 164x81 repaint.
-   Record the numbers in the doc.
+Phase 1 of both plans, because they are the same work — establish ports and
+adapters, and prove the renderer's performance premise before anything is
+built on top of it.
 
-Constraints, all non-negotiable:
-- Verify every CC: Tweaked API claim in the plan against the real docs before
-  relying on it, especially blit semantics, palette support, the 2x3 glyph
-  range, and terminal sizes. Correct the doc where it is wrong and say so.
-- Nothing outside ports/screen may call `term` directly.
-- The existing spec suite must keep passing: .\tools\spec.ps1
-- Run .\tools\make-manifest.ps1, .\tools\check.ps1, and git diff --check.
+Deliver:
+
+1. src/ports/ — interface definitions with null implementations: clock,
+   storage, transport, screen, body, locator. Tables of functions. No classes,
+   no inheritance, no metatable trickery.
+
+2. src/adapters/cc/ — real implementations over fs, rednet, term, turtle, gps.
+   src/adapters/sim/ — promote tools/spec/support/world.lua to a first-class
+   adapter rather than a monkey-patch over _G.
+   Nothing outside adapters/cc may reference a CC global.
+
+3. src/domain/mine/ — move mine/plan.lua and mine/registry.lua, which are
+   already nearly pure arithmetic. No logic changes. The existing specs must
+   pass unmodified; that is the proof the move was clean.
+
+4. src/ui/buffer.lua — double-buffered cell grid of {char, fg, bg}. present()
+   diffs against the front buffer and emits one term.blit per contiguous
+   changed run, through ports/screen.
+
+5. Specs against the recording screen adapter: an unchanged frame emits zero
+   terminal calls; a one-character change emits exactly one blit; a
+   full-screen change emits at most one blit per row. Assert cell contents
+   directly.
+
+6. A bench reporting blit count and elapsed time for three cases: idle, a
+   typical dashboard update, and a full 164x81 repaint. Write the measured
+   numbers into docs/ui-framework.md section 12.
+
+## Out of scope this session
+
+No reactivity (Value/Computed/Spring), no layout solver, no components, no
+canvas, no OS split, no desired state, no drop-offs. No changes to jobs,
+mining, fleet, or existing apps. Each of those gets its own session.
+
+## Non-negotiable
+
+- Verify every CC: Tweaked claim in docs/ui-framework.md section 2 against the
+  real documentation before relying on it — blit semantics, palette support,
+  the 2x3 glyph range, terminal sizes. Those were written from experience, not
+  from the source. Correct the doc where it is wrong and say so.
+- The existing spec suite must pass unchanged: .\tools\spec.ps1 (43 specs).
+- Run .\tools\make-manifest.ps1, .\tools\check.ps1 and git diff --check before
+  handing back.
 - Match the house comment style: explain WHY, especially where a decision
-  looks odd. See src/turtle/access.lua for the standard.
-- Check the target PR's state before pushing; if it merged, branch fresh from
-  origin/master. Open a DRAFT PR. Do not merge.
+  looks odd. src/turtle/access.lua and src/jobs/prospecting/surface.lua are
+  the standard to hit.
+- Check the target PR state with `gh pr view <n> --json state` BEFORE every
+  push. If it merged, branch fresh from origin/master. This has caught people
+  out three times already.
+- Open a DRAFT PR against master. Do not merge it. Do not bump the version.
 
-Report at the end: measured bench numbers, any plan claims that turned out to
-be wrong, and whether the 1-tick full-repaint budget in section 12 was met.
-If it was not met, stop and say so rather than continuing to phase 2 — that
-budget is the premise the whole framework rests on.
+## Stop condition
+
+If the bench cannot repaint a full 164x81 screen within one tick (50ms), STOP
+and report it rather than continuing. That budget is the premise the entire
+framework rests on; if it does not hold, the plan needs revisiting rather than
+building on.
+
+## Report at the end
+
+Measured bench numbers. Any plan claims that turned out to be wrong. Whether
+the one-tick budget held. What the next session should pick up.
 ```
