@@ -132,9 +132,12 @@ large AFK run.
 - Ender modems are valid and recommended GPS hosts in CC: Tweaked 1.113.1. GPS still
   requires four loaded hosts and cannot determine a stationary turtle's heading, so
   `where` saves the origin and facing for durable dead reckoning.
-- The `gps` role is available to non-Pocket devices with a wireless/Ender modem. Setup
-  saves the advertised block coordinates in `.gps`; startup runs only
-  `apps/gps_host.lua`. A Chunky Turtle may be one host and load the shared host chunk.
+- The `gps` role is available to non-Pocket computers with a wireless/Ender modem and
+  is always visible on turtles so a dedicated Chunky Turtle can be assigned before
+  its upgrades are arranged. Setup warns if the turtle has no wireless/Ender modem;
+  the host cannot serve until one is equipped. Setup saves the advertised block
+  coordinates in `.gps`; startup runs only `apps/gps_host.lua`. A Chunky Turtle may be
+  one host and load the shared host chunk.
 - ICOS v1.2.5 GPS setup used a greedy separator that could swallow a negative sign on
   Y or Z. Existing `.gps` values cannot be corrected automatically because their
   intended sign is unknowable. After updating, re-run GPS Setup on affected hosts and

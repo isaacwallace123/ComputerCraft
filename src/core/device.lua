@@ -103,9 +103,15 @@ device.ROLES = {
     label = "GPS host",
     detail = "Always-on coordinate beacon",
     requires = function(caps)
-      return caps.kind ~= "pocket" and caps.wireless
+      -- A turtle may need to choose its permanent role before its upgrades are
+      -- arranged. Keep GPS visible there and explain the missing modem instead
+      -- of collapsing the menu to Mining/Utility with no recovery path.
+      return caps.kind == "turtle" or (caps.kind ~= "pocket" and caps.wireless)
     end,
     warn = function(caps)
+      if not caps.wireless then
+        return "attach a wireless or Ender modem before GPS can start"
+      end
       if caps.kind == "turtle" and not caps.chunky then
         return "not Chunky: keep this turtle's chunk loaded another way"
       end
