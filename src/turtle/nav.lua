@@ -121,10 +121,21 @@ local function obstacle(inspect)
   if name:find("lava") then
     return "lava", "hazard"
   end
-  if name:find("computercraft:turtle") then
+
+  -- Any turtle, not only `computercraft:turtle_*`. A Chunky Turtle from
+  -- Advanced Peripherals, or any other mod's turtle, matched none of the old
+  -- patterns and was therefore mined - a fleet quietly eating its own members
+  -- and leaving no trace of where they went. The `minecraft:` exclusion keeps
+  -- turtle eggs and scutes out of it.
+  if name:find("turtle", 1, true) and not name:find("^minecraft:") then
     return "turtle in the way", "peer"
   end
-  if name:find("computercraft:") or name:find("chest") or name:find("barrel") then
+  if
+    name:find("computercraft:", 1, true)
+    or name:find("computer", 1, true)
+    or name:find("chest", 1, true)
+    or name:find("barrel", 1, true)
+  then
     return "protected block (" .. name .. ")", "protected"
   end
   return nil
