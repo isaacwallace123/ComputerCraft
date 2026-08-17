@@ -304,11 +304,25 @@ cell, while changed settings or redeploying a completed room starts a fresh swee
 - known inventory potential from `turtle/fuel/catalog.lua`
 - total available movement = tank + carried potential
 
-Known fuel includes coal, charcoal, coal blocks, lava buckets, blaze rods, and dried
-kelp blocks. Unknown modded fuel is detected with `turtle.refuel(0)` and retained.
-When an item must be consumed, its observed value can be learned for the running
-session. Smaller fuels are preferred when they avoid overshoot; large compact fuels
-remain inventory reserve as long as possible.
+Fuel is a closed list: **coal and charcoal, loose or in block form. Nothing else.**
+`turtle/fuel/catalog.lua` owns it, matching on the item id so a modded coal or charcoal
+block counts without every mod being listed.
+
+This used to ask the game with `turtle.refuel(0)`, which answers yes for sticks,
+saplings, planks, logs, bamboo, and wooden tools. Everything counted as fuel is retained
+at every unload, so a turtle that cut down through a canopy on the way to its sector
+carried the resulting litter for the rest of its life in slots meant for ore.
+
+Only the vanilla ids carry a burn value. A modded charcoal block is accepted and burnable
+but contributes zero to the range calculation until this turtle has burned one and
+measured it, because over-counting range is how a turtle strands itself. Smaller fuels
+are preferred when they avoid overshoot; blocks remain inventory reserve as long as
+possible.
+
+The junk policy is the other half of the same problem. Saplings, sticks, leaves, seeds,
+and apples are dropped in place rather than hauled home. `ore.JUNK_EXACT` exists because
+the obvious substrings take something real with them: `stick` also matches
+`sticky_piston`, and `apple` also matches `golden_apple`.
 
 `jobs/common/safety.lua` asks the active job for its planned return cost. This matters
 because a safe shaft route may be longer than raw Manhattan distance home. Two extra

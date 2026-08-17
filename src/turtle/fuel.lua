@@ -1,11 +1,15 @@
 --- Fuel accounting and economical refuelling.
 --- Knows nothing about where the turtle is - see turtle/nav.
+---
+--- What counts as fuel is a closed list, not a question for the game; see
+--- `turtle/fuel/catalog`. Everything treated as fuel is kept through every
+--- unload, so a permissive answer here quietly turns into slots full of sticks.
 
 local catalog = require("turtle.fuel.catalog")
 local fuel = {}
 
--- Runtime values learned by consuming one modded fuel item. They deliberately
--- are not persisted: a modpack update may change an item's burn time.
+-- Runtime values learned by consuming one accepted fuel whose burn time is not
+-- in the catalog. Deliberately not persisted: a modpack update may change it.
 local measured = {}
 
 --- Fuel as a number. Turtles report the string "unlimited" when fuel is turned
@@ -44,31 +48,30 @@ local function withSlot(slot, action)
 end
 
 function fuel.itemValue(detail)
-  if not detail then
+  if not detail or not catalog.accepts(detail.name) then
     return nil
   end
   return measured[detail.name] or catalog.value(detail.name)
 end
 
---- True for vanilla and modded fuel. Passing a slot allows the authoritative
---- turtle.refuel(0) check without consuming the item.
-function fuel.isFuel(detail, slot)
-  if not detail then
-    return false
-  end
-  if fuel.itemValue(detail) then
-    return true
-  end
-  if not slot then
-    return false
-  end
-  return withSlot(slot, function()
-    return turtle.refuel(0)
-  end)
+--- Is this something the fleet burns?
+---
+--- Coal and charcoal, loose or in block form, and nothing else. This used to ask
+--- the game with `turtle.refuel(0)`, which answers yes for sticks, saplings,
+--- planks, and wooden tools. Everything that answers yes is retained at unload,
+--- so a turtle that cut through a canopy on the way down carried the resulting
+--- litter for the rest of its life in slots meant for ore.
+---
+--- The second argument is the caller's slot. It is accepted and ignored: the
+--- answer no longer depends on asking the game about a particular stack, and
+--- keeping the signature means no call site has to change.
+function fuel.isFuel(detail, _)
+  return detail ~= nil and catalog.accepts(detail.name)
 end
 
---- Fuel still stored as inventory items. Unknown modded fuels are retained but
---- conservatively contribute zero until one has been measured by refuelling.
+--- Fuel still stored as inventory items. An accepted fuel whose burn time this
+--- build does not know - a modded charcoal block - is retained and burnable but
+--- conservatively contributes zero until one has been measured by refuelling.
 function fuel.inventoryPotential()
   local total = 0
   for slot = 1, 16 do

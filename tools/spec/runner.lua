@@ -17,6 +17,7 @@ local spec = require("support.spec")
 
 local SPECS = {
   "nav_spec",
+  "fuel_spec",
   "access_spec",
   "surface_spec",
   "hazard_spec",

@@ -200,6 +200,11 @@ large AFK run.
   `unknown` on read, which must never be confused with `sealed`.
 - Anything a turtle is not certain it closed is reported `open`, deliberately. Making
   that report optimistic would turn a missed seal into a silent hole.
+- Fuel is a closed list in `turtle/fuel/catalog.lua`: coal and charcoal, loose or in
+  block form. Do not restore the `turtle.refuel(0)` fallback. It answers yes for sticks,
+  saplings, planks, and wooden tools, and anything counted as fuel is retained at every
+  unload, so a permissive answer silently fills a turtle with canopy litter forever.
+  Lava buckets and blaze rods are no longer fuel and are now delivered like any haul.
 - `core/config.lua` replaces state through a completed `.tmp` file. Its load fallback is
   part of crash-safe navigation; do not revert `.nav` to in-place overwrite.
 - A standard mining turtle cannot carry pickaxe, modem, and Geo Scanner at once.
