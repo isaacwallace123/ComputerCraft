@@ -11,6 +11,11 @@
 --- with the number of SECTORS the fleet has opened, which is bounded by `maxRing`
 --- and is a number you can count on one hand for a long time.
 ---
+--- Bounded is not the same as safe, and this file only delivers bounded. Four
+--- sectors is four unmarked drops to mining depth in ground people walk across.
+--- Keeping each shaft shut except while a turtle is inside it belongs to
+--- `turtle/access.lua`; the geometry here is deliberately unaware of it.
+---
 --- Everything in this file is pure arithmetic over a plan table. The base station
 --- and every turtle derive identical coordinates from the same handful of
 --- numbers, so a sector map never has to be transmitted - only the plan does.

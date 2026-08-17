@@ -74,12 +74,17 @@ end
 --- diamond level a hundred blocks out costs ~250 moves each way, so a turtle
 --- that came home every time it filled up with deepslate would spend its whole
 --- fuel budget commuting. Returns how many items were dropped.
-function inv.dropJunk(isJunk)
+---
+--- `reservedSlot` is never emptied. Cap material for a sealed shaft is the same
+--- worthless cobblestone this function exists to get rid of, so the one slot
+--- holding it has to be exempt or the turtle throws away the block it needs to
+--- close the surface behind itself.
+function inv.dropJunk(isJunk, reservedSlot)
   local dropped = 0
   local selected = turtle.getSelectedSlot()
 
   for slot = 1, 16 do
-    local detail = turtle.getItemDetail(slot)
+    local detail = slot ~= reservedSlot and turtle.getItemDetail(slot) or nil
     if detail and isJunk(detail.name) then
       turtle.select(slot)
       local count = turtle.getItemCount(slot)

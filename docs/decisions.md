@@ -125,6 +125,9 @@ one trunk tunnel with ribs that stays strictly inside the sector bounds. Hole co
 now bounded by sectors opened, not cycles run, and every later trip into a sector walks
 tunnels that already exist.
 
+This bounds the number of openings and nothing else. It is not, and was never, enough to
+make the surface safe; see D023 for the cap that does that.
+
 The trade is longer commutes to outer rings and a hard requirement that every
 prospecting turtle has a world origin, the same prerequisite the coordinated quarry
 already had. Sectors are handed out inner-ring-first so the cheap ground is used first.
@@ -161,6 +164,48 @@ or unavailable peer data falls back to bounded waits and route detours.
 
 The refusal check also moved inside the dig retry loop. Checking only on entry meant a
 turtle that arrived while its neighbour was chewing through gravel could be mined up.
+
+## D023 — A sector shaft is capped whenever nobody is inside it
+
+**Status:** accepted
+
+D015 bounded how many holes the fleet opens. It did not make them safe, and the
+distinction matters more than the count: four miners on four sectors immediately left
+four unmarked hundred-block drops at the surface. A player walking the worksite falls
+into one and dies, and being able to count them on one hand does not help.
+
+Each shaft is therefore sealed except while a turtle is passing through it. The descent
+locates the real top of the ground by inspection, steps below it, and places a block
+overhead before any mining starts; the return breaks that block from underneath, climbs
+through, and replaces it from above. `turtle/access.lua` owns the mechanics — block
+classification, cap material selection, verified placement — and the prospecting runner
+owns when they happen.
+
+The alternative considered was a single shared access shaft for the whole fleet, which
+would minimise openings to exactly one. It was rejected: it concentrates every miner
+into one vertical corridor, creating head-on collisions the peer rules resolve by
+waiting, a throughput ceiling that scales the wrong way with fleet size, and a
+recovery problem where one stuck turtle blocks every other turtle's only way home.
+It also does not solve the stated problem, because the one remaining shaft is still an
+open hole and would need a cap anyway. Capping per sector keeps the existing geometry,
+the existing traffic model, and the existing exact return-fuel calculation, and pays
+only digs and placements — which cost no fuel.
+
+Three properties are load-bearing and should not be "simplified" away:
+
+- The ground height is measured, never taken from the plan's `surfaceY`. That value is
+  the base's surface; terrain a few sectors out is a different height, and a cap placed
+  at the wrong Y leaves the real hole open while looking finished.
+- A placement counts only after the block is observed in position. `placeUp` returning
+  true is not proof, and "probably sealed" is the failure this decision exists to stop.
+- The transition is persisted by name, not just by endpoint. Breaking and replacing a
+  block cannot be atomic, so a reboot must be able to tell "about to open" from "open"
+  from "closed again", and resolve it from the turtle's own position.
+
+Where automatic repair is not possible — a head under water, a protected block in the
+way, no filler and no wall to mine — the cycle stops and reports which of those it was.
+An exposed shaft is reported ahead of a full depot, because one is inconvenient and the
+other is a hole somebody falls into.
 
 ## D014 — Version changes happen at merge
 

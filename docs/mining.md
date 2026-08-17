@@ -16,6 +16,8 @@ These rules are more important than any one mining pattern:
 9. Another turtle blocking the way is a delay, never a reason to abandon a trip.
 10. A cycle that ends early saves enough state to resume the same ground, not to pick
     new ground.
+11. A sector shaft is open only while a turtle is physically inside it. Mining below an
+    exposed vertical shaft is a failure, not a trade-off.
 
 ## The shared mine
 
@@ -27,7 +29,8 @@ arithmetic on both the base and the turtle, so only the plan is ever transmitted
 | Concept | Meaning |
 | --- | --- |
 | sector | one `cellSize` square of ground, with one shaft at its centre |
-| shaft | the single reusable vertical hole into that sector |
+| shaft | the single reusable vertical hole into that sector, kept capped when idle |
+| cap | the block sealing a shaft head flush with the ground it was cut through |
 | trunk | a tunnel spanning the sector along world X at the shaft's Z |
 | ribs | perpendicular branches every `branchSpacing`, reaching each sector edge without crossing it |
 | frontier | how far one profile/depth has completed the sector trunk |
@@ -50,6 +53,62 @@ the base costs coordination, never local safety or return behavior.
 
 The base service starts with ICOS and answers claims even when Fleet is closed. The
 Fleet app is now only a dashboard.
+
+## Surface safety
+
+One shaft per sector bounds how many holes exist. It does **not** make the surface
+safe, and it was never sufficient on its own: four sectors meant four unmarked
+hundred-block drops in ground people walk across, and a small number of death traps is
+not a safe worksite. Hole count and hole danger are separate problems.
+
+`turtle/access.lua` closes the second one. A sector shaft is open only while a turtle is
+inside it:
+
+1. Descending, the turtle finds the real top of the ground in the shaft column, steps
+   below it, and immediately places a block overhead.
+2. The whole underground trip — transit, mining, veins, ribs — happens under a sealed
+   surface.
+3. Returning, it breaks that block from underneath, climbs through, and replaces it
+   from above before flying to the cruise lane.
+
+The ground is measured, never assumed. The plan's `surfaceY` is the *base's* surface;
+terrain at a sector rings out is a different height, so the head is located by
+inspection: the first trusted solid block downward, or — for a shaft an older build left
+open, which never reports ground downward at all — the level at which the one-block
+column becomes enclosed on all four sides. Leaves, snow, crops, logs, and carpets are
+explicitly not trusted as ground or as a cap.
+
+Cap material comes from a conservative allow list of worthless stone and dirt, filtered
+against the running profile's own ore matcher and against fuel, so a turtle never walls
+a shaft up with something it was sent to collect. Gravity blocks are excluded for a
+structural reason: sand placed over a shaft falls down it and reopens the hole. Slot 16
+is reserved for the cap, junk dropping skips that slot, and unloading retains it, so the
+block needed to close the surface cannot be thrown away during the transition. As a last
+resort the turtle mines one block out of the shaft wall below the surface.
+
+Placement counts only once the block is observed in position; `placeUp`/`placeDown`
+returning true is not taken as proof. The cap move is persisted as a named transition —
+`opening`, `below`, `reopening`, `resealing`, `sealed` — because breaking and replacing
+a block cannot be atomic. A reboot in the middle resolves from the turtle's own
+position: below the opening it seals upward and continues the trip, at or above it seals
+downward and the descent begins again.
+
+The route geometry is unchanged. Capping costs digs and placements, which are free;
+`ACCESS_RESERVE` covers only the bounded detour a crash recovery may take to get back
+under its own opening, so the exact return-route fuel reserve still describes the route
+the turtle actually flies.
+
+Known limits:
+
+- A shaft head under water or lava, or blocked by a protected block, aborts the cycle
+  with a message naming the sector and coordinates rather than digging on below an
+  opening it cannot close.
+- If the head sits under a cliff overhang, the cap closes the top of the column; a
+  secondary opening where the shaft passes through ground under the ledge is possible.
+- A shaft that was already open when a turtle rebooted underground, with a job file from
+  before caps existed, is sealed by probing for the head on the way out. If that probe
+  disagrees with the plan's surface by more than 16 blocks it refuses to guess and asks
+  for the shaft to be capped by hand.
 
 Configure the mine from Mine Control on the base or Pocket controller, or from Fleet
 Console on the base desktop:
@@ -157,10 +216,13 @@ All three work the shared mine described above. A cycle is five phases:
 | Phase | What happens |
 | --- | --- |
 | `travel` | fly to the sector shaft at this sector's cruise lane altitude |
-| `descend` | move vertically through the sector shaft to the target Y |
+| `descend` | find and open the shaft head, seal it overhead, drop to the target Y |
 | `transit` | walk the trunk tunnel out to the sector's saved frontier |
 | `mining` | extend the trunk, cut ribs, follow veins, advance the frontier |
-| `home` | back along the trunk, through the shaft to the lane, then home |
+| `home` | back along the trunk, out through the shaft head, reseal it, then home |
+
+Telemetry reports `opening` and `sealing` while the cap is being moved, so a turtle
+paused at the surface can be told apart from one paused on a route.
 
 The branch grid has ribs every three blocks. Inspecting each tunnel cell and following
 adjacent veins covers the space between ribs without excavating every stone block.
@@ -213,12 +275,24 @@ remain inventory reserve as long as possible.
 because a safe shaft route may be longer than raw Manhattan distance home. Two extra
 fuel units and the job margin cover the proposed move and local uncertainty.
 
+Prospecting adds `ACCESS_RESERVE` to that return cost while the route runs through a
+shaft, and twice over to `minimumFuel`/`estimateFuel`. Moving a cap is digs and
+placements, which cost no fuel; the reserve exists so the short detour a crash recovery
+takes to get back underneath its own opening can never be the move the turtle could not
+afford.
+
 ## Inventory policy
 
 Prospecting drops common tunnel waste in place. The junk list is intentionally an
 item-name list because inspection sees block names while inventory sees drop names.
 Resources removes andesite from the junk policy. All unloading uses
 `inv.dropAllExcept` with the fuel predicate, so burnable reserves remain aboard.
+
+Slot 16 is reserved for shaft cap material and is exempt from both. Cap material and
+tunnel waste are the same blocks — cobblestone is the cheapest cap and the first thing
+the junk policy throws away — so `inv.dropJunk` takes the reserved slot and skips it,
+and unloading keeps it aboard for the next cycle. A retained cap slot is not counted as
+an undelivered load, so it cannot be mistaken for `depot full`.
 
 If the chest cannot accept all non-fuel items, the job reports `depot full` rather
 than parking as healthy.

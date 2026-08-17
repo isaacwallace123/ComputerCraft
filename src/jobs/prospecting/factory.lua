@@ -6,6 +6,7 @@
 --- do. What is left in this file is the per-profile part - what counts as ore,
 --- how deep to go, and what a safe trip costs.
 
+local access = require("turtle.access")
 local config = require("core.config")
 local fuel = require("turtle.fuel")
 local nav = require("turtle.nav")
@@ -19,6 +20,14 @@ local factory = {}
 
 local SAFETY_MARGIN = 150
 local MINING_ALLOWANCE = 32
+
+--- Fuel held back for shaft-cap work.
+---
+--- Moving the cap itself is digs and placements, which cost nothing. What this
+--- covers is the bounded detour a crash recovery takes to get back underneath
+--- its own opening before it can close it, which must never be the move the
+--- turtle could not afford.
+local ACCESS_RESERVE = 4
 
 --- Cost of the route from home to the current frontier, one way.
 ---
@@ -71,6 +80,10 @@ local function copyDefaults(definition)
     phase = "travel",
     returnViaShaft = false,
     pendingVein = nil,
+    -- Surface access for this sector's shaft. Deliberately absent from the
+    -- defaults table rather than shared by reference across loads: `load`
+    -- normalises it into a fresh record every time.
+    access = nil,
     haul = {},
     delivered = 0,
     active = false,
@@ -86,6 +99,7 @@ function factory.create(definition)
     continuous = true,
     usesSurfaceY = true,
     SAFETY_MARGIN = SAFETY_MARGIN,
+    ACCESS_RESERVE = ACCESS_RESERVE,
     settingFields = {
       { label = "Target Y", key = "targetY", step = 1, min = -63, max = 319 },
       { label = "Vein budget", key = "veinBudget", step = 32, min = 16, max = 2048 },
@@ -108,6 +122,7 @@ function factory.create(definition)
     end
 
     local previousSector = job.sector
+    local previousShaftX, previousShaftZ = job.shaftX, job.shaftZ
     local pending = job.pendingVein
     if
       pending
@@ -134,6 +149,19 @@ function factory.create(definition)
     job.branchSpacing = state.plan.branchSpacing
     job.laneY = plan.laneY(state.plan, sector.index)
     job.surfaceY = state.plan.surfaceY
+
+    if
+      job.sector ~= previousSector
+      or job.shaftX ~= previousShaftX
+      or job.shaftZ ~= previousShaftZ
+    then
+      -- A recorded cap describes one physical hole. A replacement lease, or a
+      -- plan whose sector numbers moved, is a different hole in different
+      -- ground, and applying the old coordinate to it would cap thin air while
+      -- leaving the real opening exposed. The shaft being left behind was
+      -- sealed at the end of its own last trip, so nothing is orphaned here.
+      job.access = access.normalise(nil)
+    end
     return true
   end
 
@@ -162,6 +190,12 @@ function factory.create(definition)
     then
       job.pendingVein = nil
     end
+
+    -- Files from v1.2.6 and earlier have no surface record at all, and a file
+    -- interrupted between the two halves of a cap move may have one that cannot
+    -- be acted on. Both normalise to a state the runner can resolve safely
+    -- rather than to a coordinate it would trust.
+    job.access = access.normalise(job.access)
 
     -- Files written by the random-bearing builds carry phases that no longer
     -- exist. `shaft` is the direct ancestor of `descend`; anything else unknown
@@ -208,11 +242,11 @@ function factory.create(definition)
     local low = job.ribReachLow or job.ribReach or 0
     local high = job.ribReachHigh or math.max(0, low - 1)
     local ribs = ribCount * (low + high) * 2
-    return 2 * routeCost(job) + remaining + ribs + SAFETY_MARGIN
+    return 2 * routeCost(job) + remaining + ribs + SAFETY_MARGIN + 2 * ACCESS_RESERVE
   end
 
   function jobType.minimumFuel(job)
-    return 2 * routeCost(job) + SAFETY_MARGIN + MINING_ALLOWANCE
+    return 2 * routeCost(job) + SAFETY_MARGIN + MINING_ALLOWANCE + 2 * ACCESS_RESERVE
   end
 
   function jobType.progress(job)
@@ -286,6 +320,12 @@ function factory.create(definition)
   function jobType.restart(job)
     job.phase = "travel"
     job.returnViaShaft = false
+    -- A restart happens standing on the home block, above ground, immediately
+    -- after `nav.setHome`. Whatever the last trip believed about being under a
+    -- cap is no longer true, and a stale "below" would make the next descent
+    -- skip opening the surface and sink an uncapped shaft instead. The descent
+    -- re-finds the head anyway: the cap it placed last cycle reads as ground.
+    job.access = access.normalise(nil)
     job.active = true
     job.startedAt = os.epoch("utc")
     jobType.save(job)
@@ -316,6 +356,9 @@ function factory.create(definition)
         sector = job.sector,
         frontier = job.frontier,
         pendingVein = job.pendingVein ~= nil,
+        -- Which side of the surface this turtle believes it is on. The one
+        -- reading that says whether a sector shaft is closed right now.
+        shaft = (job.access or {}).state,
       },
     }
   end

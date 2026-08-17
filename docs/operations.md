@@ -160,6 +160,43 @@ Open Devices and read `parkKind`, detail, fuel required, and tank/reserve breakd
 Common reasons are recall, return reserve, depot full, blocked/protected block, or a
 completed finite job. Fix the cause before deploy.
 
+### A sector shaft was left open
+
+Prospecting keeps every sector shaft capped except while a turtle is inside it. A turtle
+that could not close one parks with an error naming the sector and the shaft's X/Z. The
+message says which case it was:
+
+- **no cap block** — the turtle had no safe filler and no wall it could mine for one.
+  Put a stack of cobblestone in its inventory and deploy again.
+- **shaft head is under water/lava** — the column at that sector cannot be sealed.
+  Clear the liquid, or move the mine centre or keep-out so that sector is not used.
+- **blocked by a protected block** — a chest, barrel, or computer sits at the head.
+  Move it.
+- **could not find the shaft head** — an older open shaft whose surface could not be
+  identified within 16 blocks of the plan's surface Y. Cap it by hand at the reported
+  coordinates.
+
+Until it is fixed the turtle stays parked rather than starting another cycle over an
+exposed sector.
+
+### Shafts opened before ICOS v1.2.7
+
+Builds up to v1.2.7 left every sector shaft permanently open. Those holes are not
+repaired by an update on their own — a turtle only seals a shaft it visits.
+
+1. **Recall the whole fleet first.** Never update or redeploy while turtles are
+   underground; an active job must not be reinterpreted mid-route.
+2. Update the parked turtles and deploy them again.
+3. On the next visit to each already-open sector, the descent recognises the open
+   column by its walls and caps it flush with the ground. That closes each existing
+   hole the first time its sector is worked again.
+
+That repair only happens for sectors the fleet actually revisits, and only when the
+descent can identify the head. Do not rely on it for a hole you can already see: recall
+the fleet and fill or cover those openings by hand. The four shafts opened by the
+v1.2.6 fleet near X 138, Z -1032/-1080/-1128/-1176 are in that category — cover them
+yourself and treat any automatic sealing as a bonus.
+
 ### Turtle is offline
 
 Offline means no recent heartbeat, not necessarily failed mining. Check wireless
