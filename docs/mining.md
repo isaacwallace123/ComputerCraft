@@ -13,11 +13,14 @@ These rules are more important than any one mining pattern:
 6. Lava, computers, turtles, chests, and barrels are not deliberately mined.
 7. Recall unwinds through the normal return route and is not reported as a failure.
 8. Unexpected modded drops are kept; unknown items are not treated as junk by default.
-9. Another turtle blocking the way is a delay, never a reason to abandon a trip.
+9. Another turtle blocking the way is a delay, never a reason to abandon a trip. So is
+   lava, a protected block, and bedrock: the route changes, the trip does not end.
 10. A cycle that ends early saves enough state to resume the same ground, not to pick
     new ground.
 11. A sector shaft is open only while a turtle is physically inside it. Mining below an
     exposed vertical shaft is a failure, not a trade-off.
+12. Repeated failure is itself a condition. Cycles that achieve nothing are counted, and
+    the fleet changes ground and then stops rather than commuting all night.
 
 ## The shared mine
 
@@ -98,17 +101,53 @@ The route geometry is unchanged. Capping costs digs and placements, which are fr
 under its own opening, so the exact return-route fuel reserve still describes the route
 the turtle actually flies.
 
+### When the nominated head cannot be sealed
+
+The plan puts a sector's shaft at the centre of its trunk. That block may be under a
+pond. Refusing to dig there is right — a shaft sunk through water floods continuously
+and there is nothing to cap — but refusing to work the sector at all is not, and it used
+to park a turtle permanently.
+
+The trunk runs along X through the shaft, so a head a few blocks east or west is still
+on the tunnel the turtle was going to walk. The descent probes outward along the trunk,
+bounded by `surface.MAX_OFFSET` and by the sector's own edges, records the offset it
+settled on in `job.shaftOffset`, and reuses it on later cycles. Only when every candidate
+is blocked does the cycle stop, and then the message names the sector and what was in
+the way.
+
+### Sector physical state
+
+`mine/registry.lua` records what the fleet knows about each sector's head: its Y, its
+offset along the trunk, and whether it was last seen `sealed`, `open`, `blocked`, or
+`unknown`. This is deliberately separate from leases and frontiers, which are progress.
+
+It is held at the base because a turtle's job file dies with the turtle. Three things
+fall out of it:
+
+- A claiming turtle is told the head another turtle already found, so it does not
+  re-probe a column somebody established is under water. Advisory only — the descent
+  still verifies the ground it is standing over.
+- Mine Control can report how many sectors have an open head. That is the only number on
+  the screen that is a safety figure rather than a productivity one.
+- **A sector with an open head is leased out first**, ahead of both partly worked and
+  untouched ground, and even when its own tunnel is finished. That is the whole patrol
+  mechanism: the turtle caps the head on the way in exactly as it would on any trip,
+  finds nothing left to mine, and comes home. No separate job, no separate route, and an
+  exposed shaft is repaired by the next turtle that asks for work.
+
+Anything the turtle is not certain it closed is reported `open`. A needless patrol trip
+costs a commute; a missed one costs somebody falling down a shaft.
+
 Known limits:
 
-- A shaft head under water or lava, or blocked by a protected block, aborts the cycle
-  with a message naming the sector and coordinates rather than digging on below an
-  opening it cannot close.
 - If the head sits under a cliff overhang, the cap closes the top of the column; a
   secondary opening where the shaft passes through ground under the ledge is possible.
 - A shaft that was already open when a turtle rebooted underground, with a job file from
   before caps existed, is sealed by probing for the head on the way out. If that probe
   disagrees with the plan's surface by more than 16 blocks it refuses to guess and asks
   for the shaft to be capped by hand.
+- The base only knows what turtles have told it. A sector no turtle has visited reads as
+  `unknown`, not `sealed`.
 
 Configure the mine from Mine Control on the base or Pocket controller, or from Fleet
 Console on the base desktop:
@@ -215,7 +254,7 @@ All three work the shared mine described above. A cycle is five phases:
 
 | Phase | What happens |
 | --- | --- |
-| `travel` | fly to the sector shaft at this sector's cruise lane altitude |
+| `travel` | fly over the terrain to the sector shaft at this sector's cruise lane |
 | `descend` | find and open the shaft head, seal it overhead, drop to the target Y |
 | `transit` | walk the trunk tunnel out to the sector's saved frontier |
 | `mining` | extend the trunk, cut ribs, follow veins, advance the frontier |
@@ -293,6 +332,14 @@ tunnel waste are the same blocks — cobblestone is the cheapest cap and the fir
 the junk policy throws away — so `inv.dropJunk` takes the reserved slot and skips it,
 and unloading keeps it aboard for the next cycle. A retained cap slot is not counted as
 an undelivered load, so it cannot be mistaken for `depot full`.
+
+`turtle/depot.lua` owns unloading. The chest below the home block is still the
+convention and is always emptied into first, because dropping downward is
+orientation-independent. When it fills, the containers in front of and above the home
+block are used before the job reports `depot full`, which is what lets an unattended run
+survive the night. Nothing is ever dropped in a direction with no container in it:
+`turtle.drop` into open air scatters the haul on the floor and returns true, which would
+turn a full chest into a lost load.
 
 If the chest cannot accept all non-fuel items, the job reports `depot full` rather
 than parking as healthy.

@@ -329,6 +329,11 @@ function surface:open()
     )
   end
 
+  self.blocked = ("no sealable head near %d,%d (%s)"):format(
+    self.job.shaftX,
+    self:headZ(),
+    table.concat(problems, "; ", 1, math.min(3, #problems))
+  )
   return false,
     ("no sealable shaft head for sector %d near %d,%d (%s) - clear it or move the mine"):format(
       self.job.sector,
@@ -543,6 +548,32 @@ function surface:adoptLegacy()
     return
   end
   self:record("legacy", nil)
+end
+
+--- What the base should be told about this sector's head after the trip.
+---
+--- Deliberately conservative in one direction only: anything the turtle is not
+--- sure it closed is reported open, because the cost of a needless patrol trip
+--- is a commute and the cost of a missed one is somebody falling down a shaft.
+function surface:snapshot(sealFailure)
+  local reported = "unknown"
+  if self.blocked then
+    reported = "blocked"
+  elseif sealFailure or (self.state.state ~= "sealed" and self.state.state ~= "unknown") then
+    -- Either the reseal failed, or the record still says mid-transition or below
+    -- ground at the end of a trip. Both mean the surface was never confirmed
+    -- shut, and unconfirmed has to count as open.
+    reported = "open"
+  elseif self.state.state == "sealed" then
+    reported = "sealed"
+  end
+
+  return {
+    state = reported,
+    headY = self.state.y,
+    headOffset = tonumber(self.job.shaftOffset) or 0,
+    reason = sealFailure or self.blocked,
+  }
 end
 
 --- Never descend below a cap that was just put back. On ground higher than the

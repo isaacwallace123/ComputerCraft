@@ -71,8 +71,10 @@ different tradeoff:
 | park/deploy/update lifecycle | `src/miner/runtime.lua` |
 | new prospecting profile | `src/jobs/prospecting/profiles.lua` plus a small definition |
 | mining route/safety | `src/jobs/`, `src/jobs/common/safety.lua` |
-| shaft caps and surface safety | `src/turtle/access.lua`, `src/jobs/prospecting/runner.lua` |
+| shaft caps and surface safety | `src/turtle/access.lua`, `src/jobs/prospecting/surface.lua` |
+| unloading and depot overflow | `src/turtle/depot.lua` |
 | shared mine geometry | `src/mine/plan.lua` |
+| simulated-world tests | `tools/spec/`, `tools/spec.ps1` |
 | sector leases and frontiers | `src/mine/registry.lua`, `src/fleet/coordinator.lua` |
 | turtle sector claiming | `src/mine/site.lua` |
 | movement/protected blocks | `src/turtle/nav.lua` |
@@ -96,10 +98,16 @@ Verification commands:
 
 ```powershell
 .\tools\make-manifest.ps1
+.\tools\spec.ps1
 .\tools\check.ps1
 git diff --check
 git status --short
 ```
+
+`tools\spec.ps1` runs the turtle logic against a simulated world (`tools/spec/`). Run it
+after any change to `turtle/`, `jobs/`, or `mine/`. It is fast, needs nothing installed,
+and it is the only thing in this repository that can actually execute a mining cycle —
+including cutting power at every step of one and checking the ground afterwards.
 
 `tools/deploy.ps1` also commits and pushes. Use it only when the user explicitly asks
 for publication. Documentation-only root files do not belong in `src/manifest.json`.
@@ -177,8 +185,21 @@ large AFK run.
 - Slot 16 (`access.SLOT`) is reserved for cap material. `inv.dropJunk` takes a slot to
   skip, unloading retains it, and the depot-full check excludes it. Removing any one of
   those three lets the turtle throw away the block it needs to close the surface.
-- Shafts opened before v1.2.7 are sealed on the next visit to that sector, and only
-  then. Existing visible holes still need recalling the fleet and covering them by hand.
+- Shafts opened before v1.2.7 are sealed on the next visit to that sector. Since v1.2.9
+  the base records which sectors have an open head and leases those out first, so a
+  known hole is repaired by the next turtle that asks for work rather than only when the
+  fleet happens to return there.
+- `job.shaftOffset` slides a sector's head along its trunk when the nominated column
+  cannot be sealed. Every route cost that mentions the shaft must use
+  `shaftX + shaftOffset`, not `shaftX`; `factory.routeCost` and the runner's
+  `returnDistance` both do.
+- `job.stalls` counts consecutive cycles that mined nothing and moved no frontier. Two
+  hands the sector back, four parks the turtle. It is the safety net for the route-around
+  tolerance in `nav.ROUTE_AROUND`; do not relax one without the other.
+- `.mine` sector records written before v1.2.9 have no `surface` key. `registry` fills in
+  `unknown` on read, which must never be confused with `sealed`.
+- Anything a turtle is not certain it closed is reported `open`, deliberately. Making
+  that report optimistic would turn a missed seal into a silent hole.
 - `core/config.lua` replaces state through a completed `.tmp` file. Its load fallback is
   part of crash-safe navigation; do not revert `.nav` to in-place overwrite.
 - A standard mining turtle cannot carry pickaxe, modem, and Geo Scanner at once.

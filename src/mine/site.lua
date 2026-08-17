@@ -47,6 +47,9 @@ local function defaults()
     claimedAt = 0,
     fromBase = false,
     fallbackOffsets = {},
+    -- What the base last said about this sector's shaft head. Advisory only:
+    -- the turtle always verifies the ground it is standing over.
+    surface = nil,
   }
 end
 
@@ -124,6 +127,7 @@ function site.claim(workKey, preferredSector, frontier)
             state.sector = math.floor(tonumber(reply.sector) or 0)
             state.frontier = math.floor(tonumber(reply.frontier) or 0)
             state.workKey = workKey
+            state.surface = type(reply.surface) == "table" and reply.surface or nil
             state.claimedAt = os.epoch("utc")
             state.fromBase = true
             site.save(state)
@@ -199,6 +203,28 @@ function site.report(workKey, sector, frontier, blocks, exhausted)
     })
   end
   return state
+end
+
+--- Tell the base what this turtle observed about a sector's shaft head.
+---
+--- Fire and forget, like `report`. The turtle's own behaviour never depends on
+--- the answer: it verifies the ground it is standing over on every trip. What
+--- this buys is that the knowledge outlives the turtle, so a replacement does
+--- not re-survey it and an exposed head is visible from the base rather than
+--- only from whoever happens to walk past it.
+function site.surface(sector, info)
+  sector = math.floor(tonumber(sector) or 0)
+  if sector < 1 or type(info) ~= "table" then
+    return
+  end
+  net.broadcast("mine", {
+    action = "surface",
+    sector = sector,
+    state = tostring(info.state or "unknown"),
+    headY = tonumber(info.headY),
+    headOffset = math.floor(tonumber(info.headOffset) or 0),
+    reason = info.reason and tostring(info.reason):sub(1, 120) or nil,
+  })
 end
 
 --- The sector geometry this turtle is currently working, or nil if unassigned.

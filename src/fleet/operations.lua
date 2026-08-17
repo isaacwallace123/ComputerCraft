@@ -19,7 +19,7 @@ end
 local function mineState()
   local state = coordinator.mineState()
   local rows = mineRegistry.summary(state)
-  local summary = { opened = 0, active = 0, exhausted = 0, blocks = 0 }
+  local summary = { opened = 0, active = 0, exhausted = 0, blocks = 0, exposed = 0 }
   local opened = {}
   for _, row in ipairs(rows) do
     if not opened[row.index] then
@@ -34,7 +34,12 @@ local function mineState()
     end
     summary.blocks = summary.blocks + (row.blocks or 0)
   end
-  return { plan = state.plan, summary = summary }
+
+  -- Sectors whose shaft head is a hole in the ground right now. The one number
+  -- on this screen that is a safety figure rather than a productivity one.
+  local exposed = mineRegistry.exposed(state)
+  summary.exposed = #exposed
+  return { plan = state.plan, summary = summary, exposed = exposed }
 end
 
 local function placeMine(x, y, z)

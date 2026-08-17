@@ -765,6 +765,11 @@ function runner.run(jobType, job, ctx)
   end
   site.report(workKey, job.sector, job.frontier, minedThisTrip, exhausted == true or giveUpSector)
 
+  -- Physical state, separate from progress. Held at the base it outlives this
+  -- turtle: a replacement skips re-surveying the head, an exposed one is visible
+  -- from the dashboard, and the next turtle to ask for work is sent to seal it.
+  site.surface(job.sector, control:snapshot(sealFailure))
+
   -- The configured route remains active at home. Persisting `false` here made a
   -- tiny power-loss window before the cycle handoff reopen interactive setup on
   -- reboot, even though the sector had been reported correctly.

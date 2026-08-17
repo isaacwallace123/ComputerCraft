@@ -122,6 +122,10 @@ From the repository root:
 git diff --check
 ```
 
+Run `.\tools\spec.ps1` as well after touching turtle behaviour: it executes the mining
+logic against a simulated world, including cutting power at every step of a cycle and
+checking the ground afterwards.
+
 Review the diff, then commit and push only when intended. `tools\deploy.ps1` combines
 manifest generation, checks, commit, and push, so do not run it merely to verify work.
 
@@ -162,22 +166,40 @@ completed finite job. Fix the cause before deploy.
 
 ### A sector shaft was left open
 
-Prospecting keeps every sector shaft capped except while a turtle is inside it. A turtle
-that could not close one parks with an error naming the sector and the shaft's X/Z. The
-message says which case it was:
+Prospecting keeps every sector shaft capped except while a turtle is inside it, and the
+base records which sectors have an open head. Mine Control reports that count; it is the
+one figure on the screen that is about safety rather than throughput.
+
+A sector recorded as open is leased out ahead of all other ground, so the next turtle to
+ask for work goes and caps it. Most openings repair themselves this way without anyone
+doing anything.
+
+A turtle that could not close a head parks with an error naming the sector and the
+shaft's X/Z:
 
 - **no cap block** — the turtle had no safe filler and no wall it could mine for one.
   Put a stack of cobblestone in its inventory and deploy again.
-- **shaft head is under water/lava** — the column at that sector cannot be sealed.
-  Clear the liquid, or move the mine centre or keep-out so that sector is not used.
-- **blocked by a protected block** — a chest, barrel, or computer sits at the head.
-  Move it.
+- **no sealable shaft head for sector N** — every column along that sector's trunk is
+  under water or lava, or blocked. The turtle already tried sliding the head along the
+  trunk. Clear the liquid, or move the mine centre or keep-out so that sector is not
+  used.
 - **could not find the shaft head** — an older open shaft whose surface could not be
   identified within 16 blocks of the plan's surface Y. Cap it by hand at the reported
   coordinates.
 
-Until it is fixed the turtle stays parked rather than starting another cycle over an
-exposed sector.
+A single wet block at the sector's centre is no longer a problem: the descent probes
+outward along the trunk for a column it can seal and remembers where it settled.
+
+### Nothing is being mined
+
+A turtle that mines nothing and advances no frontier for two cycles hands its sector back
+to the base and is given different ground. After four such cycles it parks with
+`no progress in 4 cycles` and the last stop reason.
+
+This is the expected response to ground that cannot be worked — a lava lake across the
+trunk, a sector under an ocean. Read the reason, then either clear the obstruction or
+move the mine. It is not a fault in the turtle; it is the fleet declining to commute all
+night for nothing.
 
 ### Shafts opened before ICOS v1.2.7
 

@@ -160,6 +160,16 @@ function factory.create(definition)
       -- sealed at the end of its own last trip, so nothing is orphaned here.
       job.access = access.normalise(nil)
       job.shaftOffset = 0
+      job.stalls = 0
+    end
+
+    -- The base may already know where this sector's head is, because another
+    -- turtle found it. Advisory only - the descent still verifies the ground it
+    -- is standing over - but it saves re-probing a column somebody already
+    -- established is under water.
+    local known = type(state.surface) == "table" and state.surface or nil
+    if known and tonumber(known.headOffset) then
+      job.shaftOffset = math.floor(known.headOffset)
     end
     return true
   end
