@@ -238,10 +238,22 @@ function Context:draw(snapshot)
   end
 end
 
+--- Fastest the local screen is repainted from job progress, in milliseconds.
+--- Jobs report per block moved, and a full redraw per block is a lot of terminal
+--- traffic for an update nobody can read at that rate. A phase change always
+--- paints immediately, so the screen never lags behind what the turtle is doing.
+local DRAW_INTERVAL = 250
+
 function Context:report(phase, detail)
+  local changed = self.status.phase ~= phase
   self.status.phase = phase
   self.status.detail = detail or ""
-  self:draw()
+
+  local now = os.epoch("utc")
+  if changed or now - (self.drawnAt or 0) >= DRAW_INTERVAL then
+    self.drawnAt = now
+    self:draw()
+  end
 end
 
 function Context:reply(id, action, ok, message)

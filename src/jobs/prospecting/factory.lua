@@ -15,19 +15,12 @@ local plan = require("mine.plan")
 local profiles = require("jobs.prospecting.profiles")
 local runner = require("jobs.prospecting.runner")
 local site = require("mine.site")
+local surface = require("jobs.prospecting.surface")
 
 local factory = {}
 
 local SAFETY_MARGIN = 150
 local MINING_ALLOWANCE = 32
-
---- Fuel held back for shaft-cap work.
----
---- Moving the cap itself is digs and placements, which cost nothing. What this
---- covers is the bounded detour a crash recovery takes to get back underneath
---- its own opening before it can close it, which must never be the move the
---- turtle could not afford.
-local ACCESS_RESERVE = 4
 
 --- Cost of the route from home to the current frontier, one way.
 ---
@@ -40,12 +33,15 @@ local function routeCost(job)
     return math.abs(job.laneY - job.surfaceY) + math.abs(job.laneY - job.targetY) + 128
   end
 
+  -- The head may have been slid along the trunk to clear water at the sector's
+  -- centre, and the route is flown to where the hole actually is.
+  local headX = job.shaftX + (tonumber(job.shaftOffset) or 0)
   local climb = math.abs(job.laneY - origin.y)
-  local across = math.abs(job.shaftX - origin.x) + math.abs(job.shaftZ - origin.z)
+  local across = math.abs(headX - origin.x) + math.abs(job.shaftZ - origin.z)
   local drop = math.abs(job.laneY - job.targetY)
   local last = math.max(0, (job.trunkLength or 1) - 1)
   local nextCell = (job.trunkFromX or job.shaftX) + math.min(job.frontier or 0, last)
-  local trunk = math.abs(nextCell - job.shaftX)
+  local trunk = math.abs(nextCell - headX)
   return climb + across + drop + trunk
 end
 
@@ -67,6 +63,9 @@ local function copyDefaults(definition)
     frontier = 0,
     shaftX = 0,
     shaftZ = 0,
+    -- Where the head actually is along the trunk, when the sector's centre
+    -- turned out to be under water or otherwise unsealable.
+    shaftOffset = 0,
     laneY = 72,
     trunkZ = 0,
     trunkFromX = 0,
@@ -99,7 +98,6 @@ function factory.create(definition)
     continuous = true,
     usesSurfaceY = true,
     SAFETY_MARGIN = SAFETY_MARGIN,
-    ACCESS_RESERVE = ACCESS_RESERVE,
     settingFields = {
       { label = "Target Y", key = "targetY", step = 1, min = -63, max = 319 },
       { label = "Vein budget", key = "veinBudget", step = 32, min = 16, max = 2048 },
@@ -161,6 +159,17 @@ function factory.create(definition)
       -- leaving the real opening exposed. The shaft being left behind was
       -- sealed at the end of its own last trip, so nothing is orphaned here.
       job.access = access.normalise(nil)
+      job.shaftOffset = 0
+      job.stalls = 0
+    end
+
+    -- The base may already know where this sector's head is, because another
+    -- turtle found it. Advisory only - the descent still verifies the ground it
+    -- is standing over - but it saves re-probing a column somebody already
+    -- established is under water.
+    local known = type(state.surface) == "table" and state.surface or nil
+    if known and tonumber(known.headOffset) then
+      job.shaftOffset = math.floor(known.headOffset)
     end
     return true
   end
@@ -242,11 +251,11 @@ function factory.create(definition)
     local low = job.ribReachLow or job.ribReach or 0
     local high = job.ribReachHigh or math.max(0, low - 1)
     local ribs = ribCount * (low + high) * 2
-    return 2 * routeCost(job) + remaining + ribs + SAFETY_MARGIN + 2 * ACCESS_RESERVE
+    return 2 * routeCost(job) + remaining + ribs + SAFETY_MARGIN + 2 * surface.RESERVE
   end
 
   function jobType.minimumFuel(job)
-    return 2 * routeCost(job) + SAFETY_MARGIN + MINING_ALLOWANCE + 2 * ACCESS_RESERVE
+    return 2 * routeCost(job) + SAFETY_MARGIN + MINING_ALLOWANCE + 2 * surface.RESERVE
   end
 
   function jobType.progress(job)

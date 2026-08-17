@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-16T22:41:15-04:00",
+    "generated":  "2026-08-17T00:22:30-04:00",
     "files":  [
                   "apps/automation.lua",
                   "apps/console.lua",
@@ -41,6 +41,7 @@
                   "jobs/prospecting/factory.lua",
                   "jobs/prospecting/profiles.lua",
                   "jobs/prospecting/runner.lua",
+                  "jobs/prospecting/surface.lua",
                   "jobs/quarry.lua",
                   "jobs/rare.lua",
                   "jobs/resources.lua",
@@ -52,6 +53,7 @@
                   "miner/runtime.lua",
                   "startup.lua",
                   "turtle/access.lua",
+                  "turtle/depot.lua",
                   "turtle/fuel.lua",
                   "turtle/fuel/catalog.lua",
                   "turtle/geo.lua",

@@ -133,6 +133,9 @@ function coordinator.mine(sender, body)
       plan = state.plan,
       sector = index,
       frontier = work.frontier or 0,
+      -- What the fleet already knows about this sector's shaft head, so a
+      -- replacement turtle does not re-survey ground somebody has surveyed.
+      surface = registry.surfaceOf(state, index),
     })
     log.info(
       ("mine: sector %d leased to #%d (%s)"):format(index, sender, plan.describe(state.plan, index))
@@ -158,6 +161,24 @@ function coordinator.mine(sender, body)
     registry.save(state)
     if body.exhausted == true then
       log.info(("mine: sector %d worked out by #%d"):format(index, sender))
+    end
+  elseif body.action == "surface" then
+    local index = math.floor(tonumber(body.sector) or 0)
+    if index < 1 then
+      return
+    end
+    local recorded, surfaceState = registry.surface(state, sender, index, body)
+    if not recorded then
+      log.warn(
+        ("mine: surface report from #%d rejected - %s"):format(sender, tostring(surfaceState))
+      )
+      return
+    end
+    registry.save(state)
+    if body.state == "open" then
+      log.warn(("mine: sector %d shaft head is OPEN - %s"):format(index, tostring(body.reason)))
+    elseif body.state == "blocked" then
+      log.warn(("mine: sector %d head cannot be sealed - %s"):format(index, tostring(body.reason)))
     end
   elseif body.action == "release" then
     local index = math.floor(tonumber(body.sector) or 0)

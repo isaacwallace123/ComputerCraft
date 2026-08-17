@@ -52,7 +52,17 @@ local function entry(state, index)
     }
   state.sectors[key].work = type(state.sectors[key].work) == "table" and state.sectors[key].work
     or {}
+  -- Absent on every record written before the base tracked physical state.
+  -- `unknown` is the honest value: nobody has said either way.
+  if type(state.sectors[key].surface) ~= "table" then
+    state.sectors[key].surface = { state = "unknown" }
+  end
   return state.sectors[key]
+end
+
+--- Is this sector's shaft head believed to be a hole in the ground right now?
+local function exposed(record)
+  return record.surface ~= nil and record.surface.state == "open"
 end
 
 local function workEntry(record, workKey)
@@ -145,6 +155,20 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier)
     end
   end
 
+  -- A sector whose head is a known hole in the ground comes first, ahead of
+  -- both partly worked and untouched ground, and even when its own tunnel is
+  -- finished. This is the whole patrol mechanism: a turtle sent there caps the
+  -- head on the way in as it would on any other trip, finds nothing left to
+  -- mine, and comes home. No separate job, no separate route, and an exposed
+  -- shaft is repaired by the next turtle that asks for work rather than by
+  -- somebody noticing it.
+  for index = 1, capacity do
+    local record = entry(state, index)
+    if not held(record) and exposed(record) then
+      return take(index, record, workEntry(record, workKey))
+    end
+  end
+
   -- Partly worked sectors before untouched ones: finishing a tunnel the fleet
   -- already paid to reach is cheaper than opening another shaft.
   local best, bestRecord = nil, nil
@@ -164,6 +188,71 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier)
   end
 
   return take(best, bestRecord, bestWork)
+end
+
+--- Record what a turtle observed about a sector's shaft head.
+---
+--- This is physical state, not lease state, and it is the piece that used to
+--- live only inside one turtle's job file: lose the turtle and nobody knew there
+--- was a hundred-block drop at those coordinates. Held at the base it survives a
+--- turtle being replaced, lets a fresh one skip re-probing a head that has
+--- already been found, and makes "which sectors are open right now" a question
+--- with an answer.
+function registry.surface(state, turtleId, index, report)
+  if index < 1 or index > plan.capacity(state.plan) or type(report) ~= "table" then
+    return false, "surface report is outside the mine plan"
+  end
+
+  local known = {
+    unknown = true,
+    sealed = true,
+    open = true,
+    blocked = true,
+  }
+  local reported = known[report.state] and report.state or "unknown"
+  local record = entry(state, index)
+  record.surface = {
+    state = reported,
+    headY = tonumber(report.headY) and math.floor(report.headY) or record.surface.headY,
+    headOffset = math.floor(tonumber(report.headOffset) or record.surface.headOffset or 0),
+    reason = type(report.reason) == "string" and report.reason:sub(1, 120) or nil,
+    at = os.epoch("utc"),
+    by = turtleId,
+  }
+  return true, record.surface
+end
+
+--- Sectors whose head is believed to be open, for the dashboard and the log.
+function registry.exposed(state)
+  local rows = {}
+  for index = 1, plan.capacity(state.plan) do
+    local record = state.sectors[tostring(index)]
+    if record and record.surface and record.surface.state == "open" then
+      local sector = plan.sector(state.plan, index)
+      rows[#rows + 1] = {
+        index = index,
+        headX = sector and (sector.shaftX + (record.surface.headOffset or 0)),
+        headZ = sector and sector.shaftZ,
+        headY = record.surface.headY,
+        reason = record.surface.reason,
+      }
+    end
+  end
+  return rows
+end
+
+--- What a claiming turtle should be told about its sector's head, so it does not
+--- re-probe ground another turtle has already surveyed.
+function registry.surfaceOf(state, index)
+  local record = state.sectors[tostring(index)]
+  if not record or type(record.surface) ~= "table" then
+    return nil
+  end
+  return {
+    state = record.surface.state,
+    headY = record.surface.headY,
+    headOffset = record.surface.headOffset,
+  }
 end
 
 --- Record progress for one profile/depth key within a sector.
@@ -256,6 +345,7 @@ function registry.summary(state)
             exhausted = work.exhausted == true,
             shaftX = sector and sector.shaftX,
             shaftZ = sector and sector.shaftZ,
+            surface = record.surface and record.surface.state or "unknown",
           }
         end
       end

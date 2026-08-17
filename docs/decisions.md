@@ -207,6 +207,77 @@ way, no filler and no wall to mine — the cycle stops and reports which of thos
 An exposed shaft is reported ahead of a full depot, because one is inconvenient and the
 other is a hole somebody falls into.
 
+## D024 — Turtle logic is tested against a simulated world
+
+**Status:** accepted
+
+Every claim about crash safety in this repository was an argument. The linter checks
+types; nothing could execute a turtle, and the only way to reach a lava pocket, a full
+inventory, or a server restart was to fly out and watch. PR #12 shipped a cap mechanism
+whose correctness rested entirely on reasoning about power-loss windows.
+
+`tools/spec/` is a sparse block world with the CC: Tweaked turtle, fs, and peripheral
+APIs implemented over it, refusals included. Two properties make the interesting tests
+possible: the filesystem lives in the world rather than in a module, so dropping
+`package.loaded` is exactly a reboot; and every world interaction ticks a counter that
+can be armed to throw, so "lose power immediately after the 37th block operation" is
+something a test can ask for.
+
+The headline test cuts power after every single operation of a complete mining cycle —
+one run per operation, each rebooted until it finishes — and asserts the sector shaft is
+shut at the end of all of them.
+
+There is no Lua interpreter on the development machine, but the Lua language server
+binary the checks already locate is one, so the suite needs nothing new installed. The
+specs are not a substitute for in-world testing: they cannot simulate chunk unloading,
+Rednet range, or server tick behaviour. They retire the category of bug that used to be
+found at 3am.
+
+## D025 — Anything that must not be broken is a detour, not a failure
+
+**Status:** accepted
+
+D017 made another turtle a delay rather than a failure. Lava was left as a hazard that
+ended the trip, which at Y -59 meant one pocket in one rib cost a whole commute and a
+permanent one cost every commute. Protected blocks and bedrock had the same problem.
+
+`nav.ROUTE_AROUND` names the move failures that mean "not this way": peer, hazard,
+protected, blocked. `nav.goTo` already stepped aside and re-planned around a peer and
+now does so for all of them. A rib that meets one is simply shorter. The trunk steps over
+or under the obstructed cell and advances the frontier past it, because a frontier that
+disagrees with where the turtle is standing would send the next cycle back into the lava.
+Vein following skips the blocked face rather than abandoning the other five.
+
+The risk this creates is an endless commute to ground that cannot be dug, so it is paired
+with a counter: cycles that mine nothing and move the frontier nowhere are counted, two
+in a row hands the sector back, four parks the turtle with the reason. Removing the
+counter without removing the tolerance would reintroduce a fleet that mines nothing all
+night and looks busy doing it.
+
+## D026 — Sector physical state belongs to the base
+
+**Status:** accepted
+
+`mine/registry.lua` held leases and frontiers — progress. Where a sector's shaft head
+actually was, and whether it was open, lived only in the job file of whichever turtle
+last visited. Lose the turtle and nobody knew there was a hundred-block drop at those
+coordinates.
+
+The registry now also records head Y, head offset along the trunk, and a
+`sealed`/`open`/`blocked`/`unknown` state per sector. A claiming turtle is told what
+another turtle already found, so it does not re-probe a column established to be under
+water; the state is advisory and the descent still verifies the ground beneath it.
+
+The important consequence is that **a sector with an open head is leased out first**,
+ahead of both partly worked and untouched ground, and even when its tunnel is finished.
+That is the entire patrol mechanism, and it is deliberately not a separate job: the
+turtle caps the head on the way in as it would on any trip, finds nothing to mine, and
+comes home. A new job type would have needed its own setup, preflight, fuel model, and
+recovery — all of it duplicating a route that already exists and is already tested.
+
+Anything a turtle is not certain it closed is reported `open`. A needless patrol trip
+costs a commute; a missed one costs somebody falling down a shaft.
+
 ## D014 — Version changes happen at merge
 
 **Status:** accepted

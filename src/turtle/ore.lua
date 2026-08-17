@@ -6,6 +6,8 @@
 --- block names and junk-dropping matches item names, and the two lists look
 --- nothing like each other.
 
+local catalog = require("turtle.fuel.catalog")
+
 local ore = {}
 
 --- Blocks worth stopping for. Matching on substrings rather than an exact list
@@ -60,24 +62,28 @@ ore.JUNK = {
   "flint",
   "sand",
   "andesite", -- removed from this list when extras include andesite
+  -- Canopy litter. A prospecting turtle descends through whatever is above its
+  -- sector, and a tree yields saplings, sticks, and seeds by the stack. None of
+  -- it is worth a slot on the way down or a trip home.
+  "sapling",
+  "_leaves",
+  "seeds",
 }
 
---- Never drop these, whatever else the rules say - they are the fuel.
-local FUEL = {
-  "minecraft:coal",
-  "minecraft:charcoal",
-  "minecraft:coal_block",
-  "minecraft:lava_bucket",
-  "minecraft:blaze_rod",
+--- Items matched whole rather than by substring, because the obvious substring
+--- would take something valuable with it: "stick" also matches `sticky_piston`
+--- and "apple" also matches `golden_apple`.
+ore.JUNK_EXACT = {
+  ["minecraft:stick"] = true,
+  ["minecraft:apple"] = true,
+  ["minecraft:wheat"] = true,
 }
 
 local function isFuel(name)
-  for _, fuelName in ipairs(FUEL) do
-    if name == fuelName then
-      return true
-    end
-  end
-  return false
+  -- Deliberately the same closed list the fuel accounting uses. A fuel this
+  -- fleet does not burn is not protected from the junk policy, and a fuel it
+  -- does burn is never dropped whatever else the rules say.
+  return catalog.accepts(name)
 end
 
 --- Build a predicate over ITEM names: true means "throw this away".
@@ -95,6 +101,9 @@ function ore.junkMatcher(keep)
       if name:find(wanted, 1, true) then
         return false
       end
+    end
+    if ore.JUNK_EXACT[name] then
+      return true
     end
     for _, junk in ipairs(ore.JUNK) do
       if name:find(junk, 1, true) then
@@ -225,6 +234,11 @@ function ore.follow(nav, isWanted, record, options)
 
     local moved, moveError, moveKind = moveIn()
     if not moved then
+      if nav.ROUTE_AROUND[moveKind or ""] and moveKind ~= "peer" then
+        -- Something we must not break is between us and this block. Leave it
+        -- and keep working the rest of the vein.
+        return
+      end
       stoppedReason = "could not enter vein: " .. tostring(moveError)
       stoppedKind = moveKind
       rememberHere()
