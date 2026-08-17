@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-16T21:25:30-04:00",
+    "generated":  "2026-08-16T22:41:15-04:00",
     "files":  [
                   "apps/automation.lua",
                   "apps/console.lua",
@@ -51,6 +51,7 @@
                   "miner/network.lua",
                   "miner/runtime.lua",
                   "startup.lua",
+                  "turtle/access.lua",
                   "turtle/fuel.lua",
                   "turtle/fuel/catalog.lua",
                   "turtle/geo.lua",

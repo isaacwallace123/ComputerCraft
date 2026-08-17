@@ -3,17 +3,24 @@
 --- The route has five parts and every one of them is reused between cycles:
 ---
 ---   travel   fly at this sector's lane altitude to above its shaft
----   descend  move through the sector shaft to the profile's target Y
+---   descend  break the ground, seal it overhead, drop to the profile's target Y
 ---   transit  walk the trunk tunnel out to the frontier this sector reached
 ---   mining   extend the trunk, cut ribs, follow veins, advance the frontier
----   home     back along the trunk, up the shaft, home at lane altitude
+---   home     back along the trunk, out through the shaft head, reseal, fly home
 ---
 --- The reuse is the whole point. A cycle that ends early - full inventory, fuel
 --- reserve, recall - no longer throws the route away. The frontier is saved, so
 --- the next cycle comes back down the same hole to the same tunnel and picks up
 --- where this one stopped, instead of rolling a fresh random bearing and leaving
 --- a half-mined vein and a new crater behind it.
+---
+--- Reuse bounded how many holes exist; it did not make them safe. The shaft is
+--- therefore only ever open while the turtle is inside it - see `turtle/access`
+--- for the cap itself and this file for when it is moved. The geometry is
+--- unchanged: capping costs digs and placements, not moves, so the exact return
+--- fuel reserve still describes the route the turtle actually flies.
 
+local access = require("turtle.access")
 local fuel = require("turtle.fuel")
 local geo = require("turtle.geo")
 local inv = require("turtle.inv")
@@ -82,6 +89,278 @@ function runner.run(jobType, job, ctx)
   local laneRelY = origin and (job.laneY - origin.y) or job.laneY
   local targetRelY = origin and (job.targetY - origin.y) or (job.targetY - job.surfaceY)
 
+  ---------------------------------------------------------------------------
+  -- Surface access
+  ---------------------------------------------------------------------------
+
+  local accessState = access.normalise(job.access)
+
+  local function worldY()
+    local _, y = nav.position()
+    return (origin and origin.y or job.surfaceY) + y
+  end
+
+  --- Record where the cap is and which half of a transition we are in.
+  --- Written before the block is touched and again after it is observed, so a
+  --- reboot in between lands on a state that names the risk rather than a state
+  --- that quietly claims the surface is fine.
+  local function saveAccess(state, capWorldY)
+    job.access = { state = state, y = capWorldY }
+    accessState = job.access
+    jobType.save(job)
+  end
+
+  --- Relative Y of this sector's cap block, when one has been recorded.
+  local function capRelY()
+    if not accessState.y then
+      return nil
+    end
+    return (origin and (accessState.y - origin.y)) or (accessState.y - job.surfaceY)
+  end
+
+  local function capShaft()
+    if not accessState.y then
+      return nil
+    end
+    return relative(job.shaftX, accessState.y, job.shaftZ)
+  end
+
+  --- Guarantee cap material, mining the shaft wall for it as a last resort.
+  local function ensureFiller()
+    if access.reserve(isWanted) then
+      return true
+    end
+    local harvested, harvestError = access.harvest(isWanted)
+    if harvested then
+      return true
+    end
+    return false,
+      ("no cap block for sector %d shaft %d,%d (%s) - carry cobblestone or free a slot"):format(
+        job.sector,
+        job.shaftX,
+        job.shaftZ,
+        tostring(harvestError)
+      )
+  end
+
+  --- Close the shaft from underneath it. Used on the way in and after a crash
+  --- that left the turtle below an opening.
+  local function sealAbove()
+    if access.above() == "solid" then
+      return true
+    end
+    local ready, readyError = ensureFiller()
+    if not ready then
+      return false, readyError
+    end
+    local placed, placeError = access.capUp()
+    if not placed then
+      return false,
+        ("could not cap sector %d shaft at %d,%d: %s"):format(
+          job.sector,
+          job.shaftX,
+          job.shaftZ,
+          tostring(placeError)
+        )
+    end
+    return true
+  end
+
+  --- Close the shaft from above it, which is how every trip ends.
+  local function sealBelow()
+    if access.below() == "solid" then
+      return true
+    end
+    local ready, readyError = ensureFiller()
+    if not ready then
+      return false, readyError
+    end
+    local placed, placeError = access.capDown()
+    if not placed then
+      return false,
+        ("could not cap sector %d shaft at %d,%d: %s"):format(
+          job.sector,
+          job.shaftX,
+          job.shaftZ,
+          tostring(placeError)
+        )
+    end
+    return true
+  end
+
+  --- Put the surface back into a known state after power was lost part-way
+  --- through moving the cap.
+  ---
+  --- Which way to resolve the transition is decided by where the turtle
+  --- actually is, not by which half was recorded: below the opening it seals
+  --- upward and carries on with the trip, at or above it seals downward and the
+  --- descent starts again. The observation comes first in both cases, because
+  --- the block may already be exactly where it belongs.
+  local function restoreAccess()
+    local state = accessState.state
+    if state ~= "opening" and state ~= "reopening" and state ~= "resealing" then
+      return true
+    end
+
+    local capY = capRelY()
+    local shaft = capShaft()
+    local _, y = nav.position()
+
+    -- Every half of a cap move happens within one block of the cap, so anything
+    -- further away means the record no longer describes this turtle. Refuse to
+    -- navigate to it: `goTo` climbs before it crosses, and from mining depth
+    -- that would cut a second vertical hole to the surface at the wrong place.
+    if not capY or not shaft or math.abs(y - capY) > 2 then
+      -- Nothing actionable was recorded. Find the head on the way out instead.
+      saveAccess("legacy", nil)
+      return true
+    end
+
+    if y < capY then
+      ctx.report("sealing", "restoring the shaft cap after an interrupted descent")
+      local reached, reachError = nav.goTo(shaft.x, capY - 1, shaft.z)
+      if not reached then
+        return false, "could not reach the shaft cap: " .. tostring(reachError)
+      end
+      local sealed, sealError = sealAbove()
+      if not sealed then
+        return false, sealError
+      end
+      saveAccess("below", accessState.y)
+      return true
+    end
+
+    ctx.report("sealing", "closing the shaft after an interrupted return")
+    local reached, reachError = nav.goTo(shaft.x, capY + 1, shaft.z)
+    if not reached then
+      return false, "could not reach the shaft head: " .. tostring(reachError)
+    end
+    local sealed, sealError = sealBelow()
+    if not sealed then
+      return false, sealError
+    end
+    saveAccess("sealed", accessState.y)
+    return true
+  end
+
+  --- Seal a shaft opened by a build that never recorded where its head was.
+  ---
+  --- Inside the ground every wall is solid; the first level whose walls are not
+  --- is the first level above the surface, and the cap belongs one block below
+  --- it. Bounded by the plan's surface so a cave ceiling on the way up is not
+  --- mistaken for daylight, and it refuses rather than guesses when the two
+  --- disagree - a cap in the wrong place hides the real hole instead of closing
+  --- it, which is worse than saying so.
+  local function probeSurface()
+    ctx.report("sealing", ("locating the sector %d shaft head"):format(job.sector))
+    local lastSolid = nil
+
+    while true do
+      local _, y = nav.position()
+      if access.ahead() == "solid" then
+        lastSolid = y
+      elseif lastSolid == y - 1 then
+        local capWorld = (origin and origin.y or job.surfaceY) + lastSolid
+        if math.abs(capWorld - job.surfaceY) <= access.HEAD_TOLERANCE then
+          saveAccess("resealing", capWorld)
+          local sealed, sealError = sealBelow()
+          if not sealed then
+            return false, sealError
+          end
+          saveAccess("sealed", capWorld)
+          return true
+        end
+        lastSolid = nil
+      end
+
+      if y >= laneRelY then
+        if lastSolid == nil then
+          -- Never inside the ground at all, so nothing here was ever opened.
+          saveAccess("unknown", nil)
+          return true
+        end
+        return false,
+          ("could not find the sector %d shaft head at %d,%d - cap it by hand"):format(
+            job.sector,
+            job.shaftX,
+            job.shaftZ
+          )
+      end
+
+      local climbed, climbError = nav.up()
+      if not climbed then
+        return false, "could not climb the shaft: " .. tostring(climbError)
+      end
+    end
+  end
+
+  --- Climb out of the sector, taking the cap out from underneath and putting it
+  --- back from above. This is the only moment the surface is open, and it lasts
+  --- exactly the two moves it takes to pass through.
+  local function surfaceThroughCap()
+    local capY = capRelY()
+    local shaft = capShaft()
+    local _, y = nav.position()
+
+    if accessState.state == "legacy" or not capY or not shaft then
+      return probeSurface()
+    end
+
+    if y >= capY then
+      -- Above the opening already: the descent stopped before going under it,
+      -- or a crash recovery has already put the turtle here. Only confirm.
+      if accessState.state == "sealed" then
+        return true
+      end
+      local reached, reachError = nav.goTo(shaft.x, capY + 1, shaft.z)
+      if not reached then
+        return false, "could not reach the shaft head: " .. tostring(reachError)
+      end
+      local confirmed, confirmError = sealBelow()
+      if not confirmed then
+        return false, confirmError
+      end
+      saveAccess("sealed", accessState.y)
+      return true
+    end
+
+    while select(2, nav.position()) < capY - 1 do
+      local climbed, climbError = nav.up()
+      if not climbed then
+        return false, "could not climb the shaft: " .. tostring(climbError)
+      end
+    end
+
+    ctx.report(
+      "sealing",
+      ("resealing sector %d shaft at %d,%d"):format(job.sector, job.shaftX, job.shaftZ)
+    )
+    -- Cap material must be secured from down here. The wall below the surface is
+    -- rock and can be mined for one; the wall above it is sky and cannot.
+    ensureFiller()
+
+    saveAccess("reopening", accessState.y)
+    local cleared, clearError = access.clearUp()
+    if not cleared then
+      return false, clearError
+    end
+
+    for _ = 1, 2 do
+      local climbed, climbError = nav.up()
+      if not climbed then
+        return false, "could not climb through the shaft head: " .. tostring(climbError)
+      end
+    end
+
+    saveAccess("resealing", accessState.y)
+    local sealed, sealError = sealBelow()
+    if not sealed then
+      return false, sealError
+    end
+    saveAccess("sealed", accessState.y)
+    return true
+  end
+
   local function routeUsesShaft()
     if job.phase == "home" then
       return job.returnViaShaft == true
@@ -92,6 +371,10 @@ function runner.run(jobType, job, ctx)
   --- Exact cost of the route home from here, which is what the fuel reserve is
   --- checked against. Straight-line distance would under-count badly: the way
   --- back runs along the trunk, up the shaft, and only then across the sky.
+  ---
+  --- Moving the cap costs digs and placements rather than moves, so it adds
+  --- nothing to this sum. `ACCESS_RESERVE` covers the small bounded detour a
+  --- crash recovery may take to get back under its own opening before sealing.
   local function returnDistance()
     local x, y, z = nav.position()
     if nav.distanceHome() == 0 then
@@ -111,6 +394,7 @@ function runner.run(jobType, job, ctx)
       + math.abs(shaft.x)
       + math.abs(shaft.z)
       + math.abs(laneRelY)
+      + jobType.ACCESS_RESERVE
   end
 
   --- Checked before every move. Returns false to end the trip early, with the
@@ -122,7 +406,7 @@ function runner.run(jobType, job, ctx)
     end
 
     if inv.freeSlots() <= 1 then
-      inv.dropJunk(isJunk)
+      inv.dropJunk(isJunk, access.SLOT)
       if inv.freeSlots() == 0 then
         return false, "inventory full", "cycle"
       end
@@ -147,7 +431,7 @@ function runner.run(jobType, job, ctx)
       gapBudget = job.veinGapBudget,
       beforeMove = guard,
     })
-    inv.dropJunk(isJunk)
+    inv.dropJunk(isJunk, access.SLOT)
 
     if resume and (truncated or reason) then
       resume.sector = job.sector
@@ -212,9 +496,157 @@ function runner.run(jobType, job, ctx)
     return true
   end
 
+  --- Break into the ground and pull the surface shut overhead.
+  ---
+  --- Deliberately uninterruptible. A recall or fuel stop between the ground
+  --- opening and the cap going back on is precisely the hole this mechanism
+  --- exists to prevent, and the window is two moves long; the guard before it
+  --- already reserved enough fuel for the whole route home.
+  ---
+  --- `atLevel` distinguishes the two ways ground is recognised. Ordinary terrain
+  --- is detected downward, so the surface block is one below the turtle. An
+  --- already-open shaft is detected by its walls, so the surface is the level
+  --- the turtle is standing on.
+  local function enterGround(atLevel)
+    local _, y = nav.position()
+    local capY = atLevel and y or (y - 1)
+    local capWorld = (origin and origin.y or job.surfaceY) + capY
+
+    -- Written before the first block is broken. Everything past this point is
+    -- recoverable from the persisted record alone.
+    saveAccess("opening", capWorld)
+    ctx.report(
+      "opening",
+      ("opening sector %d shaft at %d,%d"):format(job.sector, job.shaftX, job.shaftZ)
+    )
+
+    -- Keep room for the blocks about to come out of the ground: they are the
+    -- cap material, and a full inventory would drop them on the floor.
+    if inv.freeSlots() == 0 then
+      inv.dropJunk(isJunk, access.SLOT)
+    end
+
+    while select(2, nav.position()) > capY - 1 do
+      local moved, moveError, moveKind = nav.down()
+      if not moved then
+        return false, "could not open the shaft head: " .. tostring(moveError), moveKind
+      end
+    end
+
+    local sealed, sealError = sealAbove()
+    if not sealed then
+      return false, sealError
+    end
+
+    saveAccess("below", capWorld)
+    return true
+  end
+
+  --- Find the top of the ground in the shaft column, then get under it.
+  ---
+  --- The plan's `surfaceY` is the base's surface and is not trusted here: the
+  --- terrain forty-eight blocks out is a different height, and the whole point
+  --- of the cap is that it sits flush with ground a player actually walks on.
+  local function openShaft()
+    local probes = 0
+
+    while true do
+      local _, y = nav.position()
+      if y <= targetRelY then
+        -- Nothing solid between the cruise lane and the target depth, so no
+        -- ground was broken and there is nothing here to seal.
+        saveAccess("unknown", nil)
+        return true
+      end
+
+      local belowKind, belowName = access.below()
+      if belowKind == "liquid" then
+        return false,
+          ("sector %d shaft head at %d,%d is under %s - clear it or move the sector"):format(
+            job.sector,
+            job.shaftX,
+            job.shaftZ,
+            belowName
+          )
+      end
+      if belowKind == "protected" then
+        return false,
+          ("sector %d shaft head at %d,%d is blocked by %s"):format(
+            job.sector,
+            job.shaftX,
+            job.shaftZ,
+            belowName
+          )
+      end
+
+      local ground = nil
+      if belowKind == "solid" then
+        ground = "below"
+      elseif belowKind == "air" and probes < access.PROBE_LIMIT then
+        -- A shaft left open by an older build never reports ground downwards,
+        -- because the hole runs to the mining depth. It does report walls, and
+        -- the level where the column becomes enclosed is that old shaft head.
+        -- This is what closes the holes v1.2.6 already opened.
+        if access.ahead() == "solid" then
+          probes = probes + 1
+          if access.enclosed() then
+            ground = "here"
+          end
+        end
+      end
+
+      if ground then
+        -- The cap sits at the surface and the turtle has to end up under it, so
+        -- there must be at least two levels between the surface and the target.
+        -- Without that the descent would seal the shaft and then climb straight
+        -- back out through its own cap to reach the mining depth.
+        local head = ground == "here" and y or (y - 1)
+        if head < targetRelY + 2 then
+          return false,
+            ("sector %d ground at %d,%d is at target Y %d - mine deeper than the surface"):format(
+              job.sector,
+              job.shaftX,
+              job.shaftZ,
+              job.targetY
+            )
+        end
+        return enterGround(ground == "here")
+      end
+
+      local allowed, guardReason, guardKind = guard()
+      if not allowed then
+        return false, guardReason, guardKind
+      end
+      local moved, moveError, moveKind = nav.down()
+      if not moved then
+        return false, "shaft head blocked: " .. tostring(moveError), moveKind
+      end
+      ctx.report("opening", ("looking for the surface over sector %d"):format(job.sector))
+    end
+  end
+
   --- Move vertically through the sector shaft. Most profiles descend, while a
   --- high-altitude fuel profile may climb; both must use the same shaft route.
+  --- Only a descent breaks the surface, so only a descent has a cap to manage.
   local function descend()
+    local _, startY = nav.position()
+
+    -- Trust "already underground" only when the turtle's own position agrees
+    -- with it. A record left behind by a trip that never got home - or a turtle
+    -- picked up and put back on its chest by hand - would otherwise skip the
+    -- opening entirely and sink a fresh uncapped shaft from the cruise lane.
+    local capY = capRelY()
+    local sealedIn = (capY and startY < capY)
+      or (accessState.state == "legacy" and worldY() < job.surfaceY)
+    local below = sealedIn and (accessState.state == "below" or accessState.state == "legacy")
+
+    if targetRelY < startY and not below then
+      local opened, openError, openKind = openShaft()
+      if not opened then
+        return false, openError, openKind
+      end
+    end
+
     while select(2, nav.position()) ~= targetRelY do
       local ok, reason, kind = guard()
       if not ok then
@@ -387,7 +819,7 @@ function runner.run(jobType, job, ctx)
     if not returned then
       return false, "could not return from scanned ore: " .. tostring(returnError)
     end
-    inv.dropJunk(isJunk)
+    inv.dropJunk(isJunk, access.SLOT)
     return true
   end
 
@@ -503,6 +935,20 @@ function runner.run(jobType, job, ctx)
 
   --- The trip proper. Whatever this returns, the caller walks home.
   local function journey()
+    -- A job file written before shafts were capped records nothing about the
+    -- surface. If such a turtle is already underground its opening exists but
+    -- its position was never saved, so say exactly that: the way out probes for
+    -- the head rather than guessing at it, and the descent is not re-run from
+    -- below ground where every block downwards looks like a surface.
+    if accessState.state == "unknown" and job.phase ~= "travel" and worldY() < job.surfaceY then
+      saveAccess("legacy", nil)
+    end
+
+    local restored, restoreError = restoreAccess()
+    if not restored then
+      return false, restoreError
+    end
+
     if job.phase == "travel" then
       local ok, err, kind = travel()
       if not ok then
@@ -544,15 +990,15 @@ function runner.run(jobType, job, ctx)
   jobType.save(job)
   ctx.report("returning", reason and tostring(reason) or "loaded, heading back")
 
-  inv.dropJunk(isJunk)
+  inv.dropJunk(isJunk, access.SLOT)
 
   -- Once mining has started, unwind through the shaft at any depth. This is
   -- deliberately stage-persisted: Fuel can mine above the cruise lane, and a
   -- reboot while returning must not cut a direct tunnel from there to home.
+  local sealFailure = nil
   local _, y = nav.position()
   if nav.distanceHome() > 0 and job.returnViaShaft then
-    local worldY = (origin and origin.y or job.surfaceY) + y
-    local shaft = relative(job.shaftX, worldY, job.shaftZ)
+    local shaft = relative(job.shaftX, worldY(), job.shaftZ)
     if shaft then
       local returned, returnError = nav.goTo(shaft.x, y, shaft.z)
       if not returned then
@@ -561,10 +1007,30 @@ function runner.run(jobType, job, ctx)
         return false, "could not reach shaft: " .. tostring(returnError)
       end
     end
-    while select(2, nav.position()) ~= laneRelY do
+
+    -- Out through the cap and shut it again before climbing to the lane. A
+    -- failure here is recorded rather than thrown: the turtle still has to get
+    -- home, and an exposed shaft is reported once it is standing on its chest.
+    local resealed, resealReason = surfaceThroughCap()
+    if not resealed then
+      sealFailure = tostring(resealReason)
+      ctx.report("sealing", sealFailure)
+    end
+
+    -- Climb or drop to the cruise lane, but never below a cap that was just
+    -- put back: on ground higher than the plan's surface the shaft head can sit
+    -- above the lane, and dropping to it would mean digging straight back down
+    -- through the block this trip just spent two moves replacing.
+    local sealedY = capRelY()
+    local lowestY = laneRelY
+    if accessState.state == "sealed" and sealedY then
+      lowestY = math.max(laneRelY, sealedY + 1)
+    end
+
+    while select(2, nav.position()) ~= lowestY do
       local _, currentY = nav.position()
       local surfaced, surfaceError
-      if currentY < laneRelY then
+      if currentY < lowestY then
         surfaced, surfaceError = nav.up()
       else
         surfaced, surfaceError = nav.down()
@@ -587,8 +1053,12 @@ function runner.run(jobType, job, ctx)
   local depotFull = false
   if home then
     job.delivered = job.delivered
+      -- Fuel stays aboard, and so does the reserved cap slot: next cycle's first
+      -- act is to seal a shaft behind itself, and the cheapest way to guarantee
+      -- it can is to keep the stack of cobblestone it already carries.
       + inv.dropAllExcept(function(detail, slot)
         return fuel.isFuel(detail, slot)
+          or (slot == access.SLOT and access.isFiller(detail, slot, isWanted))
       end, turtle.dropDown)
 
     -- With a shared depot this is the failure that actually happens: the chest
@@ -596,6 +1066,9 @@ function runner.run(jobType, job, ctx)
     -- park looking healthy while carrying a full load it can never put down.
     if
       inv.itemCount(function(detail, slot)
+        if slot == access.SLOT and access.isFiller(detail, slot, isWanted) then
+          return false -- deliberately retained, not a failed delivery
+        end
         return not fuel.isFuel(detail, slot)
       end) > 0
     then
@@ -619,6 +1092,14 @@ function runner.run(jobType, job, ctx)
 
   if not home then
     return false, "could not return home: " .. tostring(homeError)
+  end
+
+  -- An open shaft outranks every other way a cycle can end badly, including a
+  -- full chest: one is inconvenient and the other is a hole somebody falls into.
+  -- Reported as a failure so the turtle parks and the dashboard row goes red
+  -- rather than quietly starting another cycle over an exposed sector.
+  if sealFailure then
+    return false, sealFailure
   end
 
   if depotFull then

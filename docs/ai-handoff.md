@@ -48,6 +48,8 @@ different tradeoff:
 
 - Update `.nav` only after the game confirms movement.
 - Never mine lava, another computer/turtle, chest, or barrel through navigation.
+- A prospecting sector shaft is open only while a turtle is inside it. Treat a block
+  placement as successful only after the block is observed in position.
 - Evaluate the exact planned route home before outward movement.
 - Count both tank and carried known fuel; retain fuel during unload.
 - Always unload below the home block.
@@ -69,6 +71,7 @@ different tradeoff:
 | park/deploy/update lifecycle | `src/miner/runtime.lua` |
 | new prospecting profile | `src/jobs/prospecting/profiles.lua` plus a small definition |
 | mining route/safety | `src/jobs/`, `src/jobs/common/safety.lua` |
+| shaft caps and surface safety | `src/turtle/access.lua`, `src/jobs/prospecting/runner.lua` |
 | shared mine geometry | `src/mine/plan.lua` |
 | sector leases and frontiers | `src/mine/registry.lua`, `src/fleet/coordinator.lua` |
 | turtle sector claiming | `src/mine/site.lua` |
@@ -163,6 +166,19 @@ large AFK run.
   configuration changes and completed redeploys reset them.
 - Prospecting persists a world coordinate beside an unfinished vein. Do not remove it
   or advance the sector frontier until that pending vein has been revisited.
+- Prospecting job files now carry `access = { state, y }`, the shaft cap record. A file
+  from v1.2.7 or earlier has none; `factory.load` normalises a missing or unusable
+  record rather than trusting a coordinate that was never written. A turtle that reboots
+  underground with no record is marked `legacy` and probes for the shaft head on the way
+  out instead of guessing at it, and never re-runs the descent from below ground where
+  every block downward looks like a surface. `restart` clears the record because a
+  restart happens on the home block, above ground, and a stale `below` would make the
+  next descent skip opening the surface and sink an uncapped shaft.
+- Slot 16 (`access.SLOT`) is reserved for cap material. `inv.dropJunk` takes a slot to
+  skip, unloading retains it, and the depot-full check excludes it. Removing any one of
+  those three lets the turtle throw away the block it needs to close the surface.
+- Shafts opened before v1.2.7 are sealed on the next visit to that sector, and only
+  then. Existing visible holes still need recalling the fleet and covering them by hand.
 - `core/config.lua` replaces state through a completed `.tmp` file. Its load fallback is
   part of crash-safe navigation; do not revert `.nav` to in-place overwrite.
 - A standard mining turtle cannot carry pickaxe, modem, and Geo Scanner at once.

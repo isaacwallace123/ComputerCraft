@@ -33,6 +33,9 @@ apps → miner / fleet / jobs → turtle / mine → core
   the base-side lease and frontier store (`registry.lua`), and the turtle-side cache and
   claim client (`site.lua`). It sits beside `turtle/` because both sides import it.
 - `turtle/` contains hardware primitives and should not know about a particular job.
+  `turtle/access.lua` is the surface-access primitive: block classification, cap
+  material selection, and verified placement. It knows what a safe cap is, never when
+  to move one — that decision belongs to the job running the route.
 - `jobs/` contains mining behavior and accepts callbacks rather than drawing UI or
   receiving network messages.
 - `miner/` owns the long-running turtle state machine, telemetry, and command handling.
