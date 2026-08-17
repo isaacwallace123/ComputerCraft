@@ -6,7 +6,9 @@ It covers four things that were asked for together because they turn out to be t
 change: a server that is the brain, control that survives an unloaded chunk, a mutable
 list of drop-offs, and a codebase laid out so all of that has somewhere to live.
 
-Read [`docs/architecture.md`](architecture.md) first for what exists today.
+Read [`docs/architecture.md`](architecture.md) first for what exists today, and
+[`docs/ui-framework.md`](ui-framework.md) for the rendering and component layer these
+operating systems are drawn with.
 
 ---
 
