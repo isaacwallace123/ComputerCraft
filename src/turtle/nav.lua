@@ -403,6 +403,14 @@ function nav.goTo(tx, ty, tz, beforeMove, options)
   --- costs nothing to fly over a hill, whereas digging one produces a horizontal
   --- bore through the hillside and, worse, a vertical hole if the turtle climbs
   --- out. Terrain that is genuinely enclosed still gets tunnelled.
+  ---
+  --- Height once gained is kept until the end of the route, and that is not
+  --- laziness. Sinking back to the requested altitude as soon as the ground
+  --- falls away looks tidier and is far worse: over stepped ground - a
+  --- shoreline, a ravine wall, a hillside of one-block terraces - the turtle
+  --- spends the entire crossing climbing and dropping the same blocks, one step
+  --- at a time. The single descent at the end of `legs` costs exactly the same
+  --- moves as the first sink would have, and every later one is pure waste.
   local function cross(axis, target, facing)
     if axis() == target then
       return true
@@ -418,13 +426,6 @@ function nav.goTo(tx, ty, tz, beforeMove, options)
         local ok, err, kind = checked(nav.forward)
         if not ok then
           return false, err, kind
-        end
-        -- Sink back towards the requested altitude as soon as the way is clear,
-        -- so one hill does not leave the rest of the crossing flown high.
-        while options.climb and state.y > ty and not turtle.detectDown() do
-          if not checked(nav.down) then
-            break
-          end
         end
       end
     end

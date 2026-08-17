@@ -31,6 +31,37 @@ function ui.clear(bg)
   term.setCursorPos(1, 1)
 end
 
+--- Repaint without the blank frame in between.
+---
+--- Every dashboard redraw clears the screen and paints it again. On a computer
+--- terminal that is invisible; on a monitor the two halves can reach the client
+--- separately, and a wall that refreshes once a second visibly blinks.
+---
+--- A `window` buffers writes and only pushes them to its parent while visible,
+--- so hiding it for the duration of a repaint collapses clear-then-paint into
+--- one update. Visibility is restored to what it was rather than forced on: an
+--- app drawing while unfocused must not put itself back on screen, which is
+--- exactly the bug this would otherwise introduce.
+---
+--- Falls back to drawing directly when the current terminal is not a window,
+--- which is the case for the physical terminal and for a redirected monitor.
+function ui.frame(render)
+  local current = term.current()
+  if not current or not current.setVisible or not current.isVisible then
+    return render()
+  end
+  if not current.isVisible() then
+    return render()
+  end
+
+  current.setVisible(false)
+  local ok, err = pcall(render)
+  current.setVisible(true)
+  if not ok then
+    error(err, 0)
+  end
+end
+
 --- Write at a position with explicit colours. The workhorse - everything else
 --- is built on it.
 function ui.text(x, y, text, fg, bg)

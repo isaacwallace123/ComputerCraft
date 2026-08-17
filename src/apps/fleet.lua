@@ -258,41 +258,48 @@ local function draw()
   local first = #list == 0 and 0 or scroll + 1
   local last = math.min(#list, scroll + visibleRows)
 
-  ui.clear()
-  local status = width < 42 and ("%d/%d  P%d"):format(sum.online, #list, sum.parked)
-    or ("%d/%d online  %d parked  %d-%d"):format(sum.online, #list, sum.parked, first, last)
-  ui.header(readonly and "FLEET STATUS" or "FLEET", status)
-  rowTargets = {}
+  -- Gathering the numbers is done; painting them is one buffered update, so the
+  -- wall never shows the cleared screen on its own.
+  ui.frame(function()
+    ui.clear()
+    local status = width < 42 and ("%d/%d  P%d"):format(sum.online, #list, sum.parked)
+      or ("%d/%d online  %d parked  %d-%d"):format(sum.online, #list, sum.parked, first, last)
+    ui.header(readonly and "FLEET STATUS" or "FLEET", status)
+    rowTargets = {}
 
-  if #list == 0 then
-    ui.center(math.floor((height - 1) / 2), "Waiting for miners to report in...", ui.theme.dim)
-  else
-    local rows = {}
-    for index = first, last do
-      local node = list[index]
-      local snap = node.snap or {}
-      rows[#rows + 1] = {
-        color = statusColor(node),
-        cells = {
-          snap.label or ("id " .. tostring(node.id)),
-          age(node) > rosterStore.OFFLINE_AFTER and "offline" or (snap.phase or "unknown"),
-          { text = positionText(snap), color = ui.theme.fg },
-          fuelCell(snap),
-          ("%d%%"):format(math.floor((snap.progress or 0) * 100)),
-          util.duration(age(node)),
-        },
-      }
-      if not readonly then
-        rowTargets[#rowTargets + 1] = { y = 3 + #rows, id = node.id }
+    if #list == 0 then
+      ui.center(math.floor((height - 1) / 2), "Waiting for miners to report in...", ui.theme.dim)
+    else
+      local rows = {}
+      for index = first, last do
+        local node = list[index]
+        local snap = node.snap or {}
+        rows[#rows + 1] = {
+          color = statusColor(node),
+          cells = {
+            snap.label or ("id " .. tostring(node.id)),
+            age(node) > rosterStore.OFFLINE_AFTER and "offline" or (snap.phase or "unknown"),
+            { text = positionText(snap), color = ui.theme.fg },
+            fuelCell(snap),
+            ("%d%%"):format(math.floor((snap.progress or 0) * 100)),
+            util.duration(age(node)),
+          },
+        }
+        if not readonly then
+          rowTargets[#rowTargets + 1] = { y = 3 + #rows, id = node.id }
+        end
       end
+      ui.table(2, 3, width - 2, COLUMNS, rows, visibleRows)
     end
-    ui.table(2, 3, width - 2, COLUMNS, rows, visibleRows)
-  end
 
-  if showHaul then
-    drawHaul(haul, sum, width, haulTop, height)
-  end
-  drawFooter(width, height)
+    if showHaul then
+      drawHaul(haul, sum, width, haulTop, height)
+    end
+    drawFooter(width, height)
+  end)
+
+  -- Outside the frame: the haul wall is a different terminal with its own
+  -- buffering, and hiding this page does nothing for it.
   drawAuxiliary(haul, sum)
 end
 

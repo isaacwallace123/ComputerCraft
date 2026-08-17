@@ -27,7 +27,12 @@ it("registry records and reports an open shaft head", function()
   expect.equal(#registry.exposed(state), 0, "nothing exposed to begin with")
 
   expect.truthy(
-    registry.surface(state, 7, 3, { state = "open", headY = 71, headOffset = 2, reason = "no cap block" }),
+    registry.surface(
+      state,
+      7,
+      3,
+      { state = "open", headY = 71, headOffset = 2, reason = "no cap block" }
+    ),
     "surface report accepted"
   )
 

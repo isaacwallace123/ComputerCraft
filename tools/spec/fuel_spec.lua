@@ -73,7 +73,15 @@ it("tree litter picked up on the way down does not survive a cycle", function()
   for y = 65, 70 do
     w:set(sector.shaftX, y, sector.shaftZ, "minecraft:oak_log")
   end
-  w:fill(sector.shaftX - 1, 71, sector.shaftZ - 1, sector.shaftX + 1, 71, sector.shaftZ + 1, "minecraft:oak_leaves")
+  w:fill(
+    sector.shaftX - 1,
+    71,
+    sector.shaftZ - 1,
+    sector.shaftX + 1,
+    71,
+    sector.shaftZ + 1,
+    "minecraft:oak_leaves"
+  )
 
   local ok, outcome = scenario.cycle(w)
   expect.truthy(ok, "cycle ran: " .. tostring(outcome))

@@ -37,10 +37,7 @@ end
 
 function expect.contains(haystack, needle, note)
   if not tostring(haystack):find(needle, 1, true) then
-    error(
-      ("%s: expected %q to contain %q"):format(note or "text", tostring(haystack), needle),
-      2
-    )
+    error(("%s: expected %q to contain %q"):format(note or "text", tostring(haystack), needle), 2)
   end
 end
 
