@@ -103,10 +103,13 @@ function scenario.prospecting(created, options)
     startedAt = 0,
   })
 
+  -- `workKey` is what `site.claim` would have written. Without it the turtle's
+  -- own progress reports do not match its cached claim and are silently ignored.
   config.save(require("mine.site").PATH, {
     plan = normalised,
     sector = sector.index,
     frontier = 0,
+    workKey = ("rare@%d"):format(targetY),
   })
   return sector, normalised
 end

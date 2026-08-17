@@ -225,6 +225,11 @@ function ore.follow(nav, isWanted, record, options)
 
     local moved, moveError, moveKind = moveIn()
     if not moved then
+      if nav.ROUTE_AROUND[moveKind or ""] and moveKind ~= "peer" then
+        -- Something we must not break is between us and this block. Leave it
+        -- and keep working the rest of the vein.
+        return
+      end
       stoppedReason = "could not enter vein: " .. tostring(moveError)
       stoppedKind = moveKind
       rememberHere()

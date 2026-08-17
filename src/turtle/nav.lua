@@ -356,6 +356,20 @@ end
 --- How many times a route will step out of the way and re-plan before giving up.
 local DETOUR_ATTEMPTS = 4
 
+--- Move failures that mean "not this way" rather than "stop working".
+---
+--- A turtle in the corridor was always a delay. Lava is the same shape of
+--- problem and was not treated that way: refusing to mine it is correct, but
+--- ending the route over it means one pocket at diamond level costs a whole
+--- commute. A protected block and an unbreakable one are no different - the
+--- route has to change, the trip does not have to end.
+nav.ROUTE_AROUND = {
+  peer = true,
+  hazard = true,
+  protected = true,
+  blocked = true,
+}
+
 --- Walk to a job-relative coordinate.
 --- Rises before travelling and descends last, so the turtle crosses air it has
 --- already mined rather than tunnelling through fresh rock on the way back.
@@ -416,7 +430,8 @@ function nav.goTo(tx, ty, tz, beforeMove)
 
   --- Get out of the corridor. Up first: overhead is the direction least likely
   --- to hold another turtle, since traffic runs along tunnels rather than
-  --- through their ceilings.
+  --- through their ceilings, and it is also the way past a pool of lava lying
+  --- in the floor of a tunnel.
   local function sidestep()
     if checked(nav.up) then
       return true
@@ -430,12 +445,14 @@ function nav.goTo(tx, ty, tz, beforeMove)
     return checked(nav.down)
   end
 
+  local lastError, lastKind = nil, nil
   for attempt = 1, DETOUR_ATTEMPTS do
     local ok, err, kind = legs()
     if ok then
       return true
     end
-    if kind ~= "peer" or attempt == DETOUR_ATTEMPTS then
+    lastError, lastKind = err, kind
+    if not nav.ROUTE_AROUND[kind or ""] or attempt == DETOUR_ATTEMPTS then
       return false, err, kind
     end
     if not sidestep() then
@@ -443,7 +460,7 @@ function nav.goTo(tx, ty, tz, beforeMove)
     end
   end
 
-  return false, "route blocked by fleet traffic", "peer"
+  return false, lastError or "route blocked", lastKind or "blocked"
 end
 
 --- Back to the starting block, facing the original direction.

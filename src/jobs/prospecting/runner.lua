@@ -32,6 +32,12 @@ local surface = require("jobs.prospecting.surface")
 
 local runner = {}
 
+--- Consecutive fruitless cycles before the sector is handed back, and before the
+--- turtle stops asking. Two is generous for an ordinary obstruction and short
+--- enough that a fleet does not spend a night commuting to ground it cannot dig.
+local STALL_SECTOR = 2
+local STALL_PARK = 4
+
 function runner.run(jobType, job, ctx)
   -- No sector means no shaft coordinates, and the unset ones are 0,0 - which is
   -- a real place in the world and emphatically not where this turtle should fly.
@@ -75,6 +81,7 @@ function runner.run(jobType, job, ctx)
   local minedThisTrip = 0
   local veinTruncated = false
   local workKey = jobType.workKey(job)
+  local startFrontier = job.frontier or 0
 
   local function record(name)
     job.haul[name] = (job.haul[name] or 0) + 1
@@ -350,7 +357,49 @@ function runner.run(jobType, job, ctx)
     return true
   end
 
+  --- Get past a trunk cell that must not be broken, by going over or under it.
+  ---
+  --- The trunk is one block tall, so a lava pocket sitting in it stops the whole
+  --- tunnel. Climbing a block, crossing, and dropping back rejoins the same
+  --- tunnel further on, which keeps the saved frontier meaning what it has
+  --- always meant.
+  ---
+  --- Returns how many extra cells were skipped, because that has to be added to
+  --- the frontier: the obstructed cell is never going to be worked, and a
+  --- frontier that disagrees with where the turtle is standing would send the
+  --- next cycle's recovery straight back into the lava.
+  ---
+  --- Every attempt unwinds cleanly, so a failed detour costs a few moves rather
+  --- than the turtle's position on its own tunnel.
+  local function stepAround(originalError)
+    for _, route in ipairs({ { nav.up, nav.down }, { nav.down, nav.up } }) do
+      local lift, drop = route[1], route[2]
+      if lift() then
+        local crossed = 0
+        while crossed < 2 do
+          if not nav.forward() then
+            break
+          end
+          crossed = crossed + 1
+          if drop() then
+            return true, crossed - 1
+          end
+        end
+        for _ = 1, crossed do
+          nav.back()
+        end
+        drop()
+      end
+    end
+    return false, 0, ("trunk blocked: %s"):format(tostring(originalError)), "blocked"
+  end
+
   --- Cut one rib perpendicular to the trunk and walk back out of it.
+  ---
+  --- A rib that runs into lava, a protected block, or bedrock is simply shorter
+  --- than the sector allows. That is a fact about the ground, not a failure of
+  --- the trip, and ending the cycle over it means one lava pocket at diamond
+  --- level costs a whole commute.
   local function digRib(toLeft)
     local turnOut = toLeft and nav.turnLeft or nav.turnRight
     local turnBack = toLeft and nav.turnLeft or nav.turnRight
@@ -384,6 +433,11 @@ function runner.run(jobType, job, ctx)
       end
     end
     turnBack()
+
+    if stoppedReason and nav.ROUTE_AROUND[stoppedKind or ""] then
+      ctx.report("mining", ("rib stopped short: %s"):format(tostring(stoppedReason)))
+      return true
+    end
     return stoppedReason == nil, stoppedReason, stoppedKind
   end
 
@@ -539,6 +593,22 @@ function runner.run(jobType, job, ctx)
           return false, reason, kind
         end
         local moved, moveError, moveKind = nav.forward()
+        if not moved and nav.ROUTE_AROUND[moveKind or ""] then
+          -- Something in the trunk that must not be broken. Going over or under
+          -- it keeps the tunnel and the saved frontier meaningful; the cell
+          -- itself is simply skipped.
+          local detoured, skipped, detourError, detourKind = stepAround(moveError)
+          if detoured then
+            if skipped > 0 then
+              ctx.report("mining", ("stepped over %d blocked trunk cell(s)"):format(skipped))
+              job.frontier = math.min(job.trunkLength, job.frontier + skipped)
+              jobType.save(job)
+            end
+            moved = true
+          else
+            moveError, moveKind = detourError, detourKind
+          end
+        end
         if not moved then
           return false, moveError, moveKind
         end
@@ -675,13 +745,25 @@ function runner.run(jobType, job, ctx)
     end
   end
 
+  -- A cycle that mined nothing and moved the frontier nowhere achieved nothing,
+  -- whatever it reported. One of those is ordinary - lava in the way, a peer in
+  -- the corridor. A run of them means the ground cannot be worked, and the
+  -- honest responses are to try different ground and then to stop.
+  local barren = minedThisTrip == 0 and job.frontier <= startFrontier and not veinTruncated
+  job.stalls = barren and (math.floor(tonumber(job.stalls) or 0) + 1) or 0
+  local giveUpSector = job.stalls >= STALL_SECTOR
+  local giveUp = job.stalls >= STALL_PARK
+
   -- Tell the base how far this sector got. Doing it here, after the route is
   -- unwound, means the frontier reported is one the next turtle can actually
   -- walk to. A truncated vein holds the frontier back deliberately.
   if veinTruncated then
     ctx.report("returning", "sector frontier held for an unfinished vein")
   end
-  site.report(workKey, job.sector, job.frontier, minedThisTrip, exhausted == true)
+  if giveUpSector and not exhausted then
+    ctx.report("returning", ("sector %d cannot be worked - handing it back"):format(job.sector))
+  end
+  site.report(workKey, job.sector, job.frontier, minedThisTrip, exhausted == true or giveUpSector)
 
   -- The configured route remains active at home. Persisting `false` here made a
   -- tiny power-loss window before the cycle handoff reopen interactive setup on
@@ -706,16 +788,36 @@ function runner.run(jobType, job, ctx)
     -- holding a full load it cannot deposit is stuck, not finished.
     return false, "depot full - empty the chest below me"
   end
+
+  -- Nothing has worked for several cycles running. Retrying costs a full commute
+  -- each time and produces nothing, so stop and say so rather than burning fuel
+  -- overnight against ground that cannot be dug.
+  if giveUp then
+    job.stalls = 0
+    jobType.save(job)
+    return false,
+      ("no progress in %d cycles - last stop: %s"):format(
+        STALL_PARK,
+        tostring(reason or "nothing mined")
+      )
+  end
+
   if not ok then
     if
       stopKind == "fuel"
       or stopKind == "cycle"
       or stopKind == "recalled"
       or stopKind == "peer"
+      or nav.ROUTE_AROUND[stopKind or ""]
     then
       if stopKind == "peer" then
         stopKind = "cycle"
         reason = "fleet traffic held this cell - will retry"
+      elseif nav.ROUTE_AROUND[stopKind or ""] then
+        -- Lava, a protected block, or bedrock somewhere on the route. The next
+        -- cycle re-plans around it; the stall counter above is what stops this
+        -- becoming an endless commute.
+        stopKind = "cycle"
       end
       if stopKind == "cycle" then
         -- If power drops between the unload and runtime choosing the next route,

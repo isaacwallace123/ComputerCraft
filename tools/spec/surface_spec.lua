@@ -142,10 +142,10 @@ it("a sector with no sealable head anywhere reports which sector and why", funct
 
   local ok, outcome = scenario.cycle(w)
   expect.truthy(ok, "cycle ran: " .. tostring(outcome))
-  expect.falsy(outcome.ok, "the cycle failed")
   expect.contains(outcome.reason, "sector " .. sector.index, "names the sector")
   expect.contains(outcome.reason, "water", "names what is in the way")
   expect.equal(w.x .. "," .. w.z, "0,0", "still came home")
+  expect.truthy(w:solid(sector.shaftX, GROUND - 2, sector.shaftZ), "nothing dug under the pond")
 end)
 
 --- The one that cannot be argued, only run.
