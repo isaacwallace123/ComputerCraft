@@ -296,7 +296,87 @@ within the fuel reserve, then nearest, then list order.
 
 ---
 
-## 8. Worksite geometry
+## 8. Services
+
+A service never has a page and runs for the life of the machine. This is D018
+generalised: closing the Fleet app used to disable sector leasing, because coordination
+was living inside a page. Splitting them by category means that cannot be expressed.
+
+**The rule: services own state, apps read it.** No app performs coordination, and no
+service draws. An app that is closed, crashed, or was never opened changes nothing about
+what the machine is doing.
+
+### What runs where
+
+| OS | Services |
+| --- | --- |
+| **Server** | `discovery` · `reconcile` · `leases` · `gps` · `persist` · `policy` · `logrotate` |
+| **Client** | `mirror` · `intents` |
+| **Mobile** | `mirror` · `intents` |
+| **Miner** | `heartbeat` · `agent` · `peers` · `controls` |
+
+Client and Mobile run exactly the same two, which is more evidence for one shared tree
+(§4) rather than a copy per OS.
+
+Two of these deserve naming. `mirror` keeps a local read-only copy of server state, so
+apps render instantly and survive a brief server outage instead of showing an empty
+screen. `intents` is the only thing that talks to the server about changes — which means
+**a client never commands a turtle directly.** It asks the server to change desired
+state, and the server owns the conversation. D019's "a handheld is never a second base"
+stops being a convention and becomes a thing the structure enforces.
+
+Today's `fleet/service.lua` is one function doing discovery, leases, policy, logging, and
+persistence. Splitting it is the point: a bug in the auto-recovery policy currently takes
+sector leasing down with it.
+
+### Manifest
+
+Mirrors the app manifest, so the shell and the supervisor read the same shape:
+
+```lua
+-- os/server/services/reconcile.lua
+return {
+  id = "reconcile",
+  requires = { "transport", "storage", "clock" },
+  critical = true,        -- the machine is not healthy without it
+  run = function(ctx) ... end,
+}
+```
+
+### Supervision
+
+CC gives cooperative multitasking and nothing else: coroutines under
+`parallel.waitForAny`, no preemption. Two consequences that have to be designed for
+rather than discovered.
+
+**A service that does not yield starves every other service on that machine.** Services
+are event-driven loops that block on `pullEvent` or a timer. Any long computation is
+chunked. This is a review rule, not something the runtime can enforce.
+
+**One service crashing must not take the others with it.** `parallel.waitForAny` returns
+when *any* coroutine finishes, so today an escaping error stops everything. The
+supervisor instead wraps each service, restarts it with exponential backoff, and keeps
+its neighbours running. GPS must survive a bug in the auto-recovery policy — an outage
+there breaks navigation for the whole fleet.
+
+Crash-looping needs the same treatment the mining stall counter got: back off, then stop
+and **say so on the dashboard**, rather than retrying forever while looking healthy. A
+`critical` service that has given up should make the server visibly unhealthy; a
+non-critical one should degrade quietly and be reported.
+
+```
+   supervisor
+     ├── discovery    ● running     restarts 0
+     ├── reconcile    ● running     restarts 0
+     ├── gps          ● running     restarts 0
+     ├── leases       ● running     restarts 2   last: 4m ago
+     └── policy       ○ stopped     gave up after 5 failures — see log
+```
+
+That panel is a Services app: a page that *reads* supervisor state. The supervisor itself
+runs whether or not anyone opens it.
+
+## 9. Worksite geometry
 
 Being redesigned in parallel (single shared two-lane shaft, spines fanning out at depth).
 That work is independent of this plan and lands first. Under this layout it becomes
@@ -305,7 +385,7 @@ which is why it is the easiest module to move and a good first phase.
 
 ---
 
-## 9. Server OS setup and GPS
+## 10. Server OS setup and GPS
 
 Every server declares its own position, two ways:
 
@@ -327,7 +407,7 @@ machines need only position.
 
 ---
 
-## 10. What I am deliberately not planning yet
+## 11. What I am deliberately not planning yet
 
 - **Multi-server state replication.** All servers host GPS from day one. Only the primary
   holds authoritative state. Real replication needs leader election and conflict rules,
@@ -340,7 +420,7 @@ machines need only position.
 
 ---
 
-## 11. Phasing
+## 12. Phasing
 
 Every phase is independently deployable and leaves a working fleet. Nothing here is a
 flag day, because there is a live fleet to keep running.
@@ -363,7 +443,7 @@ Phase 3 is the one to be careful with. Recall is a safety control; replacing its
 mechanism while turtles are underground is how a fleet gets stranded. Both paths run
 together until the dashboard shows every device converging, then events go.
 
-## 12. Migration
+## 13. Migration
 
 - `.node.role` maps: `fleet` → `client` (plus `server` on the machine that keeps the
   state files), `controller` → `mobile`, `miner` → `miner`, `gps` → `server`.
