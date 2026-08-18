@@ -81,6 +81,8 @@ different tradeoff:
 | state, bindings, and what gets repainted | `src/ui/reactive.lua`, `src/ui/runtime.lua` |
 | how a screen is measured and placed | `src/ui/layout.lua` |
 | a component, or a new one | `src/ui/components/`, then register it with `ui.define` |
+| clicks, touches, focus, the tab ring | `src/ui/input.lua`, `Root:dispatch` in `src/ui/runtime.lua` |
+| the event loop a screen runs in | `src/ui/host.lua` |
 | a screen built on the framework | `src/apps/<id>/view.lua` |
 | renderer performance numbers | `tools/bench.lua`, `tools/bench.ps1`, `docs/ui-framework.md` section 12 |
 | how we compare to Basalt | `tools/compare.lua`, `tools/compare.ps1`, `docs/ui-framework.md` sections 12 and 16 |

@@ -66,9 +66,10 @@ changes; `mine/plan.lua` and `mine/registry.lua` remain as aliases until the spe
 rewritten. `mine/site.lua` has not moved, because it is the turtle-side cache and talks to
 the network.
 
-`apps/fleet/view.lua` is the first screen written on the framework. It is a view and only
-a view: it takes state objects and callbacks, touches no file and no radio, and is
-therefore rendered into a recording buffer and asserted cell by cell in the spec suite.
+`apps/fleet/view.lua` and `apps/devices/view.lua` are the first screens written on the
+framework. They are views and only views: state objects and callbacks in, a node tree out,
+touching no file and no radio — so both are rendered into a recording buffer and asserted
+cell by cell, and driven by a scripted input port that clicks and types at them.
 
 Nothing is wired. No composition root constructs an adapter, no device mounts a framework
 screen, and every machine boots through exactly the paths described above. That is

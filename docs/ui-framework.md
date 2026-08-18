@@ -339,6 +339,22 @@ One normalised event model over `key`, `char`, `mouse_click`, `mouse_drag`,
 - Gestures: tap, drag, scroll. Long-press deliberately omitted; it is undiscoverable on a
   monitor.
 
+**Built in phase 3.** `ui/input.lua` has the normalisation and the tree walks;
+`Root:dispatch` has the routing. Two details that only became clear while building it:
+
+- **A monitor touch produces two events, not one.** It has no release of its own, so one
+  is synthesised at the same point. A component that waited for an `up` would simply never
+  fire on the surface the fleet dashboard is for.
+- **Key codes are a version dependency.** `ui/` may not read CC's `keys` table, so the
+  handful the framework itself consumes are written out in `input.KEY`, copied from
+  `rom/apis/keys.lua` at v1.20.1-1.113.1. CC's own header warns these are not stable
+  between versions — they changed once already, moving from LWJGL to GLFW — so re-check
+  them on a major CC upgrade. Everything a screen binds beyond those is passed through as
+  a number and needs no table.
+
+Drag is normalised and routed but nothing uses it yet; there is no component that a person
+can drag. Hover does not exist and will not.
+
 ---
 
 ## 10. Surfaces beyond the screen
@@ -571,8 +587,8 @@ Not on Server, and not on a turtle.
 | --- | --- | --- | --- |
 | 1 | `ports/screen`, `ui/buffer`, diff + blit, bench | Flicker-free painting, measured | **done** |
 | 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app on it | **done** |
-| 3 | `ui/input`, focus, gestures | Full interaction parity with today | **next** |
-| 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity | |
+| 3 | `ui/input`, focus, gestures | Full interaction parity with today | **done** |
+| 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity | **next** |
 | 5 | `ui/canvas` + sprites + theming | Imagery and real palettes | |
 | 6 | Blackjack | Showcase and soak test | |
 | 7 | Port remaining apps, add AP ports | Old `core/ui.lua` deleted; chat notifications | |
@@ -622,11 +638,41 @@ in:
   so a `Column` that set its own direction while painting had already been laid out as a
   row.
 
-Phase 3 rebuilding **Devices** is the remaining half of the original acceptance test:
-Devices is the densest existing screen, and it needs input, focus and scrolling to exist
-first. Fleet was rebuilt in phase 2 instead because it is the screen the framework's
-performance claim is actually about, and because it needs no input at all — which made it
-the one screen that could be finished before `ui/input` exists.
+### What phase 3 delivered
+
+- `ports/input.lua`, with a cc adapter over `os.pullEventRaw` and a sim adapter that is a
+  scripted pair of hands. The sim one needs no world: a spec writes down what a person did
+  and the framework cannot tell the difference.
+- `ui/input.lua` — normalisation, hit testing, bubbling, and the focus ring. All pure
+  functions over a laid-out tree, so every routing rule is a unit test.
+- `ui/runtime.lua` gained `dispatch`, `handle` and focus management.
+- `ui/host.lua` — mount against two ports, then pull, dispatch, render, repeat.
+- `Table` gained scrolling and row selection.
+- `apps/devices/view.lua`, and 31 more specs.
+
+**Devices is the acceptance test this section set for the project**, and it passes: a
+list, a detail panel, selection, scrolling, keyboard operation, and a display-only variant
+that has nothing to tab to — with no coordinate, no colour and no redraw call anywhere in
+it. Read it against `src/apps/devices.lua`, which is the version it replaces.
+
+Three things are worth knowing before phase 4:
+
+- **A monitor touch is a whole tap.** CC gives a terminal four mouse events and a monitor
+  exactly one, with no release, no drag, and no hover ever. `ui/input.lua` normalises a
+  touch into a press *and* a release at the same point. Nothing above may assume a release
+  follows a press after an interesting interval — which is why §9 omits long-press
+  deliberately rather than by oversight.
+- **Scrolling is an offset, not a clip.** A table's slot `i` shows `list[i + offset]`, so
+  scrolling changes what cells compute to and moves no layout at all. There is still no
+  clip region in the buffer; `ScrollView`, `Modal` and `Tabs` will need one, and that is
+  the first real decision phase 4 or 5 has to make.
+- **Focus is a node property**, so moving it repaints exactly two nodes however large the
+  tree — and when both are on the same row the cell diff coalesces them into one call.
+  That is D028 and the runtime meeting without either one knowing about the other.
+
+Fleet was rebuilt first, in phase 2, because it is the screen the performance claim is
+actually about and because it needs no input at all — which made it the one screen that
+could be finished before any of this existed.
 
 ---
 

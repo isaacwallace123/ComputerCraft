@@ -451,6 +451,63 @@ Two consequences to keep:
   every heading sat two cells left of the values underneath it. One list, one set of
   widths, one loop for both.
 
+## D032 — A monitor touch is a whole tap, and hover does not exist
+
+**Status:** accepted
+
+CC gives a computer terminal four pointer events - `mouse_click`, `mouse_up`, `mouse_drag`,
+`mouse_scroll`. It gives a monitor exactly one, `monitor_touch`, with no release, no drag,
+and no hover ever.
+
+`ui/input.lua` therefore normalises a touch into a press **and** a release at the same
+point, and nothing above it may assume that a release follows a press after some
+interesting interval, or that a drag is possible, or that anything can be known about a
+pointer that is not currently pressing.
+
+This is not a rendering detail. The fleet dashboard exists for a wall monitor, and D020
+already makes the input capability of a surface a safety boundary. A component whose
+behaviour needs a hover, a press-and-hold, or a double-click simply does not work on the
+one surface the whole UI was built for - and it fails silently there while working
+perfectly on the developer's computer terminal, which is the worst possible way for it to
+fail.
+
+So: long-press is omitted deliberately rather than by oversight, and there is no hover
+event to bind. The event model is the enforcement; a rule that relied on discipline would
+be broken by the first component somebody wrote at a keyboard.
+
+The other half of the same decision is that every screen has to be operable from a
+keyboard alone, because a turtle has no mouse at all. Tab moves the focus ring, enter and
+space activate what holds it, and that path is exercised in the spec suite rather than
+assumed.
+
+## D033 — Scrolling is an offset into a fixed slot pool
+
+**Status:** accepted
+
+The obvious implementations are to build one row per item and move them, or to lay out
+everything and clip to a viewport. Both fight the framework.
+
+Moving rows is a relayout on every scroll tick, which repaints the screen. Clipping needs
+a clip region in the cell buffer, which every component then has to respect, and it lays
+out rows that are not visible so the cost scales with the list rather than the screen.
+
+D031 already made a table a fixed pool of slots over a changing list. Scrolling is then
+one more term in the same expression: slot `i` shows `list[i + offset]`. Moving the offset
+changes what each cell computes to, the bindings turn that into one repaint per cell that
+actually differs, and **the layout does not move at all**. A table can never scroll into a
+state where its layout is wrong, because its layout never changes.
+
+Two things follow, and both are the table's job rather than every screen's:
+
+- It clamps its own scroll against the list length. A screen that had to do this would get
+  it slightly wrong in a different way each time.
+- A click reports the **row**, not the slot. Under an offset those are different things,
+  and a screen cares which device was pressed, not which widget it happened to be in.
+
+There is still no clip region in `ui/buffer.lua`. `ScrollView`, `Modal` and `Tabs` will
+need one and should get it deliberately, with its own decision, rather than by somebody
+adding a bounds check to `write` and discovering later that half the components ignore it.
+
 ## D014 — Version changes happen at merge
 
 **Status:** accepted

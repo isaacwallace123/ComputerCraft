@@ -11,10 +11,11 @@ computer shows, not a drawing of what it might.
 The goal, stated plainly: **a framework where a screen is shorter to write than it is in
 Basalt, and looks like it was designed rather than assembled.**
 
-**Built as of phase 2.** The tokens are `src/ui/theme.lua`, the components are
-`src/ui/components/`, and `src/apps/fleet/view.lua` is a real screen written against them.
-Everything below describes code that exists and is under test, except where it says
-otherwise.
+**Built as of phase 3.** The tokens are `src/ui/theme.lua`, the components are
+`src/ui/components/`, and `src/apps/fleet/view.lua` and `src/apps/devices/view.lua` are
+real screens written against them — the second being the acceptance test the framework
+plan set for the project. Everything below describes code that exists and is under test,
+except where it says otherwise.
 
 ---
 
@@ -312,9 +313,10 @@ Built (**bold**) and planned:
 **Data** — **`Text`**, **`Heading`**, **`Muted`**, **`Table`**, **`Meter`**, **`Badge`**,
 `List`, `Sparkline`, `Gauge`, `KeyValue`.
 
-**Input** — **`Button`**, `Toggle`, `Stepper`, `TextField`, `Select`, `Menu`. Buttons paint
-their variants and their focus ring today; nothing dispatches a click until `ui/input`
-lands in phase 3.
+**Input** — **`Button`**, `Toggle`, `Stepper`, `TextField`, `Select`, `Menu`. Buttons take
+clicks, touches, focus and keyboard activation as of phase 3; the rest wait for a screen
+that needs them. `TextField` is the one with real work behind it — a cursor, a selection
+and an edit model — and nothing in the fleet UI has asked for it yet.
 
 **Feedback** — `Toast`, `Spinner`, `Skeleton`, `Empty`, `Banner`.
 
@@ -356,7 +358,9 @@ framework feature, not a sloppy screen.
 - **Rounded corners, shadows, gradients.** No representation at cell resolution that is not
   more noise than signal.
 - **Hover states.** A monitor touch has no hover (§9 of the framework plan). Anything that
-  depends on hover is unusable on exactly the surface the fleet dashboard lives on.
+  depends on hover is unusable on exactly the surface the fleet dashboard lives on. This
+  is now enforced by the shape of the event model rather than by discipline: there is no
+  hover event to bind.
 - **A grid layout, wrapping, percentage units.** Flex covers a dashboard and a card table.
   Add them when a second app needs them.
 - **Icons.** The 2×3 glyphs can draw one in a 2×2 cell block. Everything tried so far reads
