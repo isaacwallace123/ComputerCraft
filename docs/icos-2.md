@@ -463,7 +463,7 @@ flag day, because there is a live fleet to keep running.
 | 2 | Device registry + last known location | Missing turtles become findable | Low, additive | **domain done** |
 | 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events | **domain done** |
 | 4 | Drop-off list | Multiple depots | Medium — touches return fuel | **domain done** |
-| 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | **server + roles done** |
+| 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | **server done** |
 | 6 | App folders and manifests, commands split out | The layout above | Low, mechanical | |
 
 Phase 1 first is not tidying-before-features. It is what makes phases 3 and 4 testable —
@@ -597,6 +597,39 @@ Two smaller decisions worth knowing:
 - A `full` report **expires** after twenty minutes. Nothing ever reports a depot empty
   again — a person walks over, takes the diamonds, and tells nobody — so a flag without an
   expiry removes a depot from service permanently on the strength of one bad trip.
+
+### Phase 5: reconcile, persist, and the dual run
+
+Three of the server's seven services are built: `discovery`, `reconcile` and `persist`.
+
+**`reconcile` is where §12's dual run lives.** Desired state is a pull model, and a pull
+model is already correct — a device reconciles on its next heartbeat and every property in
+§5 holds. The nudge is *latency*, not correctness, which is why it may fail silently and
+why nothing depends on it arriving.
+
+Each nudge carries **both** the desired-state reply and the ICOS 1 `command`. A turtle on
+the old build obeys the command and never reports an applied generation; one on the new
+build applies the generation and converges. Both are correct at once, so the fleet upgrades
+a turtle at a time. Sending both is only safe because every mode is *a state to be in*
+rather than an action to perform: recall twice is recall, and deploy on a running turtle is
+refused by the turtle.
+
+`context.events = false` ends the dual run. **That switch is not this project's to throw** —
+§12 says both paths run until the dashboard shows every device converging, and that is a
+judgement made by looking at a real fleet.
+
+**`persist`'s actual job is not writing.** Ten turtles at one heartbeat every two seconds is
+five disk writes a second, and a CC write is a real file operation on the host. So the
+registry is batched and the drop-off list is not — and the test for which is not importance
+but whether anything else in the world holds a copy. A registry is rebuilt by the devices
+themselves within a minute; a drop-off list exists nowhere but that disk.
+
+`persist` is **critical** and `reconcile` is not. A server that has stopped writing looks
+perfectly healthy right up until it reboots, at which point it has forgotten where every
+missing turtle was — which is the one thing §6 exists to remember. A server whose reconcile
+has died still records heartbeats and still answers devices that ask, so the fleet
+converges, just less promptly; marking that critical would take a whole machine down over a
+latency problem.
 
 ### Phase 5: roles, the server, and the first wired service
 

@@ -22,6 +22,8 @@
 
 local depotList = require("domain.depot.list")
 local discovery = require("os.server.services.discovery")
+local persist = require("os.server.services.persist")
+local reconcile = require("os.server.services.reconcile")
 local registry = require("domain.fleet.registry")
 local supervisor = require("os.supervisor")
 
@@ -80,20 +82,19 @@ end
 
 --- The services a server runs.
 ---
---- §8's list, in the order it gives them. Only `discovery` exists so far; the
---- rest are named here rather than omitted so that the shape of the machine is
---- visible in one place, and so adding one is an edit to this table rather than
---- an archaeology exercise.
+--- §8's list, in the order it gives them. The unbuilt ones are named here rather
+--- than omitted so that the shape of the machine is visible in one place, and so
+--- adding one is an edit to this table rather than an archaeology exercise.
 ---
 ---   discovery   heartbeats in, desired state out          built
----   reconcile   drive devices towards their desired state
+---   reconcile   nudge devices that are behind             built
+---   persist     write state to disk, batched              built
 ---   leases      sector claims and frontiers
 ---   gps         the constellation beacon
----   persist     write state to disk, batched
 ---   policy      conservative auto-recovery
 ---   logrotate   keep the log from filling the disk
 function server.services()
-  return { discovery.service }
+  return { discovery.service, reconcile.service, persist.service }
 end
 
 --- Build a supervisor with everything a server runs, ready to be stepped.
@@ -118,7 +119,15 @@ function server.boot(ports, options)
     locator = ports.locator,
     serialise = ports.serialise,
     state = state,
+    paths = server.PATHS,
     pollSeconds = options.pollSeconds,
+
+    -- §12's dual run. Both the desired-state reply and the ICOS 1 command go out
+    -- until every device is converging, then this goes false and the old path is
+    -- deleted. Defaulting to on is the safe direction: an unupgraded turtle
+    -- ignores a reply it does not understand, and a turtle that never obeys a
+    -- recall is how a fleet gets stranded.
+    events = options.events,
   }
 
   for _, definition in ipairs(server.services()) do

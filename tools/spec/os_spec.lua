@@ -304,3 +304,179 @@ it("state is written to separate files, so a busy one cannot corrupt a quiet one
   expect.truthy(ports.files[server.PATHS.depots], "and so do the depots")
   expect.falsy(server.PATHS.fleet == ".fleet", "and neither is the ICOS 1 roster")
 end)
+
+---------------------------------------------------------------------------
+-- Reconcile: the acting half, and the bridge to the old protocol
+---------------------------------------------------------------------------
+
+local reconcile = require("os.server.services.reconcile")
+local persist = require("os.server.services.persist")
+
+--- A context with a recording transport, so a spec can read what went out.
+local function serverContext(options)
+  options = options or {}
+  local clock = fakeClock(1000 * SECOND)
+  local sent = {}
+  return {
+    clock = clock.port,
+    state = server.state(),
+    paths = server.PATHS,
+    events = options.events,
+    nudgeEvery = options.nudgeEvery,
+    transport = {
+      send = function(id, message, protocol)
+        sent[#sent + 1] = { id = id, message = message, protocol = protocol }
+        return true
+      end,
+      broadcast = function() end,
+      receive = function()
+        return nil
+      end,
+      id = function()
+        return 1
+      end,
+    },
+    _clock = clock,
+    _sent = sent,
+  }
+end
+
+it("only devices that are behind and reachable are nudged", function()
+  local ctx = serverContext()
+  discovery.handle(ctx, 7, heartbeat())
+  discovery.handle(ctx, 8, heartbeat())
+
+  expect.equal(#reconcile.due(ctx, ctx.clock.now()), 0, "nothing is behind yet")
+
+  desired.want(registry.get(ctx.state.fleet, 7), "recall", nil, ctx.clock.now())
+  local due = reconcile.due(ctx, ctx.clock.now())
+  expect.equal(#due, 1, "only the one with an outstanding order")
+  expect.equal(due[1].id, 7, "and it is the right one")
+
+  -- A device that has gone quiet cannot hear a nudge, so sending one is only
+  -- noise. It will reconcile on its own when it comes back, which is the point.
+  ctx._clock.advance(300)
+  expect.equal(#reconcile.due(ctx, ctx.clock.now()), 0, "an offline device is not nudged")
+end)
+
+it("a device is not nudged more often than the interval", function()
+  local ctx = serverContext({ nudgeEvery = 6 })
+  discovery.handle(ctx, 7, heartbeat())
+  desired.want(registry.get(ctx.state.fleet, 7), "recall", nil, ctx.clock.now())
+
+  expect.equal(reconcile.pass(ctx, ctx.clock.now()), 1, "nudged")
+  expect.equal(reconcile.pass(ctx, ctx.clock.now()), 0, "not again immediately")
+
+  ctx._clock.advance(7)
+  expect.equal(reconcile.pass(ctx, ctx.clock.now()), 1, "and again once the interval has passed")
+end)
+
+it("a nudge carries both the new reply and the old command", function()
+  -- §12's dual run. A turtle on the old build obeys the command and never
+  -- reports an applied generation; one on the new build applies the generation
+  -- and converges. Both are correct at once, so the fleet upgrades a turtle at
+  -- a time.
+  local ctx = serverContext()
+  discovery.handle(ctx, 7, heartbeat())
+  desired.want(registry.get(ctx.state.fleet, 7), "recall", nil, ctx.clock.now())
+  reconcile.pass(ctx, ctx.clock.now())
+
+  expect.equal(#ctx._sent, 2, "two messages")
+  expect.equal(ctx._sent[1].message.kind, "desired", "the goal")
+  expect.equal(ctx._sent[2].message.command.action, "recall", "and the old command beside it")
+end)
+
+it("turning events off is what ends the dual run", function()
+  local ctx = serverContext({ events = false })
+  discovery.handle(ctx, 7, heartbeat())
+  desired.want(registry.get(ctx.state.fleet, 7), "recall", nil, ctx.clock.now())
+  reconcile.pass(ctx, ctx.clock.now())
+
+  expect.equal(#ctx._sent, 1, "only the goal")
+  expect.equal(ctx._sent[1].message.kind, "desired", "and it is the new one")
+end)
+
+it("a deploy carries its job, because the old protocol needs all three pieces", function()
+  -- §5 collapses the set-job / configure / deploy dance into one record. A
+  -- device on the old build still needs all of it, so the legacy command is the
+  -- one that carries everything.
+  local command =
+    assert(reconcile.legacy({ mode = "deploy", job = "rare", settings = { targetY = -59 } }))
+  expect.equal(command.action, "assign_job", "assigned rather than merely deployed")
+  expect.equal(command.job, "rare", "with the job")
+  expect.equal(command.settings.targetY, -59, "and the settings")
+
+  expect.equal(assert(reconcile.legacy({ mode = "deploy" })).action, "deploy", "a bare deploy")
+  -- The old protocol cannot say "stop when convenient", and inventing a command
+  -- a build will not understand is a message into the void.
+  expect.equal(reconcile.legacy({ mode = "park" }), nil, "park has no equivalent")
+  expect.equal(reconcile.legacy(nil), nil, "and neither does no goal at all")
+end)
+
+---------------------------------------------------------------------------
+-- Persist: a service whose job is mostly not writing
+---------------------------------------------------------------------------
+
+it("the registry is batched and the drop-offs are not", function()
+  -- The test is not importance, it is whether anything else in the world holds a
+  -- copy. A registry is rebuilt by the devices themselves within a minute; a
+  -- drop-off list exists nowhere but this disk.
+  local ctx = serverContext()
+  ctx.storage = { write = function() return true end }
+  ctx.serialise = { encode = function() return "" end }
+
+  persist.mark(ctx, "fleet")
+  persist.mark(ctx, "depots")
+
+  local due = persist.due(ctx, ctx.clock.now())
+  expect.equal(#due, 2, "both are due on a fresh server")
+
+  persist.pass(ctx, ctx.clock.now())
+  persist.mark(ctx, "fleet")
+  persist.mark(ctx, "depots")
+
+  due = persist.due(ctx, ctx.clock.now())
+  expect.equal(#due, 1, "only one is due immediately after")
+  expect.equal(due[1], "depots", "and it is the one nothing else remembers")
+
+  ctx._clock.advance(6)
+  expect.equal(#persist.due(ctx, ctx.clock.now()), 2, "the registry follows on its interval")
+end)
+
+it("a heartbeat marks the registry dirty rather than writing it", function()
+  -- Ten turtles at one heartbeat every two seconds is five disk writes a second,
+  -- and a CC write is a real file operation on the host.
+  local ctx = serverContext()
+  local writes = 0
+  ctx.storage = { write = function() writes = writes + 1 return true end }
+  ctx.serialise = { encode = function() return "" end }
+
+  for _ = 1, 20 do
+    discovery.handle(ctx, 7, heartbeat())
+  end
+  expect.equal(writes, 0, "twenty heartbeats, no writes")
+  expect.truthy(ctx.dirty.fleet, "but the registry is marked")
+
+  persist.pass(ctx, ctx.clock.now())
+  expect.equal(writes, 1, "and one write covers all of them")
+end)
+
+it("a server runs discovery, reconcile and persist", function()
+  local clock = fakeClock(0)
+  local machine = server.boot(fakePorts(clock))
+  machine.supervisor:step()
+
+  expect.equal(machine.supervisor:running(), 3, "all three")
+  expect.truthy(machine.supervisor:healthy(), "and healthy")
+
+  local critical = {}
+  for _, row in ipairs(machine.supervisor:health()) do
+    critical[row.id] = row.critical
+  end
+  expect.truthy(critical.discovery, "a deaf server is not a server")
+  expect.truthy(critical.persist, "and one that has stopped writing looks fine until it reboots")
+  -- Marking this critical would take a whole machine down over a latency
+  -- problem: a server whose reconcile died still records heartbeats and still
+  -- answers devices that ask.
+  expect.falsy(critical.reconcile, "but a slow convergence is not an outage")
+end)

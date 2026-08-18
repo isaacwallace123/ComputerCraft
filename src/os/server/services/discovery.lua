@@ -24,6 +24,7 @@
 --- message that can be missed.
 
 local desired = require("domain.fleet.desired")
+local persist = require("os.server.services.persist")
 local registry = require("domain.fleet.registry")
 local service = require("os.service")
 
@@ -63,6 +64,11 @@ function discovery.handle(context, sender, message)
   -- therefore always behind, which is the correct answer - it has applied
   -- nothing because it does not know how to.
   desired.observe(record, message.applied, now)
+
+  -- Marked, not written. `persist` batches the registry because ten turtles at
+  -- one heartbeat every two seconds is five disk writes a second, and a CC write
+  -- is a real file operation on the host.
+  persist.mark(context, "fleet")
 
   return {
     kind = "desired",
