@@ -5,6 +5,11 @@ A plan for the rendering and component layer ICOS 2 is built on. Nothing here is
 Companion to [`docs/icos-2.md`](icos-2.md), which covers the OS split and the service
 model. This covers everything a person actually looks at.
 
+For the design system and the component API — tokens, variants, and what writing a screen
+feels like — see [`docs/ui-design.md`](ui-design.md). This document is the machinery
+underneath it. Run `.\tools\preview.ps1` to see the proposed look rendered through the
+real renderer at a real terminal size.
+
 ---
 
 ## 1. Why
@@ -391,7 +396,14 @@ collisions. That belongs with the theme, in phase 5.
 
 Light and dark are two token sets. Contrast still has to be checked on a real monitor —
 CC's palette is rendered at a size where subtle neutrals disappear — but the greyscale
-collision test can be done in a spec, without one.
+collision test can be done without one, and now is: `.\tools\preview.ps1` reports the
+separation of every semantic token in both themes. It found a `warn`/`destructive` pair one
+point apart on its first run.
+
+**The token set, the values, and the reasoning are in
+[`docs/ui-design.md`](ui-design.md).** In summary: six neutrals, two accent, three semantic,
+three free. There is no `info` — it was cut rather than retuned, because four semantic
+tones plus two text greys do not fit on one luminance axis with room to spare.
 
 Colours are handled as **palette indices 0–15** throughout the framework, not as
 `colors.*` bitmask values. `term.blit` names slots with a hex digit and the palette is

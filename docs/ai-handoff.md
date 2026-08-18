@@ -80,6 +80,8 @@ different tradeoff:
 | cell rendering, the diff, blit batching | `src/ui/buffer.lua`, `tools/spec/buffer_spec.lua` |
 | renderer performance numbers | `tools/bench.lua`, `tools/bench.ps1`, `docs/ui-framework.md` section 12 |
 | how we compare to Basalt | `tools/compare.lua`, `tools/compare.ps1`, `docs/ui-framework.md` sections 12 and 16 |
+| a colour, a token, or the theme | `docs/ui-design.md`, `tools/preview.lua` |
+| what a screen should look like | `docs/ui-design.md`, then `.\tools\preview.ps1` |
 | sector leases and frontiers | `src/domain/mine/registry.lua`, `src/fleet/coordinator.lua` |
 | turtle sector claiming | `src/mine/site.lua` |
 | movement/protected blocks | `src/turtle/nav.lua` |
