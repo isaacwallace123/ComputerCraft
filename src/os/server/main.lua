@@ -22,9 +22,12 @@
 
 local depotList = require("domain.depot.list")
 local discovery = require("os.server.services.discovery")
+local gps = require("os.server.services.gps")
 local leases = require("os.server.services.leases")
+local logrotate = require("os.server.services.logrotate")
 local mine = require("domain.mine.registry")
 local persist = require("os.server.services.persist")
+local policy = require("os.server.services.policy")
 local reconcile = require("os.server.services.reconcile")
 local registry = require("domain.fleet.registry")
 local supervisor = require("os.supervisor")
@@ -116,11 +119,19 @@ end
 ---   reconcile   nudge devices that are behind             built
 ---   persist     write state to disk, batched              built
 ---   leases      sector claims and frontiers                built
----   gps         the constellation beacon
----   policy      conservative auto-recovery
----   logrotate   keep the log from filling the disk
+---   gps         the constellation beacon                   built
+---   policy      conservative auto-recovery                 built
+---   logrotate   keep the log from filling the disk          built
 function server.services()
-  return { discovery.service, reconcile.service, persist.service, leases.service }
+  return {
+    discovery.service,
+    reconcile.service,
+    persist.service,
+    leases.service,
+    gps.service,
+    policy.service,
+    logrotate.service,
+  }
 end
 
 --- Handlers that read the server's single inbox.
@@ -154,6 +165,7 @@ function server.boot(ports, options)
     storage = ports.storage,
     transport = ports.transport,
     locator = ports.locator,
+    beacon = ports.beacon,
     serialise = ports.serialise,
     state = state,
     paths = server.PATHS,

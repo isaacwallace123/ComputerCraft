@@ -184,6 +184,29 @@ function registry.list(state, now, sort)
   return rows
 end
 
+--- The live records themselves, in a stable order.
+---
+--- `list` returns annotated copies, which is what a view wants and what a
+--- mutator must not have: writing a goal onto a copy sets it on nothing. So
+--- anything that changes a device goes through this instead.
+---
+--- Ordered by id rather than left in `pairs` order, and that is not tidiness.
+--- The policy service applies one rolling update per pass, so whichever device
+--- it reaches first is the one that updates - and `pairs` would make that a
+--- different turtle on every pass and in a different order after every reboot,
+--- which is a fleet that updates unpredictably and cannot be reasoned about
+--- while it is happening.
+function registry.records(state)
+  local records = {}
+  for _, record in pairs(state.devices) do
+    records[#records + 1] = record
+  end
+  table.sort(records, function(a, b)
+    return tostring(a.id) < tostring(b.id)
+  end)
+  return records
+end
+
 --- Quietest first.
 ---
 --- §6 of icos-2.md: *"A Devices app view sorted by staleness makes that the first

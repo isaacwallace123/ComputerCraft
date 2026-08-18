@@ -10,6 +10,10 @@ local it = require("support.spec").it
 local desired = require("domain.fleet.desired")
 local discovery = require("os.server.services.discovery")
 local leases = require("os.server.services.leases")
+local logrotate = require("os.server.services.logrotate")
+local gpsService = require("os.server.services.gps")
+local policy = require("os.server.services.policy")
+local policyRules = require("domain.fleet.policy")
 local minePlan = require("domain.mine.plan")
 local registry = require("domain.fleet.registry")
 local roles = require("os.roles")
@@ -212,10 +216,33 @@ end)
 ---------------------------------------------------------------------------
 
 --- Storage and a serialiser, over plain tables.
-local function fakePorts(clock)
+local function fakePorts(clock, options)
   local files = {}
+  options = options or {}
   return {
     clock = clock.port,
+    locator = {
+      gps = function()
+        return nil
+      end,
+      saved = function()
+        return options.position ~= false and { x = 10, y = 64, z = -3 } or nil
+      end,
+    },
+    -- A constellation host that answers nobody, which is what a spec wants: the
+    -- wire protocol belongs to CC and is exercised in the world, not here.
+    beacon = {
+      open = function()
+        return options.modem ~= false, options.modem == false and "no wireless modem" or "back"
+      end,
+      answer = function()
+        if coroutine.isyieldable() then
+          coroutine.yield()
+        end
+        return false
+      end,
+      close = function() end,
+    },
     storage = {
       read = function(path)
         return files[path]
@@ -485,7 +512,7 @@ it("a server runs discovery, reconcile and persist", function()
   local machine = server.boot(fakePorts(clock))
   machine.supervisor:step()
 
-  expect.equal(machine.supervisor:running(), 4, "all four")
+  expect.equal(machine.supervisor:running(), #server.services(), "all of them")
   expect.truthy(machine.supervisor:healthy(), "and healthy")
 
   local critical = {}
@@ -823,4 +850,227 @@ it("a mine request is answered by leases and ignored by discovery", function()
   expect.equal(#replies, 1, "exactly one reply")
   expect.equal(replies[1].kind, "mine_result", "and it came from leases")
   expect.equal(replies[1].requestId, 3, "matched to the request")
+end)
+
+---------------------------------------------------------------------------
+-- Policy: an unattended fleet that fixes itself and never overrules a person
+---------------------------------------------------------------------------
+
+--- A device parked for the given reason, reporting right now.
+local function parked(ctx, id, snapshot)
+  snapshot.parked = true
+  discovery.handle(ctx, id, { kind = "status", snapshot = snapshot })
+  return registry.get(ctx.state.fleet, id)
+end
+
+it("a refuelled turtle is sent back to work", function()
+  local ctx = serverContext()
+  parked(ctx, 7, { parkKind = "fuel", fuel = 500, fuelRequired = 200 })
+
+  local acted = policy.pass(ctx, ctx.clock.now())
+  expect.equal(#acted, 1, "one recovery")
+  expect.equal(acted[1].rule, "fuel", "the fuel rule")
+  expect.equal(registry.get(ctx.state.fleet, 7).desired.mode, "deploy", "goal set, not a command")
+end)
+
+it("policy never overrules a person", function()
+  -- The rule ICOS 1 stated in a comment and enforced by having no rule that
+  -- happened to match. Here it is structural: a standing goal that is not
+  -- `deploy` is somebody's decision, and no rule is even consulted.
+  local ctx = serverContext()
+  local record = parked(ctx, 7, { parkKind = "fuel", fuel = 500, fuelRequired = 200 })
+  desired.want(record, "recall", nil, ctx.clock.now())
+
+  expect.equal(#policy.pass(ctx, ctx.clock.now()), 0, "a recalled turtle is left alone")
+  expect.equal(record.desired.mode, "recall", "and stays recalled")
+
+  -- And the guard is the thing being tested, not the absence of a matching rule.
+  expect.falsy(policyRules.mayAct(record), "no rule may run against it")
+end)
+
+it("a recovery is not re-decided every pass", function()
+  local ctx = serverContext()
+  parked(ctx, 7, { parkKind = "error", detail = "depot full at 12,64,-3" })
+
+  expect.equal(#policy.pass(ctx, ctx.clock.now()), 1, "acted once")
+  expect.equal(#policy.pass(ctx, ctx.clock.now()), 0, "and not again immediately")
+
+  -- The goal is unchanged rather than re-sent, which is the whole reason a
+  -- generation compares by content: a policy loop must not bump it every pass.
+  local record = registry.get(ctx.state.fleet, 7)
+  expect.equal(record.desired.generation, 1, "one generation, not three")
+
+  ctx._clock.advance(policyRules.COOLDOWN.depot + 1)
+  expect.equal(#policy.pass(ctx, ctx.clock.now()), 0, "still nothing to say - the goal is right")
+end)
+
+it("only one turtle updates per pass", function()
+  -- A rolling update that queues ten turtles at once is not rolling, it is a
+  -- fleet that all stops at the same moment.
+  local ctx = serverContext()
+  ctx.version = "2.0.0"
+  ctx.policy = policyRules.normalise({ updateParked = true })
+  for id = 1, 4 do
+    parked(ctx, id, { parkKind = "manual", version = "1.9.0" })
+  end
+
+  local acted = policy.pass(ctx, ctx.clock.now())
+  expect.equal(#acted, 1, "one at a time")
+  expect.equal(acted[1].mode, "update", "and it is an update")
+
+  -- Deterministic, because `pairs` order would make it a different turtle every
+  -- pass and a different order after every reboot.
+  expect.equal(acted[1].id, 1, "the same turtle every time")
+end)
+
+it("updates stay opt-in and skip a turtle that is already in trouble", function()
+  local ctx = serverContext()
+  ctx.version = "2.0.0"
+  parked(ctx, 7, { parkKind = "manual", version = "1.9.0" })
+  expect.equal(#policy.pass(ctx, ctx.clock.now()), 0, "off by default")
+
+  ctx.policy = policyRules.normalise({ updateParked = true })
+  ctx.attempts = {}
+  ctx.state.fleet = registry.empty()
+  parked(ctx, 7, { parkKind = "error", detail = "stuck", version = "1.9.0" })
+  expect.equal(#policy.pass(ctx, ctx.clock.now()), 0, "a broken turtle needs a person")
+end)
+
+it("a device that has gone quiet is not acted on from a stale snapshot", function()
+  -- "Parked for fuel" twenty minutes ago is not evidence of anything now.
+  local ctx = serverContext()
+  parked(ctx, 7, { parkKind = "fuel", fuel = 500, fuelRequired = 200 })
+  ctx._clock.advance(20 * 60)
+
+  expect.equal(#policy.pass(ctx, ctx.clock.now()), 0, "nothing decided from old news")
+end)
+
+it("policy can be switched off entirely", function()
+  local ctx = serverContext()
+  ctx.policy = policyRules.normalise({ enabled = false })
+  parked(ctx, 7, { parkKind = "fuel", fuel = 500, fuelRequired = 200 })
+  expect.equal(#policy.pass(ctx, ctx.clock.now()), 0, "and then it does nothing at all")
+end)
+
+---------------------------------------------------------------------------
+-- GPS: the one service that must never be confidently wrong
+---------------------------------------------------------------------------
+
+it("the beacon serves what setup wrote down, never a GPS fix", function()
+  -- A host announcing the wrong position makes `gps.locate` return a confident
+  -- number, and a turtle that believes it is thirty blocks from where it is
+  -- drives into a wall and keeps going. Serving a fix would also let a
+  -- constellation bootstrap off its own error.
+  local ctx = {
+    locator = {
+      saved = function()
+        return { x = 10, y = 64, z = -3 }
+      end,
+      gps = function()
+        return 999, 999, 999
+      end,
+    },
+  }
+  local position = assert(gpsService.position(ctx))
+  expect.equal(position.x, 10, "from the saved record")
+  expect.equal(position.z, -3, "and not from the constellation")
+end)
+
+it("a half-written position is refused with something a person can act on", function()
+  local ctx = {
+    locator = {
+      saved = function()
+        return { x = 10, z = -3 }
+      end,
+    },
+  }
+  local position, reason = gpsService.position(ctx)
+  expect.falsy(position, "no position")
+  expect.contains(reason, "where set", "and it says how to fix it")
+end)
+
+it("a server with no wireless modem says so and reports unhealthy", function()
+  -- A service that is running and doing nothing is the worst of the three
+  -- states: the health page would show green while nothing in the world could
+  -- get a fix.
+  local clock = fakeClock(0)
+  local machine = server.boot(fakePorts(clock, { modem = false }))
+
+  for _ = 1, 8 do
+    machine.supervisor:step()
+    clock.advance(60)
+  end
+
+  local healthy, why = machine.supervisor:healthy()
+  expect.falsy(healthy, "not healthy")
+  expect.contains(why, "gps", "and it names the service")
+  expect.contains(machine.context.gpsReason, "wireless", "with the reason on the context")
+end)
+
+---------------------------------------------------------------------------
+-- Logrotate: the machine that is never rebooted is the one that never trimmed
+---------------------------------------------------------------------------
+
+local function logContext(text)
+  local files = { [logrotate.PATH] = text }
+  return {
+    storage = {
+      read = function(path)
+        return files[path]
+      end,
+      write = function(path, value)
+        files[path] = value
+        return true
+      end,
+    },
+    files = files,
+  }
+end
+
+it("a short log is left alone", function()
+  local ctx = logContext("one\ntwo\nthree\n")
+  expect.equal(logrotate.rotate(ctx), 0, "nothing to do")
+  expect.equal(ctx.files[logrotate.PATH], "one\ntwo\nthree\n", "and it is untouched")
+  expect.falsy(ctx.files[logrotate.PREVIOUS], "no previous generation invented")
+end)
+
+it("a full log is moved aside rather than truncated", function()
+  -- When something breaks at 3am and is noticed at 9am, the interesting lines
+  -- are the first ones after it started. Truncation keeps six hours of
+  -- consequences and deletes the cause.
+  local lines = {}
+  for i = 1, logrotate.MAX_LINES do
+    lines[i] = "line " .. i
+  end
+  local text = table.concat(lines, "\n") .. "\n"
+
+  local ctx = logContext(text)
+  expect.equal(logrotate.rotate(ctx), logrotate.MAX_LINES, "rotated the whole file")
+  expect.equal(ctx.files[logrotate.PATH], "", "a fresh log")
+  expect.contains(ctx.files[logrotate.PREVIOUS], "line 1", "and the cause survived")
+  expect.contains(ctx.files[logrotate.PREVIOUS], "line " .. logrotate.MAX_LINES, "with the rest")
+end)
+
+it("a log that cannot be moved is not cleared", function()
+  -- A full or read-only disk is exactly what this service exists for, and
+  -- exactly when clearing the current log would destroy the evidence of it.
+  local text = string.rep("line\n", logrotate.MAX_LINES)
+  local ctx = logContext(text)
+  ctx.storage.write = function(path, value)
+    if path == logrotate.PREVIOUS then
+      return false
+    end
+    ctx.files[path] = value
+    return true
+  end
+
+  expect.equal(logrotate.rotate(ctx), 0, "reported as not done")
+  expect.equal(ctx.files[logrotate.PATH], text, "and nothing was lost")
+end)
+
+it("a last line with no newline still counts", function()
+  expect.equal(logrotate.lines("a\nb"), 2, "two lines")
+  expect.equal(logrotate.lines("a\nb\n"), 2, "the same two")
+  expect.equal(logrotate.lines(""), 0, "and an empty file is empty")
+  expect.equal(logrotate.lines(nil), 0, "as is a missing one")
 end)

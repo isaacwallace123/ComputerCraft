@@ -627,6 +627,47 @@ name would mean a rollback reading a roster it cannot parse; the mine has the *s
 so sharing the name means a rollback keeps every lease and every surveyed shaft head. Only
 one server is ever running, because `startup.lua` picks one.
 
+### Phase 5: policy, GPS, logrotate — the server is complete
+
+**Policy** is the one that changed shape most. `fleet/policy.lua` opens by saying an
+unattended system "must not turn an intentional recall into an automatic redeploy", and
+enforces it by having no rule that happens to match a recalled turtle. That is not
+enforcement; it is an absence any future rule can end by accident.
+
+Desired state makes it structural: **policy never contradicts a standing goal.** It may act
+when a device has no goal, or when its goal is already `deploy` and reality disagrees — the
+case "it is supposed to be working and it is not". A recalled turtle has a goal of
+`recall`, so every rule is unreachable for it no matter what anybody adds later.
+
+It also stops sending commands and hoping. It sets a goal, and `reconcile` carries it — so
+a recovery dropped by a radio is retried by machinery that already exists, and one that
+succeeds is not re-sent. Per-device cooldowns live in the domain module because they are a
+property of the rule; the one-update-per-pass limit lives in the service because it is a
+property of the fleet. A rolling update that queues ten turtles at once is not rolling.
+
+**GPS** folds the old `gps` role into the server, and gets a new port. `transport` is
+rednet-shaped — ids and tables — while GPS is a raw modem exchange on a fixed channel where
+the *distance the modem reports* is the payload that matters. Widening `transport` with a
+channel concept exactly one caller needs would cost every null adapter and every spec; a
+second narrow port costs less. The wire protocol is verified against `rom/programs/gps.lua`
+and `rom/apis/gps.lua` at tag `v1.20.1-1.113.1`, not remembered.
+
+It serves only what `locator.saved` reports and never what `locator.gps` returns. A missing
+host makes `gps.locate` return nil and every caller falls back to dead reckoning; a host
+announcing the *wrong* position makes it return a confident number, and a turtle that
+believes it is thirty blocks from where it is drives into a wall and keeps going. Serving a
+fix would also let a constellation bootstrap off its own error.
+
+With no modem or no saved position it raises rather than parking quietly. The tempting
+alternative — sleep forever, report "running" — makes the health page show green while
+nothing in the world can get a fix, which is the worst of the three states.
+
+**Logrotate** fixes a bug rather than porting one. `core/log.lua` trims on open, so the one
+machine that is never rebooted is the one machine whose log is never trimmed — and §2's
+premise is that a server is permanently loaded. It rotates rather than truncates: when
+something breaks at 3am and is noticed at 9am, the interesting lines are the first ones
+after it started, and truncation keeps six hours of consequences and deletes the cause.
+
 ### Phase 5: the miner, and the rolling update
 
 `os/miner/agent.lua` is the device half of desired state: what a turtle persists, what it
