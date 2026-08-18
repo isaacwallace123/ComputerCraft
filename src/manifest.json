@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T00:42:09-04:00",
+    "generated":  "2026-08-18T02:31:18-04:00",
     "files":  [
                   "adapters/cc/body.lua",
                   "adapters/cc/clock.lua",
@@ -85,7 +85,9 @@
                   "turtle/peers.lua",
                   "ui/anim.lua",
                   "ui/buffer.lua",
+                  "ui/canvas.lua",
                   "ui/components/controls.lua",
+                  "ui/components/graphics.lua",
                   "ui/components/layout.lua",
                   "ui/components/page.lua",
                   "ui/components/table.lua",
@@ -96,6 +98,7 @@
                   "ui/layout.lua",
                   "ui/reactive.lua",
                   "ui/runtime.lua",
+                  "ui/sprite.lua",
                   "ui/theme.lua",
                   "ui/util.lua",
                   "update.lua"

@@ -31,6 +31,7 @@ local SPECS = {
   "runtime_spec",
   "input_spec",
   "anim_spec",
+  "canvas_spec",
 }
 
 local filter = ...

@@ -320,7 +320,7 @@ and an edit model — and nothing in the fleet UI has asked for it yet.
 
 **Feedback** — `Toast`, `Spinner`, `Skeleton`, `Empty`, `Banner`.
 
-**Graphics** — `Canvas`, `Sprite`, `Logo`.
+**Graphics** — **`Canvas`**, **`Sprite`**, `Logo`.
 
 `Page` is the one that does not exist in Basalt and carries most of the consistency. It
 owns the title, the status line, the separators, and the action row, so every screen in

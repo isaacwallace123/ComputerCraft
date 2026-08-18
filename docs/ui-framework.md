@@ -191,10 +191,28 @@ one `blit` of one character. This is the entire reason animation becomes afforda
 `ui/canvas` draws into the same buffer at 2×3 resolution using the block glyphs, exposing
 `setPixel`, `line`, `rect`, `circle`, `sprite`, and `image`. A `Canvas` component gives
 any region of the UI a pixel surface — used for card faces, the ICOS logo, sparklines
-that want to be curves rather than bars.
+that want to be curves rather than bars. Pixel coordinates begin at 1; a component box
+`w × h` cells exposes exactly `2w × 3h` pixels to its `Draw` callback.
 
-Sprites are authored as a simple indexed-colour format checked into the repo, not
-generated at runtime.
+Sprites are authored as rows of palette-index hex digits, with `.` for transparency, and
+checked into the repo rather than generated at runtime:
+
+```lua
+local chip = ui.sprite.new({
+  ".cc.",
+  "cddc",
+  ".cc.",
+})
+```
+
+`Sprite` measures that asset to its intrinsic cell size; `Canvas` owns an arbitrary region
+and draws through a callback. Both feed complete encoded rows into `ui/buffer`, never one
+write per pixel. The normal diff still decides what reaches the terminal.
+
+A glyph can hold only two colours. If drawing creates three or more in one 2×3 block, the
+two most frequent survive and the rest go to the nearest survivor in the active theme's
+RGB palette. Ties are settled in reading order. That rule is deterministic, honours the
+custom palette rather than assuming CC's defaults, and is recorded in D036.
 
 ---
 
@@ -420,7 +438,7 @@ two tokens that differ only in hue — a green `good` and a red `bad` at the sam
 — become the same grey, and the row that says a turtle is stuck becomes indistinguishable
 from the row that says it is fine. So every semantic pair must separate on luminance as
 well, and the palette needs a check that computes `(r + g + b) / 3` per token and fails on
-collisions. That belongs with the theme, in phase 5.
+collisions. That is enforced by `theme.separation`, which landed with the theme in phase 2.
 
 Light and dark are two token sets. Contrast still has to be checked on a real monitor —
 CC's palette is rendered at a size where subtle neutrals disappear — but the greyscale
@@ -448,40 +466,48 @@ Explicit targets, and — as of phase 1 — measured numbers rather than hopes. 
 
 ### Measured
 
-`src/ui/buffer.lua` at the phase 1 implementation, painting a fleet dashboard modelled on
-the real Fleet page. `blits` is calls through `ports/screen`; `chars` is how many cells
-those calls carried.
+The phase 5 renderer, painting a fleet dashboard modelled on the real Fleet page and a
+full-surface pixel workload. `blits` is calls through `ports/screen`; `chars` is how many
+cells those calls carried.
 
 | Case | Surface | blits/frame | chars/frame | ms/frame |
 | --- | --- | ---: | ---: | ---: |
-| Idle, nothing touched | 164×81 | 0 | 0 | 0.005 |
-| Idle, page repainted in full | 164×81 | 0 | 0 | 0.63 |
+| Idle, nothing touched | 164×81 | 0 | 0 | 0.000 |
+| Idle, page repainted in full | 164×81 | 0 | 0 | 0.64 |
 | Dashboard update (10 heartbeats + clock) | 164×81 | 11 | 171 | 0.28 |
-| Full repaint, every cell differs | 164×81 | **81** | 13,284 | **0.79** |
-| Idle, page repainted in full | 51×19 | 0 | 0 | 0.13 |
+| Full repaint, every cell differs | 164×81 | **81** | 13,284 | **0.84** |
+| Full 2×3 canvas repaint | 164×81 | **81** | 13,284 | **4.46** |
+| Idle, page repainted in full | 51×19 | 0 | 0 | 0.12 |
 | Dashboard update | 51×19 | 11 | 171 | 0.09 |
-| Full repaint, every cell differs | 51×19 | 19 | 969 | 0.15 |
+| Full repaint, every cell differs | 51×19 | 19 | 969 | 0.16 |
+| Full 2×3 canvas repaint | 51×19 | 19 | 969 | 0.34 |
 
 ### Against the budget
 
 | Metric | Budget | Measured | |
 | --- | --- | --- | --- |
-| Idle screen | 0 terminal calls, < 1ms comparison pass | 0 calls; 0.005ms untouched, 0.63ms when the page repaints itself | ✅ |
+| Idle screen | 0 terminal calls, < 1ms comparison pass | 0 calls; < 0.001ms untouched, 0.64ms when the page repaints itself | ✅ |
 | Typical dashboard update | < 40 `blit` calls | 11 | ✅ |
-| Full-screen change, 164×81 | one frame (50ms) | 0.79ms — 2% of a tick, 16% of a contended 5ms slice | ✅ |
-| Frame loop while animating | 10–15 FPS sustained, no starved input | not yet measurable; needs phase 4 | — |
+| Full-screen change, 164×81 | one frame (50ms) | 0.84ms — 2% of a tick, 17% of a contended 5ms slice | ✅ |
+| Full 2×3 canvas, 164×81 | one frame (50ms) | 4.46ms — 9% of a tick, 89% of a contended 5ms slice | ⚠️ |
+| Frame loop while animating | 10–15 FPS sustained, no starved input | idle/driver behaviour is spec-covered; Cobalt still needs an in-world smoke test | ⚠️ |
 
 **The one-tick premise holds, with room.** A full repaint of the largest monitor a person
-can build costs 0.79ms and 81 terminal calls, against a 50ms tick. It also fits inside the
+can build costs 0.84ms and 81 terminal calls, against a 50ms tick. It also fits inside the
 5ms slice a computer gets when it is sharing a thread with ten turtles (§2), which is the
 budget that actually binds and which the original target did not account for.
+
+The phase 5 pixel case rebuilds and encodes all 79,704 subpixels, changes every terminal
+cell, and still costs 4.46ms on desktop Lua. It fits one contended slice here, narrowly;
+the in-game Cobalt measurement remains part of phase 6's soak test.
 
 ### Read the times with the caveat attached
 
 The bench runs on the Lua the language server embeds — PUC Lua on a desktop CPU. In game
 the same code runs on Cobalt, a Java interpreter, on a server that is doing other things.
-Cobalt is slower; a conservative 10× would put the full repaint at about 8ms, still inside
-a tick but no longer inside a single contended slice.
+Cobalt is slower; a conservative 10× would put the cell repaint at about 8ms and the
+synthetic full-wall canvas at about 45ms, both inside a tick but neither inside a single
+contended slice.
 
 Which is why the bench reports counts as well. **81 blits and 13,284 characters are
 properties of the algorithm** and are identical on every interpreter. The times say whether
@@ -490,15 +516,32 @@ counts, and re-measure the times on hardware before trusting a margin.
 
 Three results are worth reading beyond the pass mark:
 
-- **Idle is genuinely free.** Not "cheap" — 0.005ms and zero calls, because a frame with
+- **Idle is genuinely free.** Not "cheap" — below the timer's useful precision and zero calls, because a frame with
   no dirty rows examines nothing at all. This is what makes §8's claim affordable: a frame
   loop can tick at 20 FPS behind a settled screen and cost nothing.
-- **A page that repaints itself in full still emits nothing.** 0.63ms of painting into the
+- **A page that repaints itself in full still emits nothing.** 0.64ms of painting into the
   back buffer, and zero terminal calls, because the diff finds every row identical. That is
   the compatibility story for every app in this repository as it stands: they can keep
   redrawing everything and stop flickering, before any of them is rewritten.
 - **The dashboard update is 11 calls for 171 characters** — one per changed row, spanning
   first change to last. The naive per-cell renderer would have emitted somewhere near 171.
+**The canvas row is the one caveat in this table**, and it is marked rather than passed.
+Against the stated 50ms budget it passes comfortably; against the 5ms slice a computer
+actually gets on a loaded server (§2) it uses 89% — and the same 10× Cobalt margin that
+leaves a cell repaint inside a tick puts a full-wall canvas at roughly 45ms, which is nine
+slices. A full monitor wall of pixels is a thing you can draw once. It is not a thing you
+can animate while ten turtles are reporting.
+
+That gives §15's *"canvas is for content, never for chrome"* a quantitative form. A canvas
+costs about **0.3µs per terminal cell** here; allowing 10× for Cobalt, a 5ms slice affords
+roughly **1,700 cells of pixel surface per frame** — a full 51×19 computer terminal, or
+about a third of a monitor wall. Sizing an animated canvas is a real decision, and the
+answer is a region rather than the whole screen.
+
+- **A full pixel surface stays batched.** Rebuilding the largest possible canvas costs
+  4.46ms but still emits exactly 81 runs, one per terminal row. The first implementation
+  took 26.42ms; allocation-free two-colour encoding and retained pixel rows cut that by
+  more than six times (D037).
 
 ### Against Basalt 2
 
@@ -601,8 +644,8 @@ Not on Server, and not on a turtle.
 | 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app on it | **done** |
 | 3 | `ui/input`, focus, gestures | Full interaction parity with today | **done** |
 | 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity | **done** |
-| 5 | `ui/canvas` + sprites | Imagery; theming landed early, in phase 2 | **next** |
-| 6 | Blackjack | Showcase and soak test | |
+| 5 | `ui/canvas` + sprites | Imagery; theming landed early, in phase 2 | **done** |
+| 6 | Blackjack | Showcase and soak test | **next** |
 | 7 | Port remaining apps, add AP ports | Old `core/ui.lua` deleted; chat notifications | |
 
 **Phase 1 landed**, with `ports/`, `adapters/cc`, `adapters/sim`, `src/ui/buffer.lua`, the
@@ -715,6 +758,35 @@ back:
 - **A targeted repaint inside a clipped container has to replay its ancestors' clips.**
   Painting a subtree in isolation is not the same as painting it in context, and without
   the replay a row scrolled off the top repaints itself over whatever is above the panel.
+
+### What phase 5 delivered
+
+- `ui/canvas.lua` — a pure pixel surface with clipped points, Bresenham lines, outlined or
+  filled rectangles, outlined or filled midpoint circles, numeric images, sprite drawing,
+  and the 2×3 encoder. It knows no terminal and paints one complete run into the buffer per
+  character row.
+- `ui/sprite.lua` — the deliberately small source format above, validated once when it is
+  constructed, plus transparency and palette remapping when it is drawn.
+- `Canvas` and `Sprite` components. The former exposes a retained node's cell box as pixels;
+  the latter measures immutable art to `ceil(width / 2) × ceil(height / 3)`. Replacing a
+  same-sized reactive sprite repaints its own cell and does not re-solve the page.
+- Six specs covering the glyph's foreground/background swap, theme-aware reduction,
+  clipped primitives, sprite validation and remapping, row batching, and retained reactive
+  repaint. The suite is now 168 specs.
+- `tools/bench.lua` gained a full-canvas workload. The largest monitor rebuilds and changes
+  all 79,704 pixels in 4.46ms on desktop Lua, still emitting one run per terminal row. The
+  Cobalt result is deliberately left for Blackjack's in-world soak test.
+
+The Basalt reference confirmed the important representation trick: pixel six is carried by
+the background and the other five select the glyph. Its pixelbox plugin uses a fixed
+distance table for CC's default colours; ICOS cannot, because its sixteen slots are
+deliberately redefined by the active theme. D036 records why reduction receives the real
+palette instead.
+
+The first correct encoder was not fast enough: it took 26.42ms for that full-wall case.
+The normal one/two-colour path now allocates no per-cell tables and retained components
+reuse their pixel rows, reducing it to 4.46ms. D037 keeps the benchmark and the reason for
+those two otherwise-easy-to-remove optimisations together.
 
 ---
 

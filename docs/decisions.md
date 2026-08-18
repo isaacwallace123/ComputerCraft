@@ -587,6 +587,74 @@ The test for adding a property to the structural list is not "can it change the 
 "can it change where anything ends up". `Scroll` cannot change any size at all, and it is
 the clearest member of the set.
 
+## D036 — A 2×3 cell keeps its two dominant colours and reduces through the active palette
+
+**Status:** accepted
+
+ComputerCraft's semigraphic glyph has six pixels but only a foreground and background.
+That is exact for two colours and under-specified for three. Intersecting primitives make
+three-colour cells unavoidable even when every sprite is authored carefully, so rejecting
+them would turn an ordinary overlap into a runtime error and choosing arbitrarily would
+make the image change when iteration order changed.
+
+`ui/canvas.lua` counts colours in each 2×3 cell, keeps the two most frequent, and maps each
+discarded colour to the nearer survivor in the active palette's RGB values. Equal counts
+use first appearance in row-major order; equal distances choose the dominant colour. The
+same pixels and palette therefore always produce the same character. Without palette data,
+discarded colours conservatively become the dominant one.
+
+The active palette is load-bearing. Basalt's pixelbox plugin demonstrates the same local
+reduction with a fixed distance table over ComputerCraft's default colour constants. ICOS
+redefines all sixteen slots for dark and light themes, so those distances would describe
+colours that are no longer on screen. A hosted Canvas inherits `root.palette`; a standalone
+canvas may receive one explicitly.
+
+The sixth pixel becomes the background and each of the first five pixels unlike it sets a
+glyph bit. That foreground/background swap is how bytes 128–159 represent all 64 binary
+patterns, and it is covered directly by the canvas specs.
+
+There is deliberately no second dirty-rectangle renderer for imagery yet. Canvas encodes
+one whole buffer run per character row, after which the existing cell diff emits only the
+changed span. D029 already names the threshold for revisiting this: measure first, and add a
+canvas-specific rectangle path only if moving sprites make two-dimensional sparse changes
+the dominant workload.
+
+## D037 — The canvas fast path allocates nothing per cell and retains its pixel rows
+
+**Status:** accepted
+
+The first correct phase 5 implementation rebuilt every pixel row and allocated a six-entry
+pixel table, colour-count map, and sortable list for every terminal cell. On an 8×6 monitor
+at scale 0.5 that is 79,704 subpixels and 13,284 cells. The full-canvas benchmark took
+26.42ms per frame on desktop Lua — technically inside a 50ms tick, but with no credible
+headroom for Cobalt or the fleet service sharing the machine.
+
+Two observations remove work without changing the drawing contract:
+
+- Nearly every cell in authored art has one or two colours, because two is the hardware
+  limit. That path detects its colours in locals and encodes directly. Only a genuinely
+  crowded cell allocates frequency data and performs D036's palette-aware reduction.
+- A retained Canvas always starts a repaint clear, but its row tables do not have to be
+  new. `components/graphics.lua` keeps the pixel surface on the node and `Canvas:clear`
+  overwrites those rows. Resizing replaces it; ordinary animation does not make tens of
+  thousands of tables for the garbage collector.
+
+Together they reduce the same workload to 4.46ms while preserving the 81-blit result. This
+is why `tools/bench.lua` now includes `full canvas repaint`: removing either optimisation
+is easy, remains functionally correct, passes every picture spec, and would otherwise lose
+the performance property silently.
+
+**What the number still does not buy.** 4.46ms clears the stated 50ms frame budget, and it
+uses 89% of the 5ms slice a computer actually gets when it shares a thread with ten turtles
+(section 2 of `ui-framework.md`). Applying the same 10x Cobalt margin used everywhere else
+puts a full-wall canvas at roughly 45ms - inside a tick, and nine slices deep.
+
+So the optimisation changed what is possible, not what is advisable. A monitor wall of
+pixels is something to draw once, not something to animate beside a running fleet. The
+working figure is about **0.3us per terminal cell**, which after the Cobalt margin affords
+roughly **1,700 cells per frame** in a slice: a full computer terminal, or a third of a
+wall. That is the quantitative form of "canvas is for content, never for chrome", and it
+is the number to check before putting an animated canvas on a monitor.
 ## D014 — Version changes happen at merge
 
 **Status:** accepted

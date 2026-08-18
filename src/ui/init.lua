@@ -14,6 +14,7 @@
 require("ui.components.text")
 require("ui.components.layout")
 require("ui.components.controls")
+require("ui.components.graphics")
 require("ui.components.page")
 require("ui.components.table")
 
@@ -22,10 +23,12 @@ local runtime = require("ui.runtime")
 local ui = {
   anim = require("ui.anim"),
   buffer = require("ui.buffer"),
+  canvas = require("ui.canvas"),
   input = require("ui.input"),
   layout = require("ui.layout"),
   reactive = require("ui.reactive"),
   runtime = runtime,
+  sprite = require("ui.sprite"),
   host = require("ui.host"),
   theme = require("ui.theme"),
   util = require("ui.util"),

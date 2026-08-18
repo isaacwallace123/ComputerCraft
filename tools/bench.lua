@@ -1,8 +1,9 @@
 --- Renderer bench: what a frame actually costs.
 ---
 --- Run with `tools\bench.ps1`. Reports blit calls and wall time for the three
---- cases docs/ui-framework.md sets budgets for, on the two surfaces that exist:
---- a computer terminal and the largest monitor a person can build.
+--- cases docs/ui-framework.md sets budgets for, plus the full-canvas phase 5
+--- case, on the two surfaces that exist: a computer terminal and the largest
+--- monitor a person can build.
 ---
 --- ## Read the times with the caveat attached
 ---
@@ -24,7 +25,9 @@ package.path = table.concat({
 }, ";")
 
 local buffer = require("ui.buffer")
+local canvas = require("ui.canvas")
 local recorder = require("adapters.sim.screen")
+local theme = require("ui.theme")
 
 --- A screen port that counts calls and throws the pixels away.
 ---
@@ -121,6 +124,33 @@ local function updateFleet(frame, tick)
   end
 end
 
+--- Rebuild a full-surface pixel image and change every cell.
+---
+--- This is intentionally harsher than the Blackjack table phase 6 will draw:
+--- the canvas covers the whole monitor, is recreated exactly as the retained
+--- component recreates one on repaint, and its ground colour alternates so the
+--- diff cannot save any terminal traffic. Sparse diagonal stitches force the
+--- semigraphic encoder down its two-colour path as well as its solid fast case.
+local function paintCanvas(frame, tick)
+  local width, height = frame:size()
+  local ground = tick % 2 == 0 and 15 or 6
+  local ink = tick % 2 == 0 and 1 or 7
+  local pixels = frame._benchCanvas
+  if not pixels then
+    pixels = canvas.new(width * 2, height * 3, ground, theme.dark)
+    frame._benchCanvas = pixels
+  else
+    pixels:clear(ground)
+  end
+  for y = 1, height * 3 do
+    local first = (y + tick) % 8 + 1
+    for x = first, width * 2, 8 do
+      pixels:setPixel(x, y, ink)
+    end
+  end
+  pixels:paint(frame, 1, 1, width, height, theme.dark)
+end
+
 ---------------------------------------------------------------------------
 -- Running one case
 ---------------------------------------------------------------------------
@@ -167,7 +197,7 @@ print("")
 print("  Lua: " .. _VERSION .. "  (desktop; in game this is Cobalt and slower)")
 print("")
 
-local worst = { idle = 0, dashboard = 0, repaint = 0 }
+local worst = { idle = 0, dashboard = 0, repaint = 0, canvas = 0 }
 
 for _, surface in ipairs(SURFACES) do
   print(surface.name)
@@ -212,8 +242,17 @@ for _, surface in ipairs(SURFACES) do
     end
   end)
 
+  -- Pixel work is substantially heavier than cell painting, so 50 frames are
+  -- enough to smooth timer noise without making the normal verification loop
+  -- wait on a synthetic wall-sized animation.
+  local canvasRepaint = run("full canvas repaint", surface.width, surface.height, 50, function(frame)
+    paintCanvas(frame, 0)
+  end, function(frame, tick)
+    paintCanvas(frame, tick)
+  end)
+
   if surface.width == 164 then
-    worst.idle, worst.dashboard, worst.repaint = idle, dashboard, repaint
+    worst.idle, worst.dashboard, worst.repaint, worst.canvas = idle, dashboard, repaint, canvasRepaint
   end
   print("")
 end
@@ -226,3 +265,21 @@ print(
     worst.repaint / 5 * 100
   )
 )
+-- Reported against the slice as well as the tick, like the line above it. The
+-- slice is the budget that actually binds on a loaded server, and the canvas is
+-- the one case in this repository where the two answers differ enough to change
+-- a decision: a cell repaint uses a sixth of a slice, a full-wall canvas most of
+-- one, and the same 10x Cobalt margin puts the first inside a slice and the
+-- second nowhere near it.
+print(
+  ("full 2x3 canvas of the largest monitor: %.3f ms  (%.0f%% of a tick, %.0f%% of a slice)"):format(
+    worst.canvas,
+    worst.canvas / 50 * 100,
+    worst.canvas / 5 * 100
+  )
+)
+print("")
+print("  a canvas costs about 0.3us per terminal cell here. Allowing 10x for")
+print("  Cobalt, a 5ms slice affords roughly 1,700 cells of pixel surface per")
+print("  frame - a full computer terminal, or a third of a monitor wall. Sizing")
+print("  an animated canvas is therefore a real decision; see section 12.")

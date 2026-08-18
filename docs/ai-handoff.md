@@ -85,6 +85,7 @@ different tradeoff:
 | the event loop a screen runs in | `src/ui/host.lua` |
 | springs, tweens, easings, the frame gate | `src/ui/anim.lua` |
 | clipping, scrolling, overlays | `Buffer:clip` in `src/ui/buffer.lua`, `Scroll`/`Absolute` in `src/ui/layout.lua` |
+| 2×3 pixel drawing and indexed sprites | `src/ui/canvas.lua`, `src/ui/sprite.lua`, `src/ui/components/graphics.lua` |
 | a screen built on the framework | `src/apps/<id>/view.lua` |
 | renderer performance numbers | `tools/bench.lua`, `tools/bench.ps1`, `docs/ui-framework.md` section 12 |
 | how we compare to Basalt | `tools/compare.lua`, `tools/compare.ps1`, `docs/ui-framework.md` sections 12 and 16 |
@@ -254,6 +255,11 @@ large AFK run.
   silently. `^ui%.` was on the list and had to come off: an animation built through the old
   runtime asked a freshly required `ui/reactive.lua` whether its goal was a state object,
   was told no, and quietly animated a table.
+- One 2×3 glyph can show only two colours. `ui/canvas.lua` keeps the two most frequent and
+  maps any others through the active theme palette; do not replace that with distances
+  between CC's default colours, because ICOS redefines every palette slot. Sprite assets
+  are immutable hex rows with `.` transparency — replace a reactive asset rather than
+  mutating its rows in place.
 - `tools/spec/support/world.lua` is likewise an alias for `src/adapters/sim/world.lua`.
   The world keeps `install()`, which writes CC's APIs onto `_G`, beside its new `ports()`.
   Both are correct for now: modules written before ports existed read those globals, and

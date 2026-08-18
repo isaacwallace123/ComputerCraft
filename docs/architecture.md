@@ -57,8 +57,8 @@ domain/   pure logic. May not reference a CC global; the check enforces it.
 ports/    interface definitions - a method list, a check, a null implementation.
 adapters/ cc/   real implementations over fs, rednet, term, turtle, gps
           sim/  the simulated world, and a recording screen
-ui/       the framework: cell buffer and diff, reactive graph, layout solver,
-          retained node tree, theme tokens, components
+ui/       the framework: cell buffer and diff, 2×3 canvas and sprites, reactive graph,
+          layout solver, retained node tree, theme tokens, components
 ```
 
 `domain/mine/` holds `plan.lua` and `registry.lua`, moved from `mine/` without logic
