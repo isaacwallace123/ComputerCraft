@@ -488,6 +488,18 @@ the terminal. Basalt's side is a faithful reimplementation of its published
 | **Page repaints itself, same result** | **0** | **81** | **0** | **13,284** |
 | Full repaint, everything differs | 81 | 81 | 13,284 | 13,284 |
 
+Since phase 2 the comparison also runs the **whole framework** rather than only the
+renderer, because that is where the advantage is actually won or lost. One heartbeat —
+a single turtle changing fuel and phase, on a full page of six devices:
+
+| | blits |
+| --- | ---: |
+| ICOS: the node is marked, its subtree is painted | **1** |
+| Root invalidation: the whole tree is painted | **81** |
+
+The ICOS figure is the real thing: `ui/runtime.lua`, the real reactive graph, the real
+layout solver, and `apps/fleet/view.lua`. Nothing is simulated on that side.
+
 **The two designs tie at both extremes and diverge in the middle, which is where a
 dashboard lives.** Nothing-changed is free in both, because both skip the work when no
 element reports a change. Everything-changed costs 81 calls in both, because that is the
@@ -558,8 +570,8 @@ Not on Server, and not on a turtle.
 | # | Phase | Delivers | |
 | --- | --- | --- | --- |
 | 1 | `ports/screen`, `ui/buffer`, diff + blit, bench | Flicker-free painting, measured | **done** |
-| 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app (Devices) on it | **next** |
-| 3 | `ui/input`, focus, gestures | Full interaction parity with today | |
+| 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app on it | **done** |
+| 3 | `ui/input`, focus, gestures | Full interaction parity with today | **next** |
 | 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity | |
 | 5 | `ui/canvas` + sprites + theming | Imagery and real palettes | |
 | 6 | Blackjack | Showcase and soak test | |
@@ -576,13 +588,45 @@ screen, with a list, a detail view, a settings editor, and scrolling. If it does
 out simpler than the current version, the framework is not earning its place and the plan
 should be revisited before phase 3.
 
-**Phase 2 has one hard constraint, and it is the whole reason this framework exists.**
-A `:set()` must mark the **node** paint-dirty or layout-dirty, never the root. Invalidating
-upwards to the frame is the simplest thing that works, it is what Basalt 2 does, and §12
-measures what it costs: one changed label becomes 81 blits instead of one. `Value`,
-`Computed`, and `Observer` already know which property changed; the binding must carry that
-down to a region, and `tools/compare.ps1` must still show the gap afterwards. If phase 2
-lands and the comparison has closed, phase 2 is wrong.
+**Phase 2 had one hard constraint, and it held.** A `:set()` marks the **node**
+paint-dirty or layout-dirty, never the root. `tools\compare.ps1` now measures the whole
+framework rather than only the renderer, and one heartbeat on a full 164×81 page costs
+**1 blit** against **81** for the same change under root invalidation.
+
+### What phase 2 delivered
+
+- `ui/reactive.lua` — `Value`, `Computed` with explicit `use`, `Observer`, `scoped()`,
+  cycle detection, and a live-object count for the leak check §15 asks for.
+- `ui/layout.lua` — the flex subset, integer-only, with the remainder rule written down.
+  Pure functions over plain tables; it knows nothing about nodes or painting.
+- `ui/runtime.lua` — the retained tree, the bindings, and the per-node dirty queue.
+- `ui/theme.lua` — the sixteen tokens, both palettes, and the greyscale check.
+- `ui/components/` — `Text`, `Heading`, `Muted`, `Box`, `Row`, `Column`, `Card`, `Spacer`,
+  `Separator`, `Button`, `Badge`, `Meter`, plus the `Page` and `Table` composites.
+- `apps/fleet/view.lua` — the Fleet dashboard rebuilt, with no coordinates, no colours, no
+  redraw calls and no derived value that can go stale.
+- 48 new specs, all of them without a world or a Minecraft.
+
+Three refinements were forced by building it, and each is a comment in the file it lives
+in:
+
+- **Re-measure before deciding to re-solve.** Classifying `Text` as layout-affecting and
+  stopping there would re-solve and repaint on every heartbeat. "miner-3" becoming
+  "miner-4" measures the same, so the frame degrades it to a paint. Without this the
+  binding is precise and the frame throws the precision away.
+- **Invalidation is not change.** A `Computed` reading the whole device list is
+  invalidated whenever any device reports, but usually formats to the string it already
+  had. The binding compares before marking, which is what turns forty invalidated cells
+  into the eleven that moved.
+- **Defaults belong at construction, not in `paint`.** `Direction` is read during measure,
+  so a `Column` that set its own direction while painting had already been laid out as a
+  row.
+
+Phase 3 rebuilding **Devices** is the remaining half of the original acceptance test:
+Devices is the densest existing screen, and it needs input, focus and scrolling to exist
+first. Fleet was rebuilt in phase 2 instead because it is the screen the framework's
+performance claim is actually about, and because it needs no input at all — which made it
+the one screen that could be finished before `ui/input` exists.
 
 ---
 

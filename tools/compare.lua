@@ -376,6 +376,89 @@ for _, case in ipairs(CASES) do
   print(("  %-34s"):format("    " .. case.note))
 end
 
+---------------------------------------------------------------------------
+-- The same question, one layer up
+---------------------------------------------------------------------------
+
+--- Everything above compares renderers given identical painting. This compares
+--- what the two **frameworks** paint, which is where Basalt 2's advantage is
+--- actually lost.
+---
+--- Its property system knows exactly which property changed. Then
+--- `BaseElement:updateRender` walks up the parent chain and marks the root
+--- frame, so the whole visible tree redraws and every one of those redraws is a
+--- write and every write is a rectangle. Ours marks the node, and the frame
+--- paints that node's subtree and nothing else.
+---
+--- The ICOS side here is the real thing - `ui/runtime.lua`, the real reactive
+--- graph, the real layout solver, the real Fleet screen. The Basalt side is its
+--- renderer fed the full repaint its invalidation model produces.
+local ui = require("ui.init")
+local fleetScreen = require("apps.fleet.view")
+
+local function roster(fuel, phase)
+  return {
+    { id = 1, label = "miner-1", phase = "mining", fuel = 82000, fuelLimit = 100000, online = true },
+    { id = 2, label = "miner-2", phase = phase, fuel = fuel, fuelLimit = 100000, online = true },
+    { id = 3, label = "miner-3", phase = "unloading", fuel = 77000, fuelLimit = 100000, online = true },
+    { id = 4, label = "miner-4", phase = "parked", fuel = 2000, fuelLimit = 100000, online = false },
+    { id = 5, label = "miner-5", phase = "mining", fuel = 55000, fuelLimit = 100000, online = true },
+    { id = 6, label = "miner-6", phase = "mining", fuel = 48000, fuelLimit = 100000, online = true },
+  }
+end
+
+local function frameworkCase()
+  local screen = counting(WIDTH, HEIGHT)
+  local scope = ui.scoped()
+  local devices
+  local root = ui.mount({
+    scope = scope,
+    screen = screen.port,
+    build = function(s)
+      devices = s:Value(roster(31000, "returning"))
+      return fleetScreen.build(s, {
+        devices = devices,
+        selected = s:Value(nil),
+        capacity = 60,
+        onDeploy = function() end,
+      })
+    end,
+  })
+  root:render()
+  screen.blits, screen.chars = 0, 0
+
+  -- One heartbeat: one turtle burns fuel and changes phase. Everything else on
+  -- the page recomputes to exactly the string it already held.
+  devices:set(roster(30000, "mining"))
+  root:render()
+  local mine = screen.blits
+
+  root:destroy()
+  return mine
+end
+
+--- What the same heartbeat costs when one property change invalidates the root.
+local function rootInvalidationCase()
+  local screen = counting(WIDTH, HEIGHT)
+  local frame = basaltStyle.new(screen, WIDTH, HEIGHT)
+  paintFleet(frame, 0)
+  frame:present()
+  screen.blits, screen.chars = 0, 0
+
+  -- The whole tree redraws, so every element writes, so every write is a rect.
+  paintFleet(frame, 0)
+  frame:write(35, 4, pad(30000, 8), WHITE, BLACK)
+  frame:present()
+  return screen.blits
+end
+
+print("")
+print("  through the whole framework, not just the renderer")
+print("  one heartbeat: one turtle changes fuel and phase, on a full page")
+print("")
+print(("    ICOS      %3d blits   node marked, subtree painted"):format(frameworkCase()))
+print(("    Basalt 2  %3d blits   root marked, whole tree painted"):format(rootInvalidationCase()))
+
 print("")
 print("  Basalt 2 is reimplemented from its published src/render.lua: a string")
 print("  buffer per row, a dirty rectangle recorded on every write, a single-pass")

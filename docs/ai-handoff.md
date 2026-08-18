@@ -78,6 +78,10 @@ different tradeoff:
 | the simulated world itself | `src/adapters/sim/world.lua` |
 | a new port, or a CC implementation of one | `src/ports/`, `src/adapters/cc/` |
 | cell rendering, the diff, blit batching | `src/ui/buffer.lua`, `tools/spec/buffer_spec.lua` |
+| state, bindings, and what gets repainted | `src/ui/reactive.lua`, `src/ui/runtime.lua` |
+| how a screen is measured and placed | `src/ui/layout.lua` |
+| a component, or a new one | `src/ui/components/`, then register it with `ui.define` |
+| a screen built on the framework | `src/apps/<id>/view.lua` |
 | renderer performance numbers | `tools/bench.lua`, `tools/bench.ps1`, `docs/ui-framework.md` section 12 |
 | how we compare to Basalt | `tools/compare.lua`, `tools/compare.ps1`, `docs/ui-framework.md` sections 12 and 16 |
 | a colour, a token, or the theme | `docs/ui-design.md`, `tools/preview.lua` |

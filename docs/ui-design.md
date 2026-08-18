@@ -11,6 +11,11 @@ computer shows, not a drawing of what it might.
 The goal, stated plainly: **a framework where a screen is shorter to write than it is in
 Basalt, and looks like it was designed rather than assembled.**
 
+**Built as of phase 2.** The tokens are `src/ui/theme.lua`, the components are
+`src/ui/components/`, and `src/apps/fleet/view.lua` is a real screen written against them.
+Everything below describes code that exists and is under test, except where it says
+otherwise.
+
 ---
 
 ## 1. Why shadcn is the right reference
@@ -56,8 +61,9 @@ this size. Rejected; the soft feeling has to come from the palette instead.
 ## 2. The sixteen
 
 Six neutrals, two for the accent, three semantic, three free, plus the page and its text.
-The values are in [`tools/preview.lua`](../tools/preview.lua) and move to `src/ui/theme.lua`
-at phase 5.
+The values live in [`src/ui/theme.lua`](../src/ui/theme.lua);
+[`tools/preview.lua`](../tools/preview.lua) mirrors them so the look can be adjusted
+without touching shipped code, and the theme file is the one that is right if they drift.
 
 | Slot | Token | Role |
 | ---: | --- | --- |
@@ -298,13 +304,17 @@ The list from §7 of [`ui-framework.md`](ui-framework.md), now with the variants
 surface rule attached. This is the whole of it for ICOS 2; §15 explains why the list is
 closed.
 
-**Layout** — `Page`, `Row`, `Column`, `Box`, `Card`, `Separator`, `Spacer`, `ScrollView`,
-`Modal`, `Tabs`.
+Built (**bold**) and planned:
 
-**Data** — `Text`, `Heading`, `Table`, `List`, `Meter`, `Sparkline`, `Gauge`, `Badge`,
-`KeyValue`.
+**Layout** — **`Page`**, **`Row`**, **`Column`**, **`Box`**, **`Card`**, **`Separator`**,
+**`Spacer`**, `ScrollView`, `Modal`, `Tabs`.
 
-**Input** — `Button`, `Toggle`, `Stepper`, `TextField`, `Select`, `Menu`.
+**Data** — **`Text`**, **`Heading`**, **`Muted`**, **`Table`**, **`Meter`**, **`Badge`**,
+`List`, `Sparkline`, `Gauge`, `KeyValue`.
+
+**Input** — **`Button`**, `Toggle`, `Stepper`, `TextField`, `Select`, `Menu`. Buttons paint
+their variants and their focus ring today; nothing dispatches a click until `ui/input`
+lands in phase 3.
 
 **Feedback** — `Toast`, `Spinner`, `Skeleton`, `Empty`, `Banner`.
 
@@ -314,6 +324,13 @@ closed.
 owns the title, the status line, the separators, and the action row, so every screen in
 ICOS has the same anatomy without every screen re-deciding it. An app supplies `Title`,
 `Children`, and `Actions`; it does not get to draw its own header.
+
+`Table` is the other composite, and the one where the performance claim meets something
+real. It builds a fixed pool of row slots once and never rebuilds them; each cell is a
+`Computed` that indexes into the list, so a device leaving the roster changes what four
+cells say rather than destroying four nodes. That is virtualisation arrived at from the
+other direction — a stable binding graph over a changing list — and it is the reason a
+heartbeat costs one blit rather than a table's worth.
 
 ---
 

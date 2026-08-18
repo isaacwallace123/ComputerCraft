@@ -26,6 +26,9 @@ local SPECS = {
   "registry_spec",
   "ports_spec",
   "buffer_spec",
+  "reactive_spec",
+  "layout_spec",
+  "runtime_spec",
 }
 
 local filter = ...

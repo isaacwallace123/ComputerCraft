@@ -8,9 +8,10 @@
 --- actual sixteen palette entries a computer would have. If it looks right
 --- here it looks right in game.
 ---
---- The theme lives in this file rather than in `src/ui/theme.lua` on purpose:
---- the framework has no component layer yet, and shipping a theme that nothing
---- consumes would put dead code on ten turtles. Phase 5 promotes it.
+--- The palettes here mirror `src/ui/theme.lua`, which is where they live now.
+--- They are duplicated rather than imported so that a person can edit one and
+--- see the result without touching shipped code; if they drift, the theme file
+--- is the one that is right.
 
 package.path = table.concat({
   "src/?.lua",
@@ -170,10 +171,19 @@ local function capture(width, height)
 end
 
 --- Print a captured grid, with a border so the edges of the screen are visible.
-local function show(cells, palette, indexOf, width, label)
+local function show(cells, palette, indexOf, width, label, blits)
   local frameFg = 0x52525B
   print("")
-  print(("  %s%s%s  %s%d x %d%s"):format(fgSeq(0xFAFAFA), label, RESET, fgSeq(frameFg), width, #cells, RESET))
+  print(("  %s%s%s  %s%d x %d, %d blits%s"):format(
+    fgSeq(0xFAFAFA),
+    label,
+    RESET,
+    fgSeq(frameFg),
+    width,
+    #cells,
+    blits or 0,
+    RESET
+  ))
   print(("  %s+%s+%s"):format(fgSeq(frameFg), string.rep("-", width), RESET))
   for y = 1, #cells do
     local row = cells[y]
@@ -199,194 +209,104 @@ local function show(cells, palette, indexOf, width, label)
 end
 
 ---------------------------------------------------------------------------
--- Painting helpers, which are what the component layer will do for you
+-- The screens, built with the real framework
 ---------------------------------------------------------------------------
 
-local function pad(text, width, align)
-  text = tostring(text)
-  if #text >= width then
-    return text:sub(1, width)
-  end
-  local slack = width - #text
-  if align == "right" then
-    return string.rep(" ", slack) .. text
-  end
-  if align == "center" then
-    local left = math.floor(slack / 2)
-    return string.rep(" ", left) .. text .. string.rep(" ", slack - left)
-  end
-  return text .. string.rep(" ", slack)
-end
+local ui = require("ui.init")
+local fleetScreen = require("apps.fleet.view")
 
---- A card: a raised surface, drawn as a background change and nothing else.
----
---- This is the single most important adaptation of the shadcn look. On the web
---- a card is a 1-pixel border and a shadow, both of which are far thinner than
---- the text beside them. The nearest thing on a character grid is a box of
---- `+---+`, which is a full cell wide and therefore reads as *heavier* than the
---- content it surrounds - the opposite of the intended effect.
----
---- So elevation replaces outline. A card is a rectangle painted one step
---- lighter than the page, with no drawn edge at all. It reads as a panel at a
---- glance, costs no cells to the border, and degrades correctly on a
---- non-advanced terminal where the two greys stay distinguishable.
-local function card(frame, x, y, width, height)
-  frame:fill(x, y, width, height, " ", T.foreground, T.card)
-end
-
---- A separator: one row of `border` as a background. The closest a cell grid
---- gets to a hairline, and used sparingly - elevation does most of this work.
-local function separator(frame, x, y, width)
-  frame:fill(x, y, width, 1, " ", T.border, T.border)
-end
-
---- A button, in the four variants that turn out to be enough.
----
---- `primary` is a solid near-white slab with dark text, which is shadcn's dark
---- theme and looks startlingly good on a monitor. `secondary` is the recessed
---- fill. `ghost` is text on the surface it sits on. `destructive` is the only
---- one that is allowed to be a colour, which is what makes it read as a warning
---- rather than as decoration.
-local VARIANTS = {
-  primary = { fg = T.primaryFg, bg = T.primary },
-  secondary = { fg = T.foreground, bg = T.muted },
-  ghost = { fg = T.mutedFg, bg = nil },
-  destructive = { fg = T.primaryFg, bg = T.destructive },
+local ROSTER = {
+  { id = 1, label = "miner-1", phase = "mining", fuel = 82000, fuelLimit = 100000, online = true },
+  { id = 2, label = "miner-2", phase = "returning", fuel = 31000, fuelLimit = 100000, online = true },
+  { id = 3, label = "miner-3", phase = "unloading", fuel = 77000, fuelLimit = 100000, online = true },
+  { id = 4, label = "miner-4", phase = "no cap block", fuel = 2000, fuelLimit = 100000, online = true, alert = true },
+  { id = 5, label = "miner-5", phase = "parked", fuel = 55000, fuelLimit = 100000, online = false },
+  { id = 6, label = "miner-6", phase = "mining", fuel = 48000, fuelLimit = 100000, online = true },
 }
 
-local function button(frame, x, y, label, variant, surface, focused)
-  local style = VARIANTS[variant] or VARIANTS.secondary
-  local bg = style.bg or surface
-  local width = #label + 4
-  frame:write(x, y, pad(" " .. label .. " ", width, "center"), style.fg, bg)
-  -- The focus ring, one cell wide in the left gutter. A full outline would cost
-  -- two rows and two columns; a gutter marker costs one column and is the only
-  -- thing on screen that uses `accent` as a background, so it is unmistakable.
-  if focused then
-    frame:write(x - 1, y, " ", T.accentFg, T.accent)
-  end
-  return width
+local function buildFleet(scope)
+  return fleetScreen.build(scope, {
+    devices = scope:Value(ROSTER),
+    selected = scope:Value(4),
+    capacity = 6,
+    onDeploy = function() end,
+    onRecall = function() end,
+    onStop = function() end,
+  })
 end
 
-local function badge(frame, x, y, label, tone, surface)
-  frame:write(x, y, " " .. label .. " ", tone, surface)
-  return #label + 2
-end
+--- Every component, on one page, so a change to the design system can be seen
+--- rather than reasoned about.
+local function buildSampler(scope)
+  local T = ui.tokens
+  return scope:Page({
+    Title = "Components",
+    Children = {
+      scope:Muted({ Text = "BUTTON" }),
+      scope:Row({
+        Gap = 2,
+        Height = 1,
+        Children = {
+          scope:Button({ Text = "Primary", Variant = "primary" }),
+          scope:Button({ Text = "Secondary" }),
+          scope:Button({ Text = "Ghost", Variant = "ghost" }),
+        },
+      }),
+      scope:Row({
+        Gap = 2,
+        Height = 1,
+        Children = {
+          scope:Button({ Text = "Focused", Focused = true }),
+          scope:Button({ Text = "Delete", Variant = "destructive" }),
+          scope:Button({ Text = "Disabled", Disabled = true }),
+        },
+      }),
+      scope:Spacer({ Height = 1 }),
 
----------------------------------------------------------------------------
--- Screen one: the Fleet dashboard
----------------------------------------------------------------------------
+      scope:Muted({ Text = "BADGE" }),
+      scope:Row({
+        Gap = 1,
+        Height = 1,
+        Children = {
+          scope:Badge({ Text = "online", Tone = T.good }),
+          scope:Badge({ Text = "stalled", Tone = T.warn }),
+          scope:Badge({ Text = "open shaft", Tone = T.destructive }),
+          scope:Badge({ Text = "idle" }),
+        },
+      }),
+      scope:Spacer({ Height = 1 }),
 
-local ROWS = {
-  { id = 1, label = "miner-1", phase = "mining", fuel = 51200, pct = 0.82, tone = T.good },
-  { id = 2, label = "miner-2", phase = "returning", fuel = 12400, pct = 0.31, tone = T.good },
-  { id = 3, label = "miner-3", phase = "unloading", fuel = 47800, pct = 0.77, tone = T.good },
-  { id = 4, label = "miner-4", phase = "no cap block", fuel = 640, pct = 0.02, tone = T.destructive },
-  { id = 5, label = "miner-5", phase = "parked", fuel = 33100, pct = 0.55, tone = T.mutedFg },
-  { id = 6, label = "miner-6", phase = "mining", fuel = 28900, pct = 0.48, tone = T.good },
-}
-
-local function count(value)
-  if value >= 1000 then
-    return ("%.1fk"):format(value / 1000)
-  end
-  return tostring(value)
-end
-
-local function paintFleet(frame)
-  local width, height = frame:size()
-  frame:clear(T.foreground, T.background)
-
-  -- Header. No filled title bar: the page title is just the largest text on the
-  -- screen, and a separator does the dividing. A solid coloured bar across the
-  -- top is the single most dated thing about the current UI.
-  frame:write(3, 2, "Fleet", T.foreground, T.background)
-  local online = "4 of 6 online"
-  frame:write(width - #online - 1, 2, online, T.mutedFg, T.background)
-  separator(frame, 1, 3, width)
-
-  frame:write(3, 5, pad("DEVICE", 12), T.mutedFg, T.background)
-  frame:write(15, 5, pad("STATUS", 14), T.mutedFg, T.background)
-  frame:write(29, 5, pad("FUEL", 7, "right"), T.mutedFg, T.background)
-
-  for index, row in ipairs(ROWS) do
-    local y = 6 + index
-    local selected = index == 4
-    local surface = selected and T.muted or T.background
-    if selected then
-      frame:fill(1, y, width, 1, " ", T.foreground, T.muted)
-      frame:write(1, y, " ", T.accentFg, T.accent)
-    end
-    frame:write(3, y, pad(row.label, 12), T.foreground, surface)
-    frame:write(15, y, pad(row.phase, 14), row.tone, surface)
-    frame:write(29, y, pad(count(row.fuel), 7, "right"), T.mutedFg, surface)
-
-    -- The meter. Track recessed, fill in `accent`, no border and no percentage
-    -- label - the width is the number.
-    --
-    -- The track colour is chosen from the surface rather than fixed, and this
-    -- is the one rule that elevation-instead-of-outline makes mandatory. A
-    -- `muted` track on a `muted` selected row is invisible; the first version
-    -- of this preview had exactly that bug and the selected turtle silently
-    -- lost its fuel bar. On the web there are enough shades to always have one
-    -- to spare. With sixteen slots there are not, so every component that
-    -- recesses or raises has to be told what it is sitting on.
-    local barX, barWidth = 38, 10
-    local track = surface == T.muted and T.border or T.muted
-    local filled = math.floor(row.pct * barWidth + 0.5)
-    frame:fill(barX, y, barWidth, 1, " ", T.foreground, track)
-    if filled > 0 then
-      frame:fill(barX, y, filled, 1, " ", T.foreground, row.pct < 0.15 and T.destructive or T.accent)
-    end
-  end
-
-  separator(frame, 1, height - 2, width)
-  local x = 3
-  x = x + button(frame, x, height - 1, "Deploy all", "primary", T.background) + 2
-  x = x + button(frame, x, height - 1, "Recall", "secondary", T.background) + 2
-  button(frame, x, height - 1, "Stop", "destructive", T.background)
-end
-
----------------------------------------------------------------------------
--- Screen two: the component sampler
----------------------------------------------------------------------------
-
-local function paintSampler(frame)
-  local width = frame:size()
-  frame:clear(T.foreground, T.background)
-
-  frame:write(3, 2, "Components", T.foreground, T.background)
-  separator(frame, 1, 3, width)
-
-  frame:write(3, 5, "BUTTON", T.mutedFg, T.background)
-  local x = 3
-  x = x + button(frame, x, 6, "Primary", "primary", T.background) + 2
-  x = x + button(frame, x, 6, "Secondary", "secondary", T.background) + 2
-  button(frame, x, 6, "Ghost", "ghost", T.background)
-
-  x = 4
-  x = x + button(frame, x, 7, "Focused", "secondary", T.background, true) + 2
-  button(frame, x, 7, "Delete", "destructive", T.background)
-
-  frame:write(3, 9, "BADGE", T.mutedFg, T.background)
-  x = 3
-  x = x + badge(frame, x, 10, "online", T.good, T.muted) + 1
-  x = x + badge(frame, x, 10, "stalled", T.warn, T.muted) + 1
-  x = x + badge(frame, x, 10, "open shaft", T.destructive, T.muted) + 1
-  badge(frame, x, 10, "idle", T.mutedFg, T.muted)
-
-  frame:write(3, 12, "CARD", T.mutedFg, T.background)
-  card(frame, 3, 13, 22, 5)
-  frame:write(5, 14, "Sector 12", T.foreground, T.card)
-  frame:write(5, 15, "shaft sealed", T.mutedFg, T.card)
-  frame:write(5, 16, "137 blocks", T.mutedFg, T.card)
-
-  frame:write(28, 12, "INPUT", T.mutedFg, T.background)
-  frame:fill(28, 13, 21, 1, " ", T.foreground, T.muted)
-  frame:write(29, 13, "-59", T.foreground, T.muted)
-  frame:write(28, 15, "target depth", T.mutedFg, T.background)
-  frame:fill(28, 16, 21, 1, " ", T.foreground, T.muted)
-  frame:write(29, 16, "diamond", T.mutedFg, T.muted)
+      scope:Muted({ Text = "CARD  and  METER" }),
+      scope:Row({
+        Gap = 2,
+        Grow = 1,
+        Children = {
+          scope:Card({
+            Width = 22,
+            Padding = 1,
+            Children = {
+              scope:Text({ Text = "Sector 12" }),
+              scope:Muted({ Text = "shaft sealed" }),
+              scope:Muted({ Text = "137 blocks" }),
+            },
+          }),
+          scope:Column({
+            Grow = 1,
+            Gap = 1,
+            Children = {
+              scope:Meter({ Value = 0.82, Height = 1 }),
+              scope:Meter({ Value = 0.31, Height = 1 }),
+              scope:Meter({ Value = 0.05, Tint = T.destructive, Height = 1 }),
+            },
+          }),
+        },
+      }),
+    },
+    Actions = {
+      scope:Button({ Text = "Save", Variant = "primary" }),
+      scope:Button({ Text = "Cancel", Variant = "ghost" }),
+    },
+  })
 end
 
 ---------------------------------------------------------------------------
@@ -450,7 +370,7 @@ local function reportGreyscale(palette, label)
       swatch,
       greySwatch,
       fgSeq(0xE4E4E7),
-      pad(entry.name, 12),
+      ui.util.pad(entry.name, 12),
       fgSeq(0xA1A1AA),
       entry.grey,
       gap,
@@ -469,13 +389,20 @@ end
 
 ---------------------------------------------------------------------------
 
-local function render(paint, palette, label)
+--- Mount a screen, render one frame, and print the cells.
+---
+--- Through the whole stack - reactive graph, layout solver, components, cell
+--- diff, screen port - at a real terminal size. Nothing here is a mockup, and
+--- the blit count is reported beside each screen because a preview that looked
+--- right while costing a full repaint would be hiding the thing that matters.
+local function render(build, palette, label)
   local width, height = 51, 19
   local port, cells, indexOf = capture(width, height)
-  local frame = buffer.new(port, width, height)
-  paint(frame)
-  frame:present()
-  show(cells, palette, indexOf, width, label)
+  local scope = ui.scoped()
+  local root = ui.mount({ scope = scope, screen = port, build = build })
+  local blits = root:render()
+  show(cells, palette, indexOf, width, label, blits)
+  root:destroy()
 end
 
 print(("%sICOS 2 - proposed look%s"):format(fgSeq(0xFAFAFA), RESET))
@@ -484,9 +411,9 @@ print(("%s  painted through src/ui/buffer.lua at a real 51x19 computer terminal%
   RESET
 ))
 
-render(paintFleet, DARK, "Fleet, dark")
-render(paintSampler, DARK, "Components, dark")
-render(paintFleet, LIGHT, "Fleet, light")
+render(buildFleet, DARK, "Fleet, dark")
+render(buildSampler, DARK, "Components, dark")
+render(buildFleet, LIGHT, "Fleet, light")
 
 reportGreyscale(DARK, "dark")
 reportGreyscale(LIGHT, "light")

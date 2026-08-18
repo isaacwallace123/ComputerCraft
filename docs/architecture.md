@@ -57,7 +57,8 @@ domain/   pure logic. May not reference a CC global; the check enforces it.
 ports/    interface definitions - a method list, a check, a null implementation.
 adapters/ cc/   real implementations over fs, rednet, term, turtle, gps
           sim/  the simulated world, and a recording screen
-ui/       the cell buffer and its diff
+ui/       the framework: cell buffer and diff, reactive graph, layout solver,
+          retained node tree, theme tokens, components
 ```
 
 `domain/mine/` holds `plan.lua` and `registry.lua`, moved from `mine/` without logic
@@ -65,9 +66,15 @@ changes; `mine/plan.lua` and `mine/registry.lua` remain as aliases until the spe
 rewritten. `mine/site.lua` has not moved, because it is the turtle-side cache and talks to
 the network.
 
-Nothing is wired. No composition root constructs an adapter, and every device boots
-through exactly the paths described above. That is deliberate: phase 1 changes no
-behaviour at all, which is what makes the unchanged spec suite meaningful.
+`apps/fleet/view.lua` is the first screen written on the framework. It is a view and only
+a view: it takes state objects and callbacks, touches no file and no radio, and is
+therefore rendered into a recording buffer and asserted cell by cell in the spec suite.
+
+Nothing is wired. No composition root constructs an adapter, no device mounts a framework
+screen, and every machine boots through exactly the paths described above. That is
+deliberate — none of this has changed fleet behaviour yet, which is what makes the
+unchanged turtle specs meaningful. Wiring `apps/fleet/app.lua` to the desktop is the
+change that touches a running fleet, and it gets its own session and an in-world test.
 
 ## Boot flow
 

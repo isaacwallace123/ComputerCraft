@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-17T20:23:29-04:00",
+    "generated":  "2026-08-17T22:17:28-04:00",
     "files":  [
                   "adapters/cc/body.lua",
                   "adapters/cc/clock.lua",
@@ -14,6 +14,7 @@
                   "apps/devices.lua",
                   "apps/equip.lua",
                   "apps/fleet.lua",
+                  "apps/fleet/view.lua",
                   "apps/gps_host.lua",
                   "apps/logs.lua",
                   "apps/miner.lua",
@@ -79,6 +80,17 @@
                   "turtle/ore.lua",
                   "turtle/peers.lua",
                   "ui/buffer.lua",
+                  "ui/components/controls.lua",
+                  "ui/components/layout.lua",
+                  "ui/components/page.lua",
+                  "ui/components/table.lua",
+                  "ui/components/text.lua",
+                  "ui/init.lua",
+                  "ui/layout.lua",
+                  "ui/reactive.lua",
+                  "ui/runtime.lua",
+                  "ui/theme.lua",
+                  "ui/util.lua",
                   "update.lua"
               ]
 }

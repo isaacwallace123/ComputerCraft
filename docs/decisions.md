@@ -378,6 +378,79 @@ two-dimensional and sparse - a dragged window, a sprite moving across a canvas. 
 canvas layer ever makes that the dominant pattern, revisit it there, for that layer, with
 a measurement. Do not revisit it for the dashboard.
 
+## D030 — A binding marks the node, never the root
+
+**Status:** accepted
+
+The retained-tree frameworks in this space invalidate upwards: a property changes, the
+element tells its parent, the parent tells its parent, and the root frame repaints. Basalt
+2 does exactly this in `BaseElement:updateRender`. It is the simplest thing that works and
+it throws away the only information that matters.
+
+`tools/compare.ps1` measures the difference on one heartbeat over a full 164x81 page — one
+turtle changing fuel and phase, everything else unchanged:
+
+    ICOS      1 blit    the node is marked, its subtree is painted
+    upwards   81 blits  the root is marked, the whole tree is painted
+
+The sharp part is that the information was already there. Basalt 2's property system knows
+which property changed and carries a per-property render flag, and then discards that
+precision at the last step. So this is not a cleverness the other design lacks; it is a
+step it declines to take.
+
+Three supporting rules, each of which is load-bearing and each of which was arrived at by
+getting it wrong first:
+
+- **Re-measure before deciding to re-solve.** Classifying `Text` as layout-affecting and
+  stopping there re-solves and repaints on every heartbeat, which is the behaviour being
+  replaced. "miner-3" becoming "miner-4" measures the same, so the frame degrades it to a
+  paint. Without this the binding is precise and the frame throws the precision away one
+  layer later.
+- **Invalidation is not change.** A `Computed` that reads a whole device list is
+  invalidated whenever any device reports, and usually formats to the string it already
+  held. The binding compares the fresh value against the node's current one before
+  marking anything, which is what turns forty invalidated cells into the eleven that
+  moved.
+- **A repaint takes the node's whole subtree.** Children paint over their parent, so a
+  parent whose background changed has to redraw what sits on it. Being cleverer would mean
+  tracking overlap, and the cell diff in `ui/buffer.lua` already makes painting an
+  unchanged cell free.
+
+The failure mode if this is ever "simplified" is not a crash. It is a dashboard that still
+looks correct and quietly costs eighty times more, on the machine that is also reconciling
+ten turtles. `tools/compare.ps1` is the standing check; if the gap closes, something here
+was undone.
+
+## D031 — A table is a fixed pool of slots over a changing list
+
+**Status:** accepted
+
+The obvious way to render a device list is to build a row per device and rebuild when the
+list changes. That is React's model, and under a fine-grained binding graph it is the worst
+of both: every rebuild makes every cell a new node, every new node is dirty, and the whole
+table repaints on every heartbeat whether or not anything changed. It also churns the
+binding graph, which is where the leaks live.
+
+`ui/components/table.lua` builds `Capacity` row slots once and never again. Each cell is a
+`Computed` that reads the list and indexes into it, so slot 3 shows whatever is third
+*now*. A device leaving the roster does not destroy a row; it changes what four cells say.
+Slots past the end render blank.
+
+This is virtualisation arrived at from the other direction — a stable pool of widgets over
+a changing list is the only shape that keeps a binding graph stable, and it happens to also
+be the shape that scrolls.
+
+Two consequences to keep:
+
+- **Capacity is given, not measured.** Deriving it from the box needs the layout solved
+  before the tree is built, which is backwards; and a table that silently grew its node
+  count when a monitor got taller would be a memory leak with a plausible excuse.
+- **A non-text column is a column.** The fuel meter goes through the same `Columns` list
+  as the text, with a `Render` function instead of a `Key`. The first version had a
+  separate trailing slot, so the heading row had one fewer column than the data rows and
+  every heading sat two cells left of the values underneath it. One list, one set of
+  widths, one loop for both.
+
 ## D014 — Version changes happen at merge
 
 **Status:** accepted
