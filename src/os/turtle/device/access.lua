@@ -17,9 +17,9 @@
 --- a conservative allow list so a turtle never bricks up its own diamonds - or
 --- drops sand into the hole it just made and reopens it.
 
-local fuel = require("device.fuel")
-local inv = require("device.inv")
-local nav = require("device.nav")
+local fuel = require("os.turtle.device.fuel")
+local inv = require("os.turtle.device.inv")
+local nav = require("os.turtle.device.nav")
 
 local access = {}
 

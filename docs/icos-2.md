@@ -864,7 +864,7 @@ names or ask a turtle, and a turtle down a shaft cannot answer. So `domain/turtl
 is data, and both ends of the radio read the same file. `module` is a *string*, resolved by
 the turtle when it starts work — which is what lets a server with no `turtle` global at all
 list, validate and assign jobs it could not itself run. A base that had to `require`
-`jobs/mining/quarry.lua` to know a quarry exists is a base that crashes on `turtle.dig` being nil.
+`os/turtle/jobs/mining/quarry.lua` to know a quarry exists is a base that crashes on `turtle.dig` being nil.
 
 **Nothing declared what a job needs.** A farming turtle wants a hoe; a quarry wants a
 pickaxe and a lot of fuel; a fuel hunt wants neither — and notably **not a modem**, because

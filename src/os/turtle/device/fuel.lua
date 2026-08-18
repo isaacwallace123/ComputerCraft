@@ -5,7 +5,7 @@
 --- `turtle/fuel/catalog`. Everything treated as fuel is kept through every
 --- unload, so a permissive answer here quietly turns into slots full of sticks.
 
-local catalog = require("device.fuel.catalog")
+local catalog = require("os.turtle.device.fuel.catalog")
 local fuel = {}
 
 -- Runtime values learned by consuming one accepted fuel whose burn time is not

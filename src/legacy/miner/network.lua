@@ -2,7 +2,7 @@
 
 local log = require("adapters.cc.logfile")
 local net = require("legacy.net")
-local peers = require("device.peers")
+local peers = require("os.turtle.device.peers")
 local site = require("legacy.mine.site")
 
 local network = {}
@@ -18,7 +18,7 @@ function network.heartbeat(ctx)
   while true do
     if os.clock() - lastGps > GPS_REFRESH_SECONDS then
       lastGps = os.clock()
-      ctx.worldPos = require("device.nav").worldPosition() or ctx.worldPos
+      ctx.worldPos = require("os.turtle.device.nav").worldPosition() or ctx.worldPos
     end
 
     if not ctx.baseId or os.clock() - lastLookup > BASE_RECHECK_SECONDS then

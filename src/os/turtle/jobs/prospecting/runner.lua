@@ -20,16 +20,16 @@
 --- unchanged: capping costs digs and placements, not moves, so the exact return
 --- fuel reserve still describes the route the turtle actually flies.
 
-local access = require("device.access")
-local depot = require("device.depot")
-local fuel = require("device.fuel")
-local geo = require("device.geo")
-local inv = require("device.inv")
-local nav = require("device.nav")
-local ore = require("device.ore")
-local safety = require("jobs.common.safety")
+local access = require("os.turtle.device.access")
+local depot = require("os.turtle.device.depot")
+local fuel = require("os.turtle.device.fuel")
+local geo = require("os.turtle.device.geo")
+local inv = require("os.turtle.device.inv")
+local nav = require("os.turtle.device.nav")
+local ore = require("os.turtle.device.ore")
+local safety = require("os.turtle.jobs.common.safety")
 local site = require("legacy.mine.site")
-local surface = require("jobs.prospecting.surface")
+local surface = require("os.turtle.jobs.prospecting.surface")
 
 local runner = {}
 

@@ -179,7 +179,7 @@ into one and dies, and being able to count them on one hand does not help.
 Each shaft is therefore sealed except while a turtle is passing through it. The descent
 locates the real top of the ground by inspection, steps below it, and places a block
 overhead before any mining starts; the return breaks that block from underneath, climbs
-through, and replaces it from above. `device/access.lua` owns the mechanics — block
+through, and replaces it from above. `os/turtle/device/access.lua` owns the mechanics — block
 classification, cap material selection, verified placement — and the prospecting runner
 owns when they happen.
 
@@ -808,3 +808,15 @@ That is the same half-fix as `domain/mine/registry.lua` and for the same reason.
 knows and what knows it. `core`, `common`, `shared` and `utils` answer nothing, so they
 accumulate. If a file needs to know two layers at once it is a composition root and belongs
 in `os/`; if it needs to know none, it belongs in `domain/`.
+
+**And a second question the first pass missed: who runs it?** `jobs/` and `device/` were
+left at the top level, and both are turtle-only. The dependency graph says so plainly -
+nothing on the base requires a job module, because the base reads `domain/turtle/jobs.lua`,
+the catalogue, and `module` is a string precisely so a server with no `turtle` global can
+list jobs it cannot run. `device/` is required only by jobs, `legacy/miner/` and
+`legacy/apps/`.
+
+Moving both under `os/turtle/` makes `os/` symmetric: a server is `main.lua` plus
+`services/`, its long-running work; a turtle is `main.lua` plus `jobs/`, its work, and
+`device/`, its hardware. Adding a farming job becomes `os/turtle/jobs/farming/` plus one
+catalogue entry, which is the shape D036 was aiming at.

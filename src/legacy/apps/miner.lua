@@ -16,11 +16,11 @@ local ui = require("legacy.shell.ui")
 local version = require("lib.version")
 
 local jobs = {
-  quarry = require("jobs.mining.quarry"),
-  rare = require("jobs.mining.rare"),
-  fuel = require("jobs.mining.fuel_hunt"),
-  hollow = require("jobs.mining.hollow"),
-  resources = require("jobs.mining.resources"),
+  quarry = require("os.turtle.jobs.mining.quarry"),
+  rare = require("os.turtle.jobs.mining.rare"),
+  fuel = require("os.turtle.jobs.mining.fuel_hunt"),
+  hollow = require("os.turtle.jobs.mining.hollow"),
+  resources = require("os.turtle.jobs.mining.resources"),
 }
 
 local ctx = Context.new(jobs)

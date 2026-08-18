@@ -1,11 +1,11 @@
 --- Clear a three-block-tall rectangular floor at a configured world Y.
 
 local config = require("adapters.cc.config")
-local fuel = require("device.fuel")
-local inv = require("device.inv")
-local nav = require("device.nav")
-local ore = require("device.ore")
-local safety = require("jobs.common.safety")
+local fuel = require("os.turtle.device.fuel")
+local inv = require("os.turtle.device.inv")
+local nav = require("os.turtle.device.nav")
+local ore = require("os.turtle.device.ore")
+local safety = require("os.turtle.jobs.common.safety")
 
 local hollow = {
   name = "hollow",

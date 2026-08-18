@@ -1,10 +1,10 @@
 --- Coordinated absolute-area quarry. Fleet assigns disjoint, balanced cell ranges.
 
 local config = require("adapters.cc.config")
-local fuel = require("device.fuel")
-local inv = require("device.inv")
-local nav = require("device.nav")
-local safety = require("jobs.common.safety")
+local fuel = require("os.turtle.device.fuel")
+local inv = require("os.turtle.device.inv")
+local nav = require("os.turtle.device.nav")
+local safety = require("os.turtle.jobs.common.safety")
 
 local quarry = {
   name = "quarry",

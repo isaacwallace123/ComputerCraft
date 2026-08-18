@@ -6,7 +6,7 @@
 --- block names and junk-dropping matches item names, and the two lists look
 --- nothing like each other.
 
-local catalog = require("device.fuel.catalog")
+local catalog = require("os.turtle.device.fuel.catalog")
 
 local ore = {}
 

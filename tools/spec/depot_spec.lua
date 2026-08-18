@@ -8,8 +8,8 @@ local GROUND = 64
 
 it("depot overflows into neighbouring containers before reporting full", function()
   local w = scenario.new({ groundY = GROUND, x = 0, y = GROUND + 1, z = 0, facing = 0 })
-  local depot = require("device.depot")
-  local fuel = require("device.fuel")
+  local depot = require("os.turtle.device.depot")
+  local fuel = require("os.turtle.device.fuel")
 
   w:set(0, GROUND, 0, "minecraft:chest")
   w.chests["0,64,0"] = { capacity = 4, stored = 0 }
@@ -34,7 +34,7 @@ end)
 
 it("depot never drops a haul into open air", function()
   local w = scenario.new({ groundY = GROUND, x = 0, y = GROUND + 4, z = 0, facing = 0 })
-  local depot = require("device.depot")
+  local depot = require("os.turtle.device.depot")
   w:give(1, "minecraft:diamond", 5)
 
   local delivered, remaining = depot.unload(function()
@@ -48,7 +48,7 @@ end)
 
 it("travel flies over a hill instead of tunnelling through it", function()
   local w = scenario.new({ groundY = GROUND, x = 0, y = GROUND + 1, z = 0, facing = 0 })
-  local nav = require("device.nav")
+  local nav = require("os.turtle.device.nav")
   nav.setOrigin(0, GROUND + 1, 0, 0)
 
   -- A ridge ten blocks high across the route, with open sky above it.
@@ -66,7 +66,7 @@ end)
 
 it("travel does not climb and sink over stepped terrain", function()
   local w = scenario.new({ groundY = GROUND, x = 0, y = GROUND + 1, z = 0, facing = 0 })
-  local nav = require("device.nav")
+  local nav = require("os.turtle.device.nav")
   nav.setOrigin(0, GROUND + 1, 0, 0)
 
   -- A staircase shoreline: ground steps up and down every couple of blocks,
@@ -93,7 +93,7 @@ end)
 
 it("travel still tunnels when the ground is genuinely enclosed", function()
   local w = scenario.new({ groundY = GROUND, x = 0, y = GROUND - 4, z = 0, facing = 0 })
-  local nav = require("device.nav")
+  local nav = require("os.turtle.device.nav")
   nav.setOrigin(0, GROUND - 4, 0, 0)
 
   -- Underground: there is no sky to climb into, so digging is the only way.

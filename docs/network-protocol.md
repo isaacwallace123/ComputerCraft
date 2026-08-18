@@ -55,7 +55,7 @@ New snapshot fields should be optional on readers because old turtles may not re
 them until updated.
 
 Miners now also listen to each other's `status` broadcasts, not just the base. The
-`world` field is what makes that useful: `device/peers.lua` uses it to tell which
+`world` field is what makes that useful: `os/turtle/device/peers.lua` uses it to tell which
 computer is standing in the block ahead, and therefore who has right of way.
 
 ### `mine`

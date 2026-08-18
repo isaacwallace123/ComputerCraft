@@ -6,16 +6,16 @@
 --- do. What is left in this file is the per-profile part - what counts as ore,
 --- how deep to go, and what a safe trip costs.
 
-local access = require("device.access")
+local access = require("os.turtle.device.access")
 local config = require("adapters.cc.config")
-local fuel = require("device.fuel")
-local nav = require("device.nav")
-local ore = require("device.ore")
+local fuel = require("os.turtle.device.fuel")
+local nav = require("os.turtle.device.nav")
+local ore = require("os.turtle.device.ore")
 local plan = require("domain.mine.plan")
-local profiles = require("jobs.prospecting.profiles")
-local runner = require("jobs.prospecting.runner")
+local profiles = require("os.turtle.jobs.prospecting.profiles")
+local runner = require("os.turtle.jobs.prospecting.runner")
 local site = require("legacy.mine.site")
-local surface = require("jobs.prospecting.surface")
+local surface = require("os.turtle.jobs.prospecting.surface")
 
 local factory = {}
 

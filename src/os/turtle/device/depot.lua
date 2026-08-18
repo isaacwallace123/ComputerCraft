@@ -11,7 +11,7 @@
 --- scatters the haul on the floor and reports success, which would turn a full
 --- chest into a lost load.
 
-local inv = require("device.inv")
+local inv = require("os.turtle.device.inv")
 
 local depot = {}
 

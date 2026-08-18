@@ -1,4 +1,4 @@
-local factory = require("jobs.prospecting.factory")
+local factory = require("os.turtle.jobs.prospecting.factory")
 
 return factory.create({
   name = "rare",

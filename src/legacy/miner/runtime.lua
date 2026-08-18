@@ -2,7 +2,7 @@
 
 local config = require("adapters.cc.config")
 local log = require("adapters.cc.logfile")
-local nav = require("device.nav")
+local nav = require("os.turtle.device.nav")
 local sound = require("legacy.sound")
 local ui = require("legacy.shell.ui")
 

@@ -21,7 +21,7 @@
 --- `module` is a string, resolved by the turtle when it starts the job. The
 --- catalogue never requires it, which is what lets a server - a computer with no
 --- `turtle` global at all - list, validate and assign jobs it could not itself
---- run. A base that had to load `jobs/mining/quarry.lua` to know a quarry exists would
+--- run. A base that had to load `os/turtle/jobs/mining/quarry.lua` to know a quarry exists would
 --- be a base that crashes on `turtle.dig` being nil.
 ---
 --- ## Adding a job

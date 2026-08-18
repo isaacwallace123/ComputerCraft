@@ -163,7 +163,7 @@ end
 --- Does this depot take that item?
 ---
 --- Patterns are plain substrings of the item name, matching the conventions
---- already in `device/ore.lua`: `_ore` catches every modded ore, `raw_` the
+--- already in `os/turtle/device/ore.lua`: `_ore` catches every modded ore, `raw_` the
 --- drops, `ingot` the smelted results. Not Lua patterns - a person typing
 --- `raw_` into a text field should not have to know that `-` means something.
 function list.accepts(depot, item)

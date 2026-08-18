@@ -11,9 +11,9 @@
 --- with one piece of persisted state, which is what makes the crash recovery
 --- readable enough to trust.
 
-local access = require("device.access")
-local inv = require("device.inv")
-local nav = require("device.nav")
+local access = require("os.turtle.device.access")
+local inv = require("os.turtle.device.inv")
+local nav = require("os.turtle.device.nav")
 
 local surface = {}
 surface.__index = surface

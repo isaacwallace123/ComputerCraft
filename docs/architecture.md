@@ -34,7 +34,7 @@ apps → miner / fleet / jobs → turtle / mine → core
   leaving aliases behind; the turtle-side cache and claim client (`site.lua`) is still
   here. It sits beside `turtle/` because both sides import it.
 - `turtle/` contains hardware primitives and should not know about a particular job.
-  `device/access.lua` is the surface-access primitive: block classification, cap
+  `os/turtle/device/access.lua` is the surface-access primitive: block classification, cap
   material selection, and verified placement. It knows what a safe cap is, never when
   to move one — that decision belongs to the job running the route.
 - `jobs/` contains mining behavior and accepts callbacks rather than drawing UI or

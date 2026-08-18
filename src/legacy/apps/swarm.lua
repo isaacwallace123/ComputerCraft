@@ -27,9 +27,9 @@ end
 local ui = require("legacy.shell.ui")
 local log = require("adapters.cc.logfile")
 local config = require("adapters.cc.config")
-local nav = require("device.nav")
-local inv = require("device.inv")
-local fuel = require("device.fuel")
+local nav = require("os.turtle.device.nav")
+local inv = require("os.turtle.device.inv")
+local fuel = require("os.turtle.device.fuel")
 
 local STATE_PATH = ".swarm"
 

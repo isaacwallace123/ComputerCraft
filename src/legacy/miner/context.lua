@@ -1,10 +1,10 @@
 --- Shared miner state, job selection, telemetry, and local rendering.
 
 local config = require("adapters.cc.config")
-local fuel = require("device.fuel")
-local nav = require("device.nav")
+local fuel = require("os.turtle.device.fuel")
+local nav = require("os.turtle.device.nav")
 local net = require("legacy.net")
-local peers = require("device.peers")
+local peers = require("os.turtle.device.peers")
 local ui = require("legacy.shell.ui")
 local util = require("lib.util")
 local version = require("lib.version")

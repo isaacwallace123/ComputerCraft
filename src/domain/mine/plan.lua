@@ -14,7 +14,7 @@
 --- Bounded is not the same as safe, and this file only delivers bounded. Four
 --- sectors is four unmarked drops to mining depth in ground people walk across.
 --- Keeping each shaft shut except while a turtle is inside it belongs to
---- `device/access.lua`; the geometry here is deliberately unaware of it.
+--- `os/turtle/device/access.lua`; the geometry here is deliberately unaware of it.
 ---
 --- Everything in this file is pure arithmetic over a plan table. The base station
 --- and every turtle derive identical coordinates from the same handful of

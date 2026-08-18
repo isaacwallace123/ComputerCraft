@@ -12,8 +12,8 @@
 --- direction the turtle pointed when the job began. +y is up.
 
 local config = require("adapters.cc.config")
-local fuel = require("device.fuel")
-local peers = require("device.peers")
+local fuel = require("os.turtle.device.fuel")
+local peers = require("os.turtle.device.peers")
 
 local STATE_PATH = ".nav"
 

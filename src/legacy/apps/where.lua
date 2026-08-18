@@ -19,7 +19,7 @@ end
 
 local ui = require("legacy.shell.ui")
 local util = require("lib.util")
-local nav = require("device.nav")
+local nav = require("os.turtle.device.nav")
 
 ui.clear()
 print("Where am I?\n")

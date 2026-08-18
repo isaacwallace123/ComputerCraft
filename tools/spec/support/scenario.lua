@@ -63,9 +63,9 @@ end
 function scenario.prospecting(created, options)
   options = options or {}
   local config = require("adapters.cc.config")
-  local nav = require("device.nav")
+  local nav = require("os.turtle.device.nav")
   local plan = require("domain.mine.plan")
-  local rare = require("jobs.mining.rare")
+  local rare = require("os.turtle.jobs.mining.rare")
 
   local normalised, sector = scenario.mine(created, options)
   local targetY = options.targetY or (created.groundY - 8)
@@ -142,7 +142,7 @@ function scenario.cycle(created, options)
   local reboots = 0
 
   while true do
-    local rare = require("jobs.mining.rare")
+    local rare = require("os.turtle.jobs.mining.rare")
     local job = rare.load()
     local ctx = options.ctx or scenario.context()
     local outcome = {}

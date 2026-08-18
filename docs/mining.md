@@ -64,7 +64,7 @@ safe, and it was never sufficient on its own: four sectors meant four unmarked
 hundred-block drops in ground people walk across, and a small number of death traps is
 not a safe worksite. Hole count and hole danger are separate problems.
 
-`device/access.lua` closes the second one. A sector shaft is open only while a turtle is
+`os/turtle/device/access.lua` closes the second one. A sector shaft is open only while a turtle is
 inside it:
 
 1. Descending, the turtle finds the real top of the ground in the shaft column, steps
@@ -229,7 +229,7 @@ so they correctly omit `standing` and keep reporting `progress`.
 
 ### Quarry
 
-`jobs/mining/quarry.lua` excavates an absolute X/Z rectangle from `topY` through `bottomY`.
+`os/turtle/jobs/mining/quarry.lua` excavates an absolute X/Z rectangle from `topY` through `bottomY`.
 Workers need a world origin and heading from the Where tool. The coordinator converts
 the rectangle to a serpentine flat cell sequence and gives each available turtle a
 balanced contiguous range. Every pass occupies one layer and clears the block below,
@@ -242,7 +242,7 @@ counters; a completed run or a changed assignment starts from zero.
 
 ### Rare, Fuel, and Resources
 
-These jobs are definitions built by `jobs/prospecting/factory.lua` and executed by the
+These jobs are definitions built by `os/turtle/jobs/prospecting/factory.lua` and executed by the
 shared runner:
 
 - Rare excludes coal, iron, copper, zinc, and andesite, then accepts `_ore` blocks and
@@ -289,7 +289,7 @@ back to normal mining.
 
 ### Hollow
 
-`jobs/mining/hollow.lua` travels to a configurable rectangle and sweeps it serpentine at the
+`os/turtle/jobs/mining/hollow.lua` travels to a configurable rectangle and sweeps it serpentine at the
 middle Y, default -30. Entering each cell clears the middle block; `digUp` and `digDown`
 clear the other two. A failed vertical dig does not advance the cell checkpoint.
 
@@ -298,7 +298,7 @@ cell, while changed settings or redeploying a completed room starts a fresh swee
 
 ## Fuel accounting
 
-`device/fuel.lua` separates three concepts:
+`os/turtle/device/fuel.lua` separates three concepts:
 
 - tank fuel from `turtle.getFuelLevel()`
 - known inventory potential from `turtle/fuel/catalog.lua`
@@ -324,7 +324,7 @@ and apples are dropped in place rather than hauled home. `ore.JUNK_EXACT` exists
 the obvious substrings take something real with them: `stick` also matches
 `sticky_piston`, and `apple` also matches `golden_apple`.
 
-`jobs/common/safety.lua` asks the active job for its planned return cost. This matters
+`os/turtle/jobs/common/safety.lua` asks the active job for its planned return cost. This matters
 because a safe shaft route may be longer than raw Manhattan distance home. Two extra
 fuel units and the job margin cover the proposed move and local uncertainty.
 
@@ -347,7 +347,7 @@ the junk policy throws away — so `inv.dropJunk` takes the reserved slot and sk
 and unloading keeps it aboard for the next cycle. A retained cap slot is not counted as
 an undelivered load, so it cannot be mistaken for `depot full`.
 
-`device/depot.lua` owns unloading. The chest below the home block is still the
+`os/turtle/device/depot.lua` owns unloading. The chest below the home block is still the
 convention and is always emptied into first, because dropping downward is
 orientation-independent. When it fills, the containers in front of and above the home
 block are used before the job reports `depot full`, which is what lets an unattended run

@@ -1,6 +1,6 @@
 --- Optional Advanced Peripherals Geo Scanner adapter.
 
-local nav = require("device.nav")
+local nav = require("os.turtle.device.nav")
 
 local geo = {}
 

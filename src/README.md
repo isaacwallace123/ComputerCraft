@@ -11,10 +11,10 @@ adapters/   How a real machine provides a port.
               sim/    the spec suite's world
 os/         The four operating systems and what runs them.
               kernel/ supervisor, service, boot, roles
-              server/ client/ mobile/ turtle/
-device/     A turtle's own hardware: navigation, fuel, inventory, ore.
-jobs/       What a turtle does, grouped by what it is for.
-              mining/  prospecting/  common/
+              client/ mobile/
+              server/ main.lua + services/   its long-running work
+              turtle/ main.lua + jobs/       its work
+                                + device/    its hardware
 ui/         The framework.
               core/       reactive, runtime, layout, buffer, anim
               draw/       canvas, sprite
@@ -33,6 +33,16 @@ layer allowed to.
 
 If a file needs to know two of those at once, it is a composition root and
 belongs in `os/`. If it needs to know none of them, it belongs in `domain/`.
+
+**And who runs it?** `jobs/` and `device/` started at the top level and did not
+belong there: nothing on the base ever requires a job module - the base reads
+`domain/turtle/jobs.lua`, the catalogue, which is why `module` is a string and not
+a `require`. Both are turtle-only, so both live under the turtle.
+
+That makes `os/` symmetric. A server is `main.lua` plus `services/`, its
+long-running work. A turtle is `main.lua` plus `jobs/`, its work, and `device/`,
+its hardware. Adding a farming job is `os/turtle/jobs/farming/` and one entry in
+the catalogue.
 
 ## Why `legacy/` exists
 
