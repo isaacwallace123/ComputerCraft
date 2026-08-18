@@ -84,19 +84,48 @@ That single rule is what makes the rest cheap. The simulated world in
 [`tools/spec/`](../tools/spec) stops being a monkey-patch over `_G` and becomes an
 ordinary adapter, and domain tests need no world at all.
 
+**The rule is checked.** `tools\check.ps1` strips comments from everything under
+`src/domain`, `src/ports`, and `src/ui` and fails the build on a reference to any CC
+global. It has one entry in its allow list — `domain/mine/registry.lua` and `os` — with
+the reason recorded in that file's header. Do not add a second without doing the same.
+
+The simulated world keeps its `install()` alongside its new `ports()` face, and will for
+a while. Every module written before ports existed reads `turtle`, `fs`, and `os` as
+globals; rewriting all of them at once is exactly the flag day §12 refuses to have. New
+code takes ports, old code keeps its globals, and both see one world.
+
 ### Ports
+
+As built in phase 1:
 
 | Port | Methods | CC adapter | Sim adapter |
 | --- | --- | --- | --- |
-| `clock` | `now`, `sleep` | `os.epoch`, `sleep` | virtual, advanced by the test |
+| `clock` | `now`, `sleep` | `os.epoch("utc")`, `sleep` | the world's clock, advanced by the test |
 | `storage` | `read`, `write`, `list`, `delete` | `fs` + atomic replace | in-memory table |
-| `transport` | `send`, `broadcast`, `receive` | `rednet` | in-memory queue, droppable |
-| `screen` | `size`, `write`, `clear`, `colors` | `term` | recording buffer |
-| `body` | `move`, `dig`, `inspect`, `place`, `slots` | `turtle` | block grid |
+| `transport` | `send`, `broadcast`, `receive`, `id` | `rednet` | in-memory queue, droppable |
+| `screen` | `size`, `blit`, `clear`, `isColour`, `setPalette`, `setCursor` | `term` or any redirect | recording cell grid + call log |
+| `body` | `move`, `turn`, `dig`, `detect`, `inspect`, `place`, `drop`, `select`, `slot`, `stack`, `fuel`, `refuel` | `turtle` | block grid |
 | `locator` | `gps`, `saved` | `gps` + `.location` | fixed answer |
 
 Ports are tables of functions, not classes. There is no inheritance anywhere in this
-plan.
+plan. Each port module carries its own list of method names, a `check(impl)` that verifies
+a table against that list and returns it, and a `null()` that answers rather than raises.
+`ports/contract.lua` is the entirety of the machinery.
+
+Three details that only became apparent while building them:
+
+- **`screen.blit` carries its own `x, y`.** CC's terminal has a cursor and `term.blit`
+  writes wherever it happens to be. Hidden ordering state defeats the recording adapter —
+  a call cannot be verified in isolation, and "one blit per changed run" stops being
+  countable. One port call is now one positioned run, and moving the cursor is the cc
+  adapter's private business.
+- **Colours are palette indices 0–15**, not `colors.*` bitmasks. The blit format is a hex
+  digit and the palette is sixteen numbered slots; carrying the bitmask would mean
+  converting it back on every cell. The conversion happens inside the cc adapter, twice a
+  frame, on calls that are not on the hot path.
+- **`transport.id` was missing from the sketch.** A sender that cannot name itself makes
+  every message ambiguous, and every existing caller was reaching for
+  `os.getComputerID()` directly to fill the gap.
 
 ---
 
@@ -427,19 +456,55 @@ machines need only position.
 Every phase is independently deployable and leaves a working fleet. Nothing here is a
 flag day, because there is a live fleet to keep running.
 
-| # | Phase | Delivers | Risk |
-| --- | --- | --- | --- |
-| 0 | Finish the worksite redesign | Shared shaft, spines | — |
-| 1 | Extract `domain/` + `ports/` + `adapters/` | No behaviour change. Specs stop needing globals. | Low, purely mechanical |
-| 2 | Device registry + last known location | Missing turtles become findable | Low, additive |
-| 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events |
-| 4 | Drop-off list | Multiple depots | Medium — touches return fuel |
-| 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration |
-| 6 | App folders and manifests, commands split out | The layout above | Low, mechanical |
+| # | Phase | Delivers | Risk | |
+| --- | --- | --- | --- | --- |
+| 0 | Finish the worksite redesign | Shared shaft, spines | — | |
+| 1 | Extract `domain/` + `ports/` + `adapters/` | No behaviour change. Specs stop needing globals. | Low, purely mechanical | **started** |
+| 2 | Device registry + last known location | Missing turtles become findable | Low, additive | |
+| 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events | |
+| 4 | Drop-off list | Multiple depots | Medium — touches return fuel | |
+| 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | |
+| 6 | App folders and manifests, commands split out | The layout above | Low, mechanical | |
 
 Phase 1 first is not tidying-before-features. It is what makes phases 3 and 4 testable —
 reconciliation and drop-off selection are pure logic, and pure logic is the only kind this
 project can currently test properly.
+
+### What phase 1 has delivered so far
+
+- `src/ports/` — `clock`, `storage`, `transport`, `screen`, `body`, `locator`, each a list
+  of method names, a `check` that verifies an implementation against it at construction,
+  and a null implementation. `ports/contract.lua` is the whole mechanism and it is thirty
+  lines: no classes, no metatables, no dispatch cost.
+- `src/adapters/cc/` — the six over `fs`, `rednet`, `term`, `turtle`, `gps`, and `os`.
+- `src/adapters/sim/` — `world.lua`, moved here from `tools/spec/support/` and given a
+  `ports()` face beside its existing `install()`. `screen.lua` is new: a recording screen
+  that keeps a real cell grid and a call log.
+- `src/domain/mine/` — `plan.lua` and `registry.lua`, moved with no logic changes.
+  `src/mine/plan.lua` and `src/mine/registry.lua` remain as one-line aliases so the
+  existing specs still resolve; that they passed untouched is the proof the move was clean,
+  and the aliases go when the specs are rewritten against the new paths.
+- `src/ui/buffer.lua` and its specs, and `.\tools\bench.ps1`. See
+  [`ui-framework.md`](ui-framework.md) §12 for the measured numbers.
+- `tools\check.ps1` gained a **layering check**: `domain/`, `ports/`, and `ui/` fail the
+  build if they reference a CC global. The rule in §3 was previously a sentence in a
+  document, which is the same as not having it.
+
+Still open in phase 1, and deliberately deferred rather than forgotten:
+
+- **`domain/mine/registry.lua` is not pure yet.** It still reads `os.epoch` and persists
+  through `core/config`. Moving the file and changing how it gets its clock and its
+  storage are two changes, and doing both at once would have destroyed the evidence that
+  the move altered nothing. It is the one entry in the layering check's allow list.
+- **`protocol/` and the message version field** named in §13. Nothing has been written yet
+  and nothing depends on it until phase 3.
+- **Nothing has been rewired.** Every adapter is constructed by nobody: the live fleet runs
+  the same code paths it did before. Wiring composition roots is phase 5's job.
+- **`adapters/sim/` ships in `src/manifest.json` and therefore onto every turtle.** It is
+  about 25KB that no in-game device will ever require. Harmless, and left alone on
+  purpose: teaching `tools/make-manifest.ps1` to exclude a folder is a special case a
+  future maintainer would trip over for no benefit anybody can measure. Revisit only if
+  the simulated world grows large enough that OTA update time notices it.
 
 Phase 3 is the one to be careful with. Recall is a safety control; replacing its
 mechanism while turtles are underground is how a fleet gets stranded. Both paths run

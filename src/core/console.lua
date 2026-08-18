@@ -11,8 +11,8 @@ local version = require("core.version")
 local device = require("core.device")
 local util = require("core.util")
 local coordinator = require("fleet.coordinator")
-local minePlan = require("mine.plan")
-local mineRegistry = require("mine.registry")
+local minePlan = require("domain.mine.plan")
+local mineRegistry = require("domain.mine.registry")
 
 local console = {}
 

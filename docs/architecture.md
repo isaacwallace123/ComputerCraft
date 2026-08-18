@@ -29,9 +29,10 @@ apps → miner / fleet / jobs → turtle / mine → core
 
 - `core/` contains platform services: configuration, UI, display, logging, networking,
   sound, boot, and app metadata.
-- `mine/` contains the shared worksite: sector geometry (`plan.lua`, pure arithmetic),
-  the base-side lease and frontier store (`registry.lua`), and the turtle-side cache and
-  claim client (`site.lua`). It sits beside `turtle/` because both sides import it.
+- `mine/` contains the shared worksite. Sector geometry (`plan.lua`, pure arithmetic) and
+  the base-side lease and frontier store (`registry.lua`) have moved to `domain/mine/`,
+  leaving aliases behind; the turtle-side cache and claim client (`site.lua`) is still
+  here. It sits beside `turtle/` because both sides import it.
 - `turtle/` contains hardware primitives and should not know about a particular job.
   `turtle/access.lua` is the surface-access primitive: block classification, cap
   material selection, and verified placement. It knows what a safe cap is, never when
@@ -44,6 +45,29 @@ apps → miner / fleet / jobs → turtle / mine → core
 
 Avoid dependencies in the opposite direction. In particular, a turtle primitive
 should not import an app, and a job should not manipulate the desktop.
+
+### The ICOS 2 layers, being built alongside
+
+Four folders exist that nothing in the running fleet uses yet. They are the foundation of
+[`docs/icos-2.md`](icos-2.md) and [`docs/ui-framework.md`](ui-framework.md), landed first
+so that everything after them is testable:
+
+```text
+domain/   pure logic. May not reference a CC global; the check enforces it.
+ports/    interface definitions - a method list, a check, a null implementation.
+adapters/ cc/   real implementations over fs, rednet, term, turtle, gps
+          sim/  the simulated world, and a recording screen
+ui/       the cell buffer and its diff
+```
+
+`domain/mine/` holds `plan.lua` and `registry.lua`, moved from `mine/` without logic
+changes; `mine/plan.lua` and `mine/registry.lua` remain as aliases until the specs are
+rewritten. `mine/site.lua` has not moved, because it is the turtle-side cache and talks to
+the network.
+
+Nothing is wired. No composition root constructs an adapter, and every device boots
+through exactly the paths described above. That is deliberate: phase 1 changes no
+behaviour at all, which is what makes the unchanged spec suite meaningful.
 
 ## Boot flow
 

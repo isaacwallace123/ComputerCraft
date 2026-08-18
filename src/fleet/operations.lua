@@ -1,8 +1,8 @@
 --- Validated base-side mine and coordinated-quarry operations.
 
 local coordinator = require("fleet.coordinator")
-local minePlan = require("mine.plan")
-local mineRegistry = require("mine.registry")
+local minePlan = require("domain.mine.plan")
+local mineRegistry = require("domain.mine.registry")
 
 local operations = {}
 

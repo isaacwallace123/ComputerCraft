@@ -28,22 +28,54 @@ A framework fixes the third by fixing the first two.
 ## 2. What the hardware actually gives us
 
 Design has to start here, because half of the interesting decisions are forced by it.
-**Verify each of these against the CC: Tweaked docs before relying on it** — this is from
-experience, not from the source.
+
+**Verified.** This table was originally written from experience. Every row has since been
+checked against the CC: Tweaked source at tag `v1.20.1-1.113.1` — the exact build this
+fleet runs — and against [tweaked.cc](https://tweaked.cc). Two rows were wrong and one was
+missing; they are corrected below and called out underneath.
 
 | Constraint | Consequence |
 | --- | --- |
-| The screen is a character grid, ~51×19 on a computer, up to ~164×81 on a large monitor at scale 0.5 | Layout is integer cells. No subpixel positioning at the widget level. |
-| 16 colours on screen — but `term.setPaletteColor` redefines all 16 to arbitrary RGB on advanced hardware | A real palette is possible. Sixteen *chosen* colours, not sixteen given ones. |
-| `term.blit(text, fg, bg)` writes a run with per-character colours in one call | The renderer must batch into runs. Per-character `setTextColor` + `write` is the slow path. |
-| The font has 2×3 block characters (codes 128–159) | An effective pixel grid of ~102×57, up to ~328×243. This is how cards and images get drawn. |
-| The game runs at 20 ticks/second; `sleep(0.05)` is one tick | **20 FPS is the hard ceiling.** Design animation for 10–15. |
-| Cooperative multitasking, no preemption | The frame loop is a coroutine that yields. A slow render starves input. |
-| `window` objects buffer and flush on `setVisible` | Tear-free presentation already exists; use it rather than inventing one. |
+| The screen is a character grid: **51×19** on a computer, **39×13** on a turtle, **26×20** on a pocket computer, and exactly **164×81** on the largest monitor (8×6 blocks) at scale 0.5 | Layout is integer cells. No subpixel positioning at the widget level. |
+| 16 colours on screen, and `term.setPaletteColour` redefines all 16 to arbitrary RGB — **on every terminal, not only advanced ones**. A non-advanced terminal stores the value and renders it as its greyscale average | A real palette is possible everywhere. Sixteen *chosen* colours, not sixteen given ones — but see §11: they have to differ in luminance, not only in hue. |
+| `term.blit(text, fg, bg)` writes a run with per-character colours in one call. The three arguments must be the same length or it throws. It **does not wrap**: a run is clipped to its row, and the cursor must be positioned first | The renderer must batch into runs, and the unit worth minimising is the *run*, because each one costs a `setCursorPos` as well. Per-character `setTextColor` + `write` is the slow path. |
+| The font has 2×3 block characters at codes 128–159. That is 32 codepoints for 6 subpixels: **five are addressable and the sixth needs fg and bg swapped**, and a cell holds only two colours whatever the pattern | An effective pixel grid of 102×57, up to 328×243, in two colours per 2×3 cell. This is how cards and images get drawn. |
+| The game runs at 20 ticks/second; `os.sleep` and `os.startTimer` round **up** to the next multiple of 0.05 | **20 FPS is the hard ceiling.** Design animation for 10–15. |
+| Cooperative multitasking within a computer, and **pre-emptive scheduling between them**: all computers share `computer_threads` (default **1**), and each runnable one gets 50ms ÷ the number of runnable computers, floored at **5ms**, before it is paused for its neighbours | The frame loop is a coroutine that yields, and a slow render starves input on that machine. But the budget is a 5ms slice on a busy server, not a 50ms tick — see §12. |
+| `window` objects buffer while invisible and draw immediately on becoming visible | Tear-free presentation already exists; use it rather than inventing one. |
 
 The 20 FPS ceiling is the important one. It rules out anything that needs smooth motion
 and rules *in* deliberate, snappy, well-eased transitions of 150–300ms. The aesthetic has
 to be chosen to suit that, not fight it.
+
+### What the check changed
+
+**The palette is not an advanced-hardware feature.** `Palette.setColour` accepts a value
+on every terminal; what a non-advanced one does is store it and render
+`(r + g + b) / 3`. So a theme is not unavailable on a standard computer, it is *flattened
+to luminance*. That turns §11's fallback from a second colour mapping into a constraint on
+the first: tokens that differ only in hue become the same grey. Contrast is now a
+correctness property of the palette rather than a nicety.
+
+**164×81 is exact, not approximate.** `Config.monitorWidth`/`monitorHeight` cap a monitor
+at 8×6 blocks, and `ServerMonitor.rebuild` sizes the terminal as
+`round((blocks − 2 × (border + margin)) ÷ (scale × 6 or 9 × 1/64))`, which at scale 0.5
+gives 164 × 81 with no rounding ambiguity in the width. Be aware that the widely quoted
+figure of 162×80 is from the pre-Tweaked ComputerCraft wiki, whose border constants
+differ; benching against it would undercount by two columns and a row.
+
+**A computer does not get a whole tick.** This row was missing entirely and it is the one
+that matters most for §12. `ComputerThread` targets 50ms of latency per computer but
+divides it by the number of runnable computers, with a 5ms floor
+(`DEFAULT_LATENCY`, `DEFAULT_MIN_PERIOD`). A base station and ten turtles is eleven
+runnable computers on one thread, so the base's slice is 5ms — a tenth of the tick the
+budget was originally written against. Nothing crashes when a frame overruns; the computer
+is simply paused and resumed, and the only hard limit is the 7-second "Too long without
+yielding" abort. But a frame that needs 40ms of Lua is a frame that takes eight scheduling
+slices to appear, while every turtle on the server waits behind it.
+
+**Confirmed unchanged:** the blit signature and its same-length requirement; the 128–159
+glyph range; tick rounding; `window` buffering.
 
 ---
 
@@ -114,6 +146,21 @@ values changing across the screen still present as one coalesced frame.
 `ports/screen` matters: it is what lets the whole framework render into a recording
 buffer in the spec suite. **A layout bug becomes a unit test** — assert the cells, no
 Minecraft required. That has never been possible here.
+
+The bottom two rows exist as of phase 1. `ports/screen` is
+[`src/ports/screen.lua`](../src/ports/screen.lua), implemented over a terminal by
+[`src/adapters/cc/screen.lua`](../src/adapters/cc/screen.lua) and over a recording cell
+grid by [`src/adapters/sim/screen.lua`](../src/adapters/sim/screen.lua);
+[`src/ui/buffer.lua`](../src/ui/buffer.lua) is the grid and the diff, and
+[`tools/spec/buffer_spec.lua`](../tools/spec/buffer_spec.lua) is the first test in this
+repository that asserts what is on a screen without a world to put it in.
+
+Two decisions made while building it are worth knowing before adding to the layer, and
+both are recorded in the file's own header: **a changed row is emitted as one run spanning
+its first change to its last**, never as several runs skipping the identical middles,
+because a call into the game costs far more than the characters inside it; and **a row is
+three strings rather than a table of cells**, which makes comparison and painting run in C
+and makes cell-at-a-time `set` the deliberate slow path the canvas must avoid.
 
 ---
 
@@ -327,27 +374,91 @@ layer is worth having: adding a chat notifier should not mean touching any app.
 - 4 free for the current app — cards, charts, a game
 
 Components reference **semantic tokens** (`surface`, `muted`, `bad`), never raw colour
-indices, so a theme swap is data. Standard (non-advanced) hardware falls back to the
-fixed 16 with a documented mapping, and monochrome hardware to two.
+indices, so a theme swap is data.
 
-Light and dark are two token sets. Contrast has to be checked on a real monitor — CC's
-palette is rendered at a size where subtle neutrals disappear.
+**Corrected after checking the source (§2).** This section used to say standard hardware
+falls back to the fixed 16 with a documented mapping, and monochrome hardware to two.
+There is no such fallback and no monochrome tier: `Palette.setColour` accepts the value on
+every terminal, and a non-advanced one renders each slot as `(r + g + b) / 3`. Standard
+hardware gets **the theme, in sixteen greys**.
+
+That is better than a second mapping and stricter than it. There is nothing to write; but
+two tokens that differ only in hue — a green `good` and a red `bad` at the same brightness
+— become the same grey, and the row that says a turtle is stuck becomes indistinguishable
+from the row that says it is fine. So every semantic pair must separate on luminance as
+well, and the palette needs a check that computes `(r + g + b) / 3` per token and fails on
+collisions. That belongs with the theme, in phase 5.
+
+Light and dark are two token sets. Contrast still has to be checked on a real monitor —
+CC's palette is rendered at a size where subtle neutrals disappear — but the greyscale
+collision test can be done in a spec, without one.
+
+Colours are handled as **palette indices 0–15** throughout the framework, not as
+`colors.*` bitmask values. `term.blit` names slots with a hex digit and the palette is
+sixteen numbered slots; the bitmask is a shape that suits `redstone` and nothing here.
+Conversion happens once, inside `adapters/cc/screen.lua`, on the two calls per frame that
+are not on the hot path.
 
 ---
 
 ## 12. Performance budget
 
-Explicit targets, verified by a bench in the spec suite:
+Explicit targets, and — as of phase 1 — measured numbers rather than hopes. Run
+`.\tools\bench.ps1`.
 
-| Metric | Budget |
-| --- | --- |
-| Idle screen | 0 terminal calls, < 1ms comparison pass |
-| Typical dashboard update | < 40 `blit` calls |
-| Full-screen change, 164×81 | one frame (50ms) |
-| Frame loop while animating | 10–15 FPS sustained, no starved input |
+### Measured
 
-If the diff cannot repaint a large monitor inside one tick, the framework has failed at
-the thing it exists for. Measure it in phase 1, not at the end.
+`src/ui/buffer.lua` at the phase 1 implementation, painting a fleet dashboard modelled on
+the real Fleet page. `blits` is calls through `ports/screen`; `chars` is how many cells
+those calls carried.
+
+| Case | Surface | blits/frame | chars/frame | ms/frame |
+| --- | --- | ---: | ---: | ---: |
+| Idle, nothing touched | 164×81 | 0 | 0 | 0.005 |
+| Idle, page repainted in full | 164×81 | 0 | 0 | 0.63 |
+| Dashboard update (10 heartbeats + clock) | 164×81 | 11 | 171 | 0.28 |
+| Full repaint, every cell differs | 164×81 | **81** | 13,284 | **0.79** |
+| Idle, page repainted in full | 51×19 | 0 | 0 | 0.13 |
+| Dashboard update | 51×19 | 11 | 171 | 0.09 |
+| Full repaint, every cell differs | 51×19 | 19 | 969 | 0.15 |
+
+### Against the budget
+
+| Metric | Budget | Measured | |
+| --- | --- | --- | --- |
+| Idle screen | 0 terminal calls, < 1ms comparison pass | 0 calls; 0.005ms untouched, 0.63ms when the page repaints itself | ✅ |
+| Typical dashboard update | < 40 `blit` calls | 11 | ✅ |
+| Full-screen change, 164×81 | one frame (50ms) | 0.79ms — 2% of a tick, 16% of a contended 5ms slice | ✅ |
+| Frame loop while animating | 10–15 FPS sustained, no starved input | not yet measurable; needs phase 4 | — |
+
+**The one-tick premise holds, with room.** A full repaint of the largest monitor a person
+can build costs 0.79ms and 81 terminal calls, against a 50ms tick. It also fits inside the
+5ms slice a computer gets when it is sharing a thread with ten turtles (§2), which is the
+budget that actually binds and which the original target did not account for.
+
+### Read the times with the caveat attached
+
+The bench runs on the Lua the language server embeds — PUC Lua on a desktop CPU. In game
+the same code runs on Cobalt, a Java interpreter, on a server that is doing other things.
+Cobalt is slower; a conservative 10× would put the full repaint at about 8ms, still inside
+a tick but no longer inside a single contended slice.
+
+Which is why the bench reports counts as well. **81 blits and 13,284 characters are
+properties of the algorithm** and are identical on every interpreter. The times say whether
+there is headroom; the counts say whether the design is right. Hold future changes to the
+counts, and re-measure the times on hardware before trusting a margin.
+
+Three results are worth reading beyond the pass mark:
+
+- **Idle is genuinely free.** Not "cheap" — 0.005ms and zero calls, because a frame with
+  no dirty rows examines nothing at all. This is what makes §8's claim affordable: a frame
+  loop can tick at 20 FPS behind a settled screen and cost nothing.
+- **A page that repaints itself in full still emits nothing.** 0.63ms of painting into the
+  back buffer, and zero terminal calls, because the diff finds every row identical. That is
+  the compatibility story for every app in this repository as it stands: they can keep
+  redrawing everything and stop flickering, before any of them is rewritten.
+- **The dashboard update is 11 calls for 171 characters** — one per changed row, spanning
+  first change to last. The naive per-cell renderer would have emitted somewhere near 171.
 
 ---
 
@@ -378,15 +489,21 @@ Not on Server, and not on a turtle.
 
 ## 14. Phasing
 
-| # | Phase | Delivers |
-| --- | --- | --- |
-| 1 | `ports/screen`, `ui/buffer`, diff + blit, bench | Flicker-free painting, measured |
-| 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app (Devices) on it |
-| 3 | `ui/input`, focus, gestures | Full interaction parity with today |
-| 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity |
-| 5 | `ui/canvas` + sprites + theming | Imagery and real palettes |
-| 6 | Blackjack | Showcase and soak test |
-| 7 | Port remaining apps, add AP ports | Old `core/ui.lua` deleted; chat notifications |
+| # | Phase | Delivers | |
+| --- | --- | --- | --- |
+| 1 | `ports/screen`, `ui/buffer`, diff + blit, bench | Flicker-free painting, measured | **done** |
+| 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app (Devices) on it | |
+| 3 | `ui/input`, focus, gestures | Full interaction parity with today | |
+| 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity | |
+| 5 | `ui/canvas` + sprites + theming | Imagery and real palettes | |
+| 6 | Blackjack | Showcase and soak test | |
+| 7 | Port remaining apps, add AP ports | Old `core/ui.lua` deleted; chat notifications | |
+
+**Phase 1 landed**, with `ports/`, `adapters/cc`, `adapters/sim`, `src/ui/buffer.lua`, the
+buffer specs, and `.\tools\bench.ps1`. The measured numbers are in §12 and the premise
+holds. It shipped one thing the plan did not name: `tools\check.ps1` now fails if anything
+under `src/domain`, `src/ports`, or `src/ui` references a CC global, because a layering
+rule that nothing checks is a comment.
 
 Phase 2 rebuilding **Devices specifically** is deliberate: it is the densest existing
 screen, with a list, a detail view, a settings editor, and scrolling. If it does not come
@@ -397,8 +514,10 @@ should be revisited before phase 3.
 
 ## 15. Risks
 
-- **Performance is the whole bet.** If the diff cannot repaint a large monitor in a tick,
-  none of the rest matters. Benched in phase 1 for exactly that reason.
+- ~~**Performance is the whole bet.**~~ **Retired.** The diff repaints the largest
+  monitor in 0.79ms against a 50ms tick, and in 16% of the 5ms slice a computer gets on a
+  contended server (§12). Re-measure on real hardware before relying on the margin, and
+  hold future changes to the blit counts rather than the times.
 - **Leaks, which is the price of fine-grained reactivity.** React's model cleans up by
   virtue of re-rendering; a binding graph does not. Every `Computed`, `Observer`, and
   `Spring` holds a reference until its scope is destroyed, and a component that

@@ -2,8 +2,8 @@
 
 local log = require("core.log")
 local net = require("core.net")
-local plan = require("mine.plan")
-local registry = require("mine.registry")
+local plan = require("domain.mine.plan")
+local registry = require("domain.mine.registry")
 local rosterStore = require("fleet.roster")
 
 local coordinator = {}

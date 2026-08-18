@@ -14,7 +14,7 @@
 local config = require("core.config")
 local log = require("core.log")
 local net = require("core.net")
-local plan = require("mine.plan")
+local plan = require("domain.mine.plan")
 
 local site = {}
 

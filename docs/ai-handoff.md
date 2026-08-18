@@ -73,9 +73,13 @@ different tradeoff:
 | mining route/safety | `src/jobs/`, `src/jobs/common/safety.lua` |
 | shaft caps and surface safety | `src/turtle/access.lua`, `src/jobs/prospecting/surface.lua` |
 | unloading and depot overflow | `src/turtle/depot.lua` |
-| shared mine geometry | `src/mine/plan.lua` |
+| shared mine geometry | `src/domain/mine/plan.lua` |
 | simulated-world tests | `tools/spec/`, `tools/spec.ps1` |
-| sector leases and frontiers | `src/mine/registry.lua`, `src/fleet/coordinator.lua` |
+| the simulated world itself | `src/adapters/sim/world.lua` |
+| a new port, or a CC implementation of one | `src/ports/`, `src/adapters/cc/` |
+| cell rendering, the diff, blit batching | `src/ui/buffer.lua`, `tools/spec/buffer_spec.lua` |
+| renderer performance numbers | `tools/bench.lua`, `tools/bench.ps1`, `docs/ui-framework.md` section 12 |
+| sector leases and frontiers | `src/domain/mine/registry.lua`, `src/fleet/coordinator.lua` |
 | turtle sector claiming | `src/mine/site.lua` |
 | movement/protected blocks | `src/turtle/nav.lua` |
 | turtle-to-turtle awareness | `src/turtle/peers.lua` |
@@ -104,10 +108,21 @@ git diff --check
 git status --short
 ```
 
-`tools\spec.ps1` runs the turtle logic against a simulated world (`tools/spec/`). Run it
-after any change to `turtle/`, `jobs/`, or `mine/`. It is fast, needs nothing installed,
-and it is the only thing in this repository that can actually execute a mining cycle —
+`tools\spec.ps1` runs the turtle logic against a simulated world
+(`src/adapters/sim/world.lua`, driven from `tools/spec/`). Run it after any change to
+`turtle/`, `jobs/`, `mine/`, `domain/`, or `ui/`. It is fast, needs nothing installed, and
+it is the only thing in this repository that can actually execute a mining cycle —
 including cutting power at every step of one and checking the ground afterwards.
+
+`tools\bench.ps1` measures the renderer: blit calls and milliseconds per frame for an idle
+screen, a dashboard update, and a full repaint. Run it after any change to `src/ui/` and
+put the numbers in `docs/ui-framework.md` section 12. Hold changes to the **blit counts**,
+which are properties of the algorithm; the times come from a desktop interpreter, not from
+Cobalt, and are a floor rather than a prediction.
+
+`tools\check.ps1` also enforces the layering rule: nothing under `src/domain`, `src/ports`,
+or `src/ui` may reference a CC global. D027 records the single allowed exception and why
+it is there. If you need `fs`, `os`, or `term` in one of those folders, you need a port.
 
 `tools/deploy.ps1` also commits and pushes. Use it only when the user explicitly asks
 for publication. Documentation-only root files do not belong in `src/manifest.json`.
@@ -209,6 +224,20 @@ large AFK run.
   part of crash-safe navigation; do not revert `.nav` to in-place overwrite.
 - A standard mining turtle cannot carry pickaxe, modem, and Geo Scanner at once.
 - The updater deploys only `src/manifest.json`; documentation remains repository-side.
+- ICOS 2 phase 1 moved `mine/plan.lua` and `mine/registry.lua` to `domain/mine/`, with no
+  logic changes. `src/mine/plan.lua` and `src/mine/registry.lua` are one-line aliases that
+  return the moved module, and every caller in `src/` already uses the new path. The
+  aliases exist so the spec suite resolved unchanged — which is the only evidence that a
+  live fleet's sector bookkeeping came through the move unaltered — and are deleted when
+  the specs are rewritten. Do not add new code against `mine.plan` or `mine.registry`.
+- `tools/spec/support/world.lua` is likewise an alias for `src/adapters/sim/world.lua`.
+  The world keeps `install()`, which writes CC's APIs onto `_G`, beside its new `ports()`.
+  Both are correct for now: modules written before ports existed read those globals, and
+  rewriting them all at once is the flag day the plan exists to avoid.
+- `domain/mine/registry.lua` still reads `os.epoch` and persists through `core/config`, so
+  it is not yet pure domain code. It is the one entry in the layering check's allow list.
+  Threading a clock and a storage port through `fleet/coordinator.lua` and
+  `core/console.lua` is what empties it; see D027.
 
 ## Handoff note template
 

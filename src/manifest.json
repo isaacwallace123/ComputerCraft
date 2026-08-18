@@ -1,6 +1,14 @@
 {
-    "generated":  "2026-08-17T01:33:32-04:00",
+    "generated":  "2026-08-17T20:23:29-04:00",
     "files":  [
+                  "adapters/cc/body.lua",
+                  "adapters/cc/clock.lua",
+                  "adapters/cc/locator.lua",
+                  "adapters/cc/screen.lua",
+                  "adapters/cc/storage.lua",
+                  "adapters/cc/transport.lua",
+                  "adapters/sim/screen.lua",
+                  "adapters/sim/world.lua",
                   "apps/automation.lua",
                   "apps/console.lua",
                   "apps/devices.lua",
@@ -28,6 +36,8 @@
                   "core/ui.lua",
                   "core/util.lua",
                   "core/version.lua",
+                  "domain/mine/plan.lua",
+                  "domain/mine/registry.lua",
                   "fleet/control.lua",
                   "fleet/coordinator.lua",
                   "fleet/operations.lua",
@@ -51,6 +61,13 @@
                   "miner/context.lua",
                   "miner/network.lua",
                   "miner/runtime.lua",
+                  "ports/body.lua",
+                  "ports/clock.lua",
+                  "ports/contract.lua",
+                  "ports/locator.lua",
+                  "ports/screen.lua",
+                  "ports/storage.lua",
+                  "ports/transport.lua",
                   "startup.lua",
                   "turtle/access.lua",
                   "turtle/depot.lua",
@@ -61,6 +78,7 @@
                   "turtle/nav.lua",
                   "turtle/ore.lua",
                   "turtle/peers.lua",
+                  "ui/buffer.lua",
                   "update.lua"
               ]
 }

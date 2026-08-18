@@ -119,7 +119,8 @@ Each prospecting cycle used to roll an independent random bearing, fly out, and 
 fresh shaft. The number of holes near a base therefore grew with the number of cycles
 run, without bound, and nothing was ever reused.
 
-The world is now divided once into square sectors around the base (`mine/plan.lua`).
+The world is now divided once into square sectors around the base
+(`domain/mine/plan.lua`).
 Each sector has one shaft at its centre, extended vertically on first use and reused thereafter, and
 one trunk tunnel with ribs that stays strictly inside the sector bounds. Hole count is
 now bounded by sectors opened, not cycles run, and every later trip into a sector walks
@@ -142,7 +143,8 @@ left obviously unmined.
 
 Each sector now stores a `frontier` for each job/depth key: how far along that trunk the
 fleet has mined. This lets different profiles share a shaft without sharing completion.
-It is held at the base (`mine/registry.lua`) and cached on the turtle (`mine/site.lua`), and
+It is held at the base (`domain/mine/registry.lua`) and cached on the turtle
+(`mine/site.lua`), and
 survives unload, reboot, recall, and fuel aborts. A cycle that ends early resumes at the
 same tunnel. When a vein outlasts the vein budget the frontier is deliberately not
 advanced past it, so the next cycle re-enters the same ore.
@@ -258,7 +260,8 @@ night and looks busy doing it.
 
 **Status:** accepted
 
-`mine/registry.lua` held leases and frontiers — progress. Where a sector's shaft head
+`domain/mine/registry.lua` (then `mine/registry.lua`) held leases and frontiers — progress.
+Where a sector's shaft head
 actually was, and whether it was open, lived only in the job file of whichever turtle
 last visited. Lose the turtle and nobody knew there was a hundred-block drop at those
 coordinates.
@@ -277,6 +280,66 @@ recovery — all of it duplicating a route that already exists and is already te
 
 Anything a turtle is not certain it closed is reported `open`. A needless patrol trip
 costs a commute; a missed one costs somebody falling down a shaft.
+
+## D027 — The layering rule is a build check, not a convention
+
+**Status:** accepted
+
+[`docs/icos-2.md`](icos-2.md) says `domain/` may not reference a CC global. Every previous
+architectural rule in this repository has been a sentence in a document, and every one of
+them has been broken by somebody in a hurry who did not read it - `fleet/service.lua`
+grew discovery, leases, policy, logging and persistence for exactly that reason.
+
+`tools/check.ps1` now strips comments from `src/domain`, `src/ports`, and `src/ui` and
+fails on a reference to `fs`, `term`, `turtle`, `rednet`, `gps`, `os`, or any other CC
+global. Nothing else could enforce it: the type checker is happy with a CC global and
+selene is happier still, because in every other folder they are correct.
+
+There is one entry in the allow list. `domain/mine/registry.lua` still reads `os.epoch`
+and persists through `core/config`, because moving the file and changing how it gets its
+clock and its storage are two different changes, and doing both at once would have
+destroyed the only available evidence that a live fleet's sector bookkeeping came through
+the move unaltered - that the existing specs passed untouched. Threading a clock and a
+storage port through `fleet/coordinator.lua` and `core/console.lua` empties the list.
+
+The allow list is the mechanism that keeps the debt visible. A rule with an exception
+nobody can see is a rule that has already been abandoned.
+
+## D028 — A changed row is one blit, spanning first change to last
+
+**Status:** accepted
+
+The obvious cell diff finds every contiguous changed run in a row and emits one terminal
+call each, skipping the identical stretches between them. That is the wrong trade on this
+hardware, and getting it wrong is expensive in the direction that is hard to see: the
+frame looks correct and the machine is slow.
+
+A `term.blit` costs a `setCursorPos` and a call into the game. The characters inside it
+cost a memcpy. Splitting a row into three runs to avoid rewriting eight unchanged
+characters buys back eight bytes and pays four extra calls into the game for them.
+
+`ui/buffer.lua` therefore emits one run per changed row, spanning its first changed cell
+to its last. A one-character change is a one-character run. A row where only the two ends
+moved rewrites the middle, and is still cheaper than the alternative. The property that
+makes the budget provable falls out for free: a frame emits at most one call per row,
+whatever changed - 81 for a full repaint of the largest monitor a person can build.
+
+Two supporting choices should not be "simplified" either:
+
+- **A row is three strings, not a table of cells.** `text`, `fg`, and `bg` are the exact
+  three arguments `blit` takes, so comparison is a memcmp and painting a run is a splice,
+  both in C. A grid of `{ char, fg, bg }` tables would move 13,284 comparisons per frame
+  into interpreted Lua, and would need converting at present time besides. The cost is
+  that `set` rewrites a whole row to change one cell; the 2x3 canvas must build a row and
+  hand it over through `row`, not call `set` three hundred times.
+- **A row is only examined if something wrote to it.** Not an optimisation of the diff -
+  the diff still runs, and a row repainted with identical content still emits nothing -
+  but an optimisation of the walk. It is what makes an idle screen cost 0.005ms rather
+  than a comparison pass over every row on the monitor.
+
+Measured numbers are in [`ui-framework.md`](ui-framework.md) section 12. Hold future
+changes to the blit counts, which are properties of the algorithm, rather than to the
+times, which were taken on a desktop interpreter rather than on Cobalt.
 
 ## D014 — Version changes happen at merge
 

@@ -24,6 +24,8 @@ local SPECS = {
   "hazard_spec",
   "depot_spec",
   "registry_spec",
+  "ports_spec",
+  "buffer_spec",
 }
 
 local filter = ...
