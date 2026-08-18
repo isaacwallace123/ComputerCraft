@@ -33,7 +33,7 @@
 --- clock directly can only be tested by sleeping, which is how a suite becomes
 --- slow and flaky at the same time.
 
-local reactive = require("ui.core.reactive")
+local reactive = require("ui.state.reactive")
 
 local anim = {}
 

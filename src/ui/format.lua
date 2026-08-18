@@ -1,4 +1,9 @@
---- Small text helpers every component needs.
+--- Text that has to fit an exact cell width.
+---
+--- Called `ui/core/util.lua` until the folder it lived in was found to be the
+--- same mistake D037 was written about. "Util" named nothing, which is how a
+--- file becomes a place to put things - and this one is specific: padding,
+--- truncation, and the two number formats a fleet dashboard actually shows.
 ---
 --- `pad` exists for the reason `legacy/shell/ui.lua` grew its own: Lua's `string.format`
 --- has no `*` dynamic-width specifier, and it caps a literal width at two digits
@@ -6,7 +11,7 @@
 --- a runtime error on a wide monitor. Anywhere a width is computed rather than
 --- literal, this is the only correct way to reach it.
 
-local util = {}
+local format = {}
 
 --- Truncate and pad `text` to exactly `width` cells.
 ---
@@ -14,7 +19,7 @@ local util = {}
 --- its box leaves whatever was underneath it showing through, and one that
 --- returns a longer string paints over its neighbour - both of which look like
 --- layout bugs and are not.
-function util.pad(text, width, align)
+function format.pad(text, width, align)
   text = tostring(text == nil and "" or text)
   if width <= 0 then
     return ""
@@ -39,7 +44,7 @@ end
 --- Uses ".." rather than a single "…" character: the CC font has no ellipsis
 --- glyph, and a codepoint outside the font renders as a question mark box, which
 --- is worse than two full stops.
-function util.ellipsis(text, width)
+function format.ellipsis(text, width)
   text = tostring(text == nil and "" or text)
   if width <= 0 then
     return ""
@@ -56,7 +61,7 @@ end
 --- Fuel and block counts, which are the numbers this fleet actually shows.
 --- 51000 in a seven-cell column is "51.0k"; the exact figure is never the point
 --- and the column is never wide enough for it.
-function util.count(value)
+function format.count(value)
   value = tonumber(value) or 0
   if value >= 1000000 then
     return ("%.1fM"):format(value / 1000000)
@@ -69,7 +74,7 @@ end
 
 --- Seconds since something, as a short human string. `nil` is "never", which is
 --- a real answer for a device that has not reported since the server started.
-function util.ago(seconds)
+function format.ago(seconds)
   if seconds == nil then
     return "never"
   end
@@ -86,4 +91,4 @@ function util.ago(seconds)
   return math.floor(seconds / 86400) .. "d"
 end
 
-return util
+return format

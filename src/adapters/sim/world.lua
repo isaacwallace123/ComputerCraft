@@ -971,8 +971,8 @@ end
 --- copy of every table inside it, including its metatables - so a value created
 --- by the old copy fails an identity test in the new one, and does so silently.
 ---
---- `^ui%.` was on this list and had to come off. `ui/core/reactive.lua` identifies a
---- state object by its metatable; `ui/core/anim.lua` requires reactive lazily; and a
+--- `^ui%.` was on this list and had to come off. `ui/state/reactive.lua` identifies a
+--- state object by its metatable; `ui/state/anim.lua` requires reactive lazily; and a
 --- spec file holds its own reference from load time. After a world spec dropped
 --- the cache, an animation built through the old runtime asked the *new*
 --- reactive whether its goal was a state object, was told no, and quietly

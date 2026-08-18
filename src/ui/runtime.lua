@@ -33,13 +33,13 @@
 --- Children paint over their parent, so a parent whose background changed has to
 --- redraw everything sitting on it. Repainting the subtree is correct and cheap;
 --- being cleverer about it would mean tracking overlap, and the cell diff in
---- `ui/core/buffer.lua` already removes the cost of painting something that did not
+--- `ui/render/buffer.lua` already removes the cost of painting something that did not
 --- change. Paint freely into the back buffer; the diff decides what is sent.
 
-local buffer = require("ui.core.buffer")
-local inputModel = require("ui.core.input")
-local layout = require("ui.core.layout")
-local reactive = require("ui.core.reactive")
+local buffer = require("ui.render.buffer")
+local inputModel = require("ui.input")
+local layout = require("ui.render.layout")
+local reactive = require("ui.state.reactive")
 
 local runtime = {}
 
@@ -351,19 +351,19 @@ end
 --- along with everything else it made.
 function UIScope:_animator()
   if not self._driver then
-    self._driver = require("ui.core.anim").driver()
+    self._driver = require("ui.state.anim").driver()
   end
   return self._driver
 end
 
---- A value that physically follows a goal. See `ui/core/anim.lua`.
+--- A value that physically follows a goal. See `ui/state/anim.lua`.
 function UIScope:Spring(goal, speed, damping)
-  return require("ui.core.anim").Spring(self, goal, speed, damping)
+  return require("ui.state.anim").Spring(self, goal, speed, damping)
 end
 
---- A value that eases to a goal over a duration. See `ui/core/anim.lua`.
+--- A value that eases to a goal over a duration. See `ui/state/anim.lua`.
 function UIScope:Tween(goal, duration, easing)
-  return require("ui.core.anim").Tween(self, goal, duration, easing)
+  return require("ui.state.anim").Tween(self, goal, duration, easing)
 end
 
 --- A scope that can make both state and nodes.

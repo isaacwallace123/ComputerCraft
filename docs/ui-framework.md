@@ -369,7 +369,7 @@ One normalised event model over `key`, `char`, `mouse_click`, `mouse_drag`,
 - Gestures: tap, drag, scroll. Long-press deliberately omitted; it is undiscoverable on a
   monitor.
 
-**Built in phase 3.** `ui/core/input.lua` has the normalisation and the tree walks;
+**Built in phase 3.** `ui/input.lua` has the normalisation and the tree walks;
 `Root:dispatch` has the routing. Two details that only became clear while building it:
 
 - **A monitor touch produces two events, not one.** It has no release of its own, so one
@@ -568,7 +568,7 @@ a single turtle changing fuel and phase, on a full page of six devices:
 | ICOS: the node is marked, its subtree is painted | **1** |
 | Root invalidation: the whole tree is painted | **81** |
 
-The ICOS figure is the real thing: `ui/core/runtime.lua`, the real reactive graph, the real
+The ICOS figure is the real thing: `ui/runtime.lua`, the real reactive graph, the real
 layout solver, and `apps/fleet/view.lua`. Nothing is simulated on that side.
 
 **The two designs tie at both extremes and diverge in the middle, which is where a
@@ -666,11 +666,11 @@ framework rather than only the renderer, and one heartbeat on a full 164×81 pag
 
 ### What phase 2 delivered
 
-- `ui/core/reactive.lua` — `Value`, `Computed` with explicit `use`, `Observer`, `scoped()`,
+- `ui/state/reactive.lua` — `Value`, `Computed` with explicit `use`, `Observer`, `scoped()`,
   cycle detection, and a live-object count for the leak check §15 asks for.
-- `ui/core/layout.lua` — the flex subset, integer-only, with the remainder rule written down.
+- `ui/render/layout.lua` — the flex subset, integer-only, with the remainder rule written down.
   Pure functions over plain tables; it knows nothing about nodes or painting.
-- `ui/core/runtime.lua` — the retained tree, the bindings, and the per-node dirty queue.
+- `ui/runtime.lua` — the retained tree, the bindings, and the per-node dirty queue.
 - `ui/theme.lua` — the sixteen tokens, both palettes, and the greyscale check.
 - `ui/components/` — `Text`, `Heading`, `Muted`, `Box`, `Row`, `Column`, `Card`, `Spacer`,
   `Separator`, `Button`, `Badge`, `Meter`, plus the `Page` and `Table` composites.
@@ -698,9 +698,9 @@ in:
 - `ports/input.lua`, with a cc adapter over `os.pullEventRaw` and a sim adapter that is a
   scripted pair of hands. The sim one needs no world: a spec writes down what a person did
   and the framework cannot tell the difference.
-- `ui/core/input.lua` — normalisation, hit testing, bubbling, and the focus ring. All pure
+- `ui/input.lua` — normalisation, hit testing, bubbling, and the focus ring. All pure
   functions over a laid-out tree, so every routing rule is a unit test.
-- `ui/core/runtime.lua` gained `dispatch`, `handle` and focus management.
+- `ui/runtime.lua` gained `dispatch`, `handle` and focus management.
 - `ui/host.lua` — mount against two ports, then pull, dispatch, render, repeat.
 - `Table` gained scrolling and row selection.
 - `apps/devices/view.lua`, and 31 more specs.
@@ -722,7 +722,7 @@ There is none of it in the rebuild.
 Three things are worth knowing before phase 4:
 
 - **A monitor touch is a whole tap.** CC gives a terminal four mouse events and a monitor
-  exactly one, with no release, no drag, and no hover ever. `ui/core/input.lua` normalises a
+  exactly one, with no release, no drag, and no hover ever. `ui/input.lua` normalises a
   touch into a press *and* a release at the same point. Nothing above may assume a release
   follows a press after an interesting interval — which is why §9 omits long-press
   deliberately rather than by oversight.
@@ -756,10 +756,10 @@ could be finished before any of this existed.
 
 ### What phase 4 delivered
 
-- `ui/core/anim.lua` — `Spring`, `Tween`, the four easings, and the driver. Both are state
+- `ui/state/anim.lua` — `Spring`, `Tween`, the four easings, and the driver. Both are state
   objects, so anything that consumes a value consumes an animated one and no component
   knows it is being animated.
-- A clip stack in `ui/core/buffer.lua`, `Scroll` and `Absolute` in the solver, and the
+- A clip stack in `ui/render/buffer.lua`, `Scroll` and `Absolute` in the solver, and the
   `ScrollView` and `Overlay` components that need them. D033 flagged the clip region as
   something to decide deliberately rather than bolt on; this is that.
 - `Root:advance(now)` and `Root:animating()`; the host loop wakes on a tick only while
@@ -786,11 +786,11 @@ back:
 
 ### What phase 5 delivered
 
-- `ui/draw/canvas.lua` — a pure pixel surface with clipped points, Bresenham lines, outlined or
+- `ui/render/canvas.lua` — a pure pixel surface with clipped points, Bresenham lines, outlined or
   filled rectangles, outlined or filled midpoint circles, numeric images, sprite drawing,
   and the 2×3 encoder. It knows no terminal and paints one complete run into the buffer per
   character row.
-- `ui/draw/sprite.lua` — the deliberately small source format above, validated once when it is
+- `ui/render/sprite.lua` — the deliberately small source format above, validated once when it is
   constructed, plus transparency and palette remapping when it is drawn.
 - `Canvas` and `Sprite` components. The former exposes a retained node's cell box as pixels;
   the latter measures immutable art to `ceil(width / 2) × ceil(height / 3)`. Replacing a

@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T09:14:09-04:00",
+    "generated":  "2026-08-18T09:19:43-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -122,17 +122,17 @@
                   "ui/components/page.lua",
                   "ui/components/table.lua",
                   "ui/components/text.lua",
-                  "ui/core/anim.lua",
-                  "ui/core/buffer.lua",
-                  "ui/core/input.lua",
-                  "ui/core/layout.lua",
-                  "ui/core/reactive.lua",
-                  "ui/core/runtime.lua",
-                  "ui/core/util.lua",
-                  "ui/draw/canvas.lua",
-                  "ui/draw/sprite.lua",
+                  "ui/format.lua",
                   "ui/host.lua",
                   "ui/init.lua",
+                  "ui/input.lua",
+                  "ui/render/buffer.lua",
+                  "ui/render/canvas.lua",
+                  "ui/render/layout.lua",
+                  "ui/render/sprite.lua",
+                  "ui/runtime.lua",
+                  "ui/state/anim.lua",
+                  "ui/state/reactive.lua",
                   "ui/theme.lua",
                   "update.lua"
               ]

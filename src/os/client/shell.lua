@@ -30,7 +30,7 @@
 --- the most likely place to leak it.
 
 local host = require("ui.host")
-local reactive = require("ui.core.reactive")
+local reactive = require("ui.state.reactive")
 local ui = require("ui.init")
 
 local shell = {}

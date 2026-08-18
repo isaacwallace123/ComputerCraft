@@ -259,9 +259,9 @@ large AFK run.
   boundary.** Re-requiring a module makes a fresh copy of every table in it, metatables
   included, so a value built by the old copy fails an identity test in the new one -
   silently. `^ui%.` was on the list and had to come off: an animation built through the old
-  runtime asked a freshly required `ui/core/reactive.lua` whether its goal was a state object,
+  runtime asked a freshly required `ui/state/reactive.lua` whether its goal was a state object,
   was told no, and quietly animated a table.
-- One 2×3 glyph can show only two colours. `ui/draw/canvas.lua` keeps the two most frequent and
+- One 2×3 glyph can show only two colours. `ui/render/canvas.lua` keeps the two most frequent and
   maps any others through the active theme palette; do not replace that with distances
   between CC's default colours, because ICOS redefines every palette slot. Sprite assets
   are immutable hex rows with `.` transparency — replace a reactive asset rather than

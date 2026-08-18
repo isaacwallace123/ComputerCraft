@@ -9,7 +9,7 @@
 local expect = require("support.expect")
 local it = require("support.spec").it
 
-local layout = require("ui.core.layout")
+local layout = require("ui.render.layout")
 
 --- A leaf of a fixed intrinsic size.
 local function leaf(width, height, extra)

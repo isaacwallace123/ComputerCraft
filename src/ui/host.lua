@@ -33,7 +33,7 @@
 --- station, where this is one of several coroutines sharing a terminal and the
 --- desktop owns what happens next.
 
-local anim = require("ui.core.anim")
+local anim = require("ui.state.anim")
 
 local host = {}
 

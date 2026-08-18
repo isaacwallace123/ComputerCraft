@@ -38,7 +38,7 @@
 --- desktop - is a later phase, because that one touches a running fleet.
 
 local theme = require("ui.theme")
-local util = require("ui.core.util")
+local format = require("ui.format")
 
 local T = theme.TOKENS
 
@@ -165,7 +165,7 @@ function fleet.build(scope, options)
         Width = 7,
         Align = "right",
         Key = "fuel",
-        Format = util.count,
+        Format = format.count,
         Tone = function()
           return T.mutedFg
         end,

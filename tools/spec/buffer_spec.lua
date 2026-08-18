@@ -13,7 +13,7 @@
 local expect = require("support.expect")
 local it = require("support.spec").it
 
-local buffer = require("ui.core.buffer")
+local buffer = require("ui.render.buffer")
 local recorder = require("adapters.sim.screen")
 
 local WHITE, BLACK = 0, 15

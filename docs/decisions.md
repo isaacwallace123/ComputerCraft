@@ -345,7 +345,7 @@ A `term.blit` costs a `setCursorPos` and a call into the game. The characters in
 cost a memcpy. Splitting a row into three runs to avoid rewriting eight unchanged
 characters buys back eight bytes and pays four extra calls into the game for them.
 
-`ui/core/buffer.lua` therefore emits one run per changed row, spanning its first changed cell
+`ui/render/buffer.lua` therefore emits one run per changed row, spanning its first changed cell
 to its last. A one-character change is a one-character run. A row where only the two ends
 moved rewrites the middle, and is still cheaper than the alternative. The property that
 makes the budget provable falls out for free: a frame emits at most one call per row,
@@ -440,7 +440,7 @@ getting it wrong first:
   moved.
 - **A repaint takes the node's whole subtree.** Children paint over their parent, so a
   parent whose background changed has to redraw what sits on it. Being cleverer would mean
-  tracking overlap, and the cell diff in `ui/core/buffer.lua` already makes painting an
+  tracking overlap, and the cell diff in `ui/render/buffer.lua` already makes painting an
   unchanged cell free.
 
 The failure mode if this is ever "simplified" is not a crash. It is a dashboard that still
@@ -486,7 +486,7 @@ CC gives a computer terminal four pointer events - `mouse_click`, `mouse_up`, `m
 `mouse_scroll`. It gives a monitor exactly one, `monitor_touch`, with no release, no drag,
 and no hover ever.
 
-`ui/core/input.lua` therefore normalises a touch into a press **and** a release at the same
+`ui/input.lua` therefore normalises a touch into a press **and** a release at the same
 point, and nothing above it may assume that a release follows a press after some
 interesting interval, or that a drag is possible, or that anything can be known about a
 pointer that is not currently pressing.
@@ -531,7 +531,7 @@ Two things follow, and both are the table's job rather than every screen's:
 - A click reports the **row**, not the slot. Under an offset those are different things,
   and a screen cares which device was pressed, not which widget it happened to be in.
 
-There is still no clip region in `ui/core/buffer.lua`. `ScrollView`, `Modal` and `Tabs` will
+There is still no clip region in `ui/render/buffer.lua`. `ScrollView`, `Modal` and `Tabs` will
 need one and should get it deliberately, with its own decision, rather than by somebody
 adding a bounds check to `write` and discovering later that half the components ignore it.
 
@@ -546,7 +546,7 @@ awake.
 is enormous for a spring. At the speed section 8 of `ui-framework.md` gives as its worked
 example - `Spring(goal, 25, 1)` - the term `speed² · dt²` comes to 1.56. Above 1 a
 semi-implicit Euler integrator gains energy every step rather than losing it, so the value
-oscillates wider and wider instead of settling. The first version of `ui/core/anim.lua` did
+oscillates wider and wider instead of settling. The first version of `ui/state/anim.lua` did
 exactly this and reached six figures within six frames.
 
 The consequence is worse than a visual glitch. A spring that never settles is never
@@ -624,7 +624,7 @@ three-colour cells unavoidable even when every sprite is authored carefully, so 
 them would turn an ordinary overlap into a runtime error and choosing arbitrarily would
 make the image change when iteration order changed.
 
-`ui/draw/canvas.lua` counts colours in each 2×3 cell, keeps the two most frequent, and maps each
+`ui/render/canvas.lua` counts colours in each 2×3 cell, keeps the two most frequent, and maps each
 discarded colour to the nearer survivor in the active palette's RGB values. Equal counts
 use first appearance in row-major order; equal distances choose the dominant colour. The
 same pixels and palette therefore always produce the same character. Without palette data,

@@ -18,20 +18,20 @@ require("ui.components.graphics")
 require("ui.components.page")
 require("ui.components.table")
 
-local runtime = require("ui.core.runtime")
+local runtime = require("ui.runtime")
 
 local ui = {
-  anim = require("ui.core.anim"),
-  buffer = require("ui.core.buffer"),
-  canvas = require("ui.draw.canvas"),
-  input = require("ui.core.input"),
-  layout = require("ui.core.layout"),
-  reactive = require("ui.core.reactive"),
+  anim = require("ui.state.anim"),
+  buffer = require("ui.render.buffer"),
+  canvas = require("ui.render.canvas"),
+  input = require("ui.input"),
+  layout = require("ui.render.layout"),
+  reactive = require("ui.state.reactive"),
   runtime = runtime,
-  sprite = require("ui.draw.sprite"),
+  sprite = require("ui.render.sprite"),
   host = require("ui.host"),
   theme = require("ui.theme"),
-  util = require("ui.core.util"),
+  format = require("ui.format"),
 }
 
 ui.tokens = ui.theme.TOKENS
@@ -46,11 +46,11 @@ ui.mount = runtime.mount
 --- Wire a screen and an input port into something runnable. The composition
 --- root for a page; see `ui/host.lua`.
 ui.page = function(options)
-  return require("ui.host").mount(options)
+  return ui.host.mount(options)
 end
 
 ui.run = function(root, input, options)
-  return require("ui.host").run(root, input, options)
+  return ui.host.run(root, input, options)
 end
 
 --- Set a node property from outside the binding graph. Focus uses it; a screen

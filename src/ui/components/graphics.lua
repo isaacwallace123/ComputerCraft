@@ -1,8 +1,8 @@
 --- Pixel content. Canvas is for imagery, never for application chrome.
 
-local canvas = require("ui.draw.canvas")
-local runtime = require("ui.core.runtime")
-local sprite = require("ui.draw.sprite")
+local canvas = require("ui.render.canvas")
+local runtime = require("ui.runtime")
+local sprite = require("ui.render.sprite")
 
 local function measurePixels(width, height)
   return math.ceil((width or 0) / 2), math.ceil((height or 0) / 3)

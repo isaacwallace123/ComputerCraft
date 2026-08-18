@@ -10,7 +10,7 @@
 --- still laid out in terminal cells; its pixel surface is exactly twice as wide
 --- and three times as tall as the box the solver gives it.
 
-local sprite = require("ui.draw.sprite")
+local sprite = require("ui.render.sprite")
 
 local canvas = {}
 local Canvas = {}

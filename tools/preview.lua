@@ -460,7 +460,7 @@ local function reportGreyscale(palette, label)
         swatch,
         greySwatch,
         fgSeq(0xE4E4E7),
-        ui.util.pad(entry.name, 12),
+        ui.format.pad(entry.name, 12),
         fgSeq(0xA1A1AA),
         entry.grey,
         gap,

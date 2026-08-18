@@ -31,7 +31,7 @@
 local catalogue = require("domain.turtle.jobs")
 local fleetView = require("apps.fleet.view")
 local theme = require("ui.theme")
-local util = require("ui.core.util")
+local format = require("ui.format")
 
 local T = theme.TOKENS
 
@@ -216,14 +216,14 @@ function devices.build(scope, options)
         scope,
         "fuel",
         about(function(device)
-          return util.count(device.fuel)
+          return format.count(device.fuel)
         end, "-")
       ),
       field(
         scope,
         "seen",
         about(function(device)
-          return util.ago(device.since)
+          return format.ago(device.since)
         end, "-")
       ),
       scope:Spacer({ Height = 1 }),

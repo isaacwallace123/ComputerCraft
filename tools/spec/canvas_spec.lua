@@ -3,10 +3,10 @@
 local expect = require("support.expect")
 local it = require("support.spec").it
 
-local buffer = require("ui.core.buffer")
-local canvas = require("ui.draw.canvas")
+local buffer = require("ui.render.buffer")
+local canvas = require("ui.render.canvas")
 local recorder = require("adapters.sim.screen")
-local sprite = require("ui.draw.sprite")
+local sprite = require("ui.render.sprite")
 local ui = require("ui.init")
 
 it("encodes all six subpixels and swaps colours through the sixth", function()

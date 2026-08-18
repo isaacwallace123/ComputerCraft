@@ -228,7 +228,7 @@ it("a Computed that recomputes to the same text repaints nothing", function()
           s:Text({
             Width = 8,
             Text = s:Computed(function(use)
-              return ui.util.count(use(devices)[index].fuel)
+              return ui.format.count(use(devices)[index].fuel)
             end),
           }),
         },

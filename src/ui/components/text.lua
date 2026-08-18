@@ -6,9 +6,9 @@
 --- exists to avoid. Multi-line content is a `Column` of `Text`, which makes the
 --- cost visible at the call site where somebody can decide whether to pay it.
 
-local runtime = require("ui.core.runtime")
+local runtime = require("ui.runtime")
 local theme = require("ui.theme")
-local util = require("ui.core.util")
+local format = require("ui.format")
 
 local T = theme.TOKENS
 
@@ -36,7 +36,7 @@ runtime.define({
     -- The whole box is written, not just the text. A shorter string than last
     -- frame would otherwise leave its own tail behind, and the cell diff makes
     -- the padding free when it has not changed.
-    frame:write(x, y, util.pad(node.Text, width, node.TextAlign), colour, background)
+    frame:write(x, y, format.pad(node.Text, width, node.TextAlign), colour, background)
   end,
 })
 
@@ -63,7 +63,7 @@ runtime.define({
     frame:write(
       node._x,
       node._y,
-      util.pad(node.Text, node._w, node.TextAlign),
+      format.pad(node.Text, node._w, node.TextAlign),
       node.Color or T.foreground,
       node.Background or surface
     )
@@ -88,7 +88,7 @@ runtime.define({
     frame:write(
       node._x,
       node._y,
-      util.pad(node.Text, node._w, node.TextAlign),
+      format.pad(node.Text, node._w, node.TextAlign),
       node.Color or T.mutedFg,
       node.Background or surface
     )

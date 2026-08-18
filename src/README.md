@@ -15,10 +15,16 @@ os/         The four operating systems and what runs them.
               server/ main.lua + services/   its long-running work
               turtle/ main.lua + jobs/       its work
                                 + device/    its hardware
-ui/         The framework.
-              core/       reactive, runtime, layout, buffer, anim
-              draw/       canvas, sprite
-              components/ Button, Table, Page, ...
+ui/         The framework. The spine is at the top, the machinery below.
+              init.lua     front door
+              runtime.lua  the component system
+              input.lua    events, focus, hit testing
+              host.lua     mount, and the run loop
+              theme.lua    tokens and palettes
+              format.lua   text that must fit an exact cell width
+              state/       reactive, anim - values that change over time
+              render/      buffer, layout, canvas, sprite
+              components/  grouped by family, not one file each
 apps/       Pages. One folder each: app.lua wires, view.lua draws.
 lib/        Genuinely generic. Two files, and it stays that way.
 legacy/     ICOS 1. Deleted a folder at a time as ICOS 2 replaces it.
@@ -72,6 +78,33 @@ and the shell, desktop, net and device-detection to `legacy/`.
 
 `lib/` is checked for CC globals by `tools/check.ps1` for exactly this reason. It
 is the mechanism that stops it becoming the next `core/`.
+
+## Why `ui/` has no `core/`
+
+It had one, for exactly one commit, and it was the same mistake this document
+criticises `src/core/` for. Four unrelated concerns shared a folder whose name
+said nothing: `reactive`+`anim` (values that change over time), `buffer`+`layout`
+(boxes and cells), `runtime`+`input` (the component system), `util` (text
+padding).
+
+Now the folders are named for what they hold, and the framework's spine sits at
+the top level where a reader opening `ui/` sees what the thing is made of.
+
+Two things were deliberately **not** changed:
+
+- **`components/` groups by family** - `text.lua` holds Text, Heading and Muted;
+  `controls.lua` holds Button, Badge, Meter, Stepper, Select and Toggle. One file
+  per component is the shadcn habit and it works there because each component is
+  standalone; here Stepper, Select and Toggle share `controlRow`, so splitting
+  would produce fifteen files and a sixteenth for the helper.
+- **`runtime.lua` is 768 lines and stays one file.** It is already sectioned -
+  registry, nodes, scopes, painting, the root, input - and those sections are
+  three files waiting to happen. But `Root` methods reach `markPaint`,
+  `markMeasure` and `markLayout` directly, so splitting means either spreading a
+  metatable across files or inventing a shared internal module. That is a real
+  refactor of the most intricate, most load-bearing code in the project, and
+  organisational tidiness is not a good enough reason to risk it. It is recorded
+  here so the next person knows it was considered rather than missed.
 
 ## Where the debt is
 

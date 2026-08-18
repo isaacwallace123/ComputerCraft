@@ -7,7 +7,7 @@
 --- ## It hands over raw CC events, not normalised ones
 ---
 --- `pull` returns whatever the event queue produced: `"mouse_click", 1, 12, 4`.
---- Normalising it into the framework's own model is `ui/core/input.lua`'s job, not
+--- Normalising it into the framework's own model is `ui/input.lua`'s job, not
 --- the adapter's, and the split matters. A port should translate, never decide.
 --- The moment the cc adapter starts deciding that a `monitor_touch` is really a
 --- press followed by a release, the sim adapter has to make the same decision
