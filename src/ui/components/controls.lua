@@ -5,6 +5,7 @@
 --- intent rather than a set of properties, and anything that recesses or raises
 --- takes the surface it sits on so it can pick a shade that contrasts with it.
 
+local reactive = require("ui.reactive")
 local runtime = require("ui.runtime")
 local theme = require("ui.theme")
 local util = require("ui.util")
@@ -168,3 +169,119 @@ runtime.define({
     end
   end,
 })
+
+---------------------------------------------------------------------------
+-- Stepper
+---------------------------------------------------------------------------
+
+--- A labelled number with minus and plus.
+---
+--- The whole of the fleet's configuration UI is this: vein budget, scan
+--- interval, target depth, branch spacing. `src/apps/devices.lua` draws it by
+--- hand and carries a `compact = width < 42` branch that recomputes four column
+--- positions - which is the "does this fit on a pocket computer" arithmetic
+--- section 1 of docs/ui-framework.md says the framework exists to delete. There
+--- is none of it here; the label grows and the rest is fixed.
+---
+--- ## One tab stop, two ways to use it
+---
+--- The row is focusable and the two buttons are deliberately not. A person with
+--- a mouse presses the buttons; a person on a turtle tabs to the row and uses
+--- left and right. Making the buttons focusable would put three stops on every
+--- setting, so a page of six fields would take eighteen presses to cross.
+---
+--- Clicking a button still focuses the stepper, because `Focusable` bubbles: the
+--- button answers falsy and the row above it answers true.
+---
+--- `Value` is read for display and `OnChange` is the intent. The stepper never
+--- writes the value itself, because in the real app changing a setting sends a
+--- `configure` message to a parked turtle and the screen decides whether to
+--- apply it optimistically.
+runtime.compose("Stepper", function(scope, props)
+  props = props or {}
+  local step = props.Step or 1
+
+  local function adjust(direction)
+    -- `peek`, not a bare truth test. A composite receives the raw props, so
+    -- `props.Disabled` is usually a `Computed` - a table, and therefore truthy
+    -- whether it currently reads true or false. `if props.Disabled then` looked
+    -- right, passed review, and disabled every stepper on the page permanently.
+    --
+    -- The rule for any composite: a prop read imperatively goes through
+    -- `reactive.peek`. A prop handed to a node does not, because the binding
+    -- resolves it.
+    if reactive.peek(props.Disabled) then
+      return false
+    end
+    local current = tonumber(reactive.peek(props.Value)) or 0
+    local wanted = current + direction * step
+    if props.Min and wanted < props.Min then
+      wanted = props.Min
+    end
+    if props.Max and wanted > props.Max then
+      wanted = props.Max
+    end
+    if wanted == current then
+      return false
+    end
+    if props.OnChange then
+      props.OnChange(wanted)
+    end
+    return true
+  end
+
+  -- Structural properties belong to the caller, so they are forwarded onto the
+  -- row this composite builds rather than being silently dropped.
+  return scope:Row(runtime.layoutProps(props, {
+    Height = 1,
+    Gap = 1,
+    -- Focusability follows the same rule: `Disabled` may be a state, so the
+    -- node takes it as one and lets the binding keep it current. The ring is
+    -- rebuilt on every keypress precisely so this can change underneath it.
+    Focusable = true,
+    Disabled = props.Disabled,
+    OnKey = function(_, event)
+      local KEY = require("ui.input").KEY
+      if event.key == KEY.left then
+        return adjust(-1)
+      end
+      if event.key == KEY.right then
+        return adjust(1)
+      end
+      return false
+    end,
+    Children = {
+      scope:Muted({ Text = props.Label or "", Grow = 1 }),
+      scope:Text({
+        Text = scope:Computed(function(use)
+          return tostring(use(props.Value) or 0)
+        end),
+        Width = props.ValueWidth or 6,
+        TextAlign = "right",
+        Color = scope:Computed(function(use)
+          return use(props.Disabled) and T.mutedFg or T.accent
+        end),
+      }),
+      scope:Button({
+        Text = "-",
+        Size = "sm",
+        Variant = "ghost",
+        Focusable = false,
+        Disabled = props.Disabled,
+        OnClick = function()
+          return adjust(-1)
+        end,
+      }),
+      scope:Button({
+        Text = "+",
+        Size = "sm",
+        Variant = "ghost",
+        Focusable = false,
+        Disabled = props.Disabled,
+        OnClick = function()
+          return adjust(1)
+        end,
+      }),
+    },
+  }))
+end)

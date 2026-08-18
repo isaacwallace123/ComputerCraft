@@ -705,10 +705,19 @@ in:
 - `Table` gained scrolling and row selection.
 - `apps/devices/view.lua`, and 31 more specs.
 
-**Devices is the acceptance test this section set for the project**, and it passes: a
-list, a detail panel, selection, scrolling, keyboard operation, and a display-only variant
-that has nothing to tab to — with no coordinate, no colour and no redraw call anywhere in
-it. Read it against `src/apps/devices.lua`, which is the version it replaces.
+**Devices is the acceptance test this section set for the project.** It was claimed
+complete a phase early and was not: this section asks for "a list, a detail view, **a
+settings editor**, and scrolling", and the first rebuild had three of the four. The editor
+landed afterwards, and the claim stands now — a list, a detail panel, a full-width settings
+editor with one `Stepper` per advertised field, selection, scrolling, keyboard operation,
+and a display-only variant with nothing to tab to. No coordinate, no colour and no redraw
+call anywhere in it. Read it against `src/apps/devices.lua`, which is the version it
+replaces.
+
+The comparison the section actually asks for: the old page carries a
+`compact = width < 42` branch that recomputes four column positions by hand, which is the
+"does this fit on a pocket computer" arithmetic §1 says the framework exists to delete.
+There is none of it in the rebuild.
 
 Three things are worth knowing before phase 4:
 
@@ -724,6 +733,22 @@ Three things are worth knowing before phase 4:
 - **Focus is a node property**, so moving it repaints exactly two nodes however large the
   tree — and when both are on the same row the cell diff coalesces them into one call.
   That is D028 and the runtime meeting without either one knowing about the other.
+
+Building the settings editor afterwards pulled four gaps into the open, which is the
+argument for making a real screen the acceptance test rather than a checklist:
+
+- **`Hidden` only affected hit testing.** A hidden node still reserved its space and still
+  painted — invisible to a click and perfectly visible to a person. It is structural now.
+- **`Grow` could not shrink.** A flexible label wider than the space left for it pushed the
+  controls beside it off the edge, because `distribute` gave up when free space went
+  negative. Growable children now give space back, in proportion to what they hold.
+- **Composites dropped structural properties.** `scope:Table { Hidden = ... }` did nothing
+  at all: a composite is a function, and the node it builds never saw the property.
+  `runtime.layoutProps` forwards them.
+- **A composite reads *raw* props.** `props.Disabled` is usually a `Computed` — a table,
+  and therefore truthy whether it reads true or false. `if props.Disabled then` disabled
+  every stepper on the page permanently, reviewed clean, and raised nothing. Any prop a
+  composite reads imperatively goes through `reactive.peek`.
 
 Fleet was rebuilt first, in phase 2, because it is the screen the performance claim is
 actually about and because it needs no input at all — which made it the one screen that

@@ -62,8 +62,8 @@ runtime.compose("Page", function(scope, props)
     })
   end
 
-  return scope:Column({
+  return scope:Column(runtime.layoutProps(props, {
     Background = props.Background or T.background,
     Children = children,
-  })
+  }))
 end)

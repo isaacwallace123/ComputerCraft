@@ -140,7 +140,32 @@ local STRUCTURAL = {
   Children = true,
   Scroll = true,
   Absolute = true,
+  Hidden = true,
 }
+
+--- The structural properties from `props`, for a composite to put on the node
+--- it builds.
+---
+--- A composite is a function, not a node, so a caller writing
+--- `scope:Table { Hidden = ..., Grow = 1 }` is handing those to something that
+--- has no obligation to do anything with them - and the first version of every
+--- composite here quietly dropped them. `Hidden` on a table did nothing at all,
+--- which is a silent failure of the most annoying kind: the property is spelled
+--- correctly, the value is right, and nothing happens.
+---
+--- So a composite spreads this over the root node it returns. Only structural
+--- properties, because those are the ones that position a node inside its
+--- parent and therefore belong to the caller; anything else a composite accepts
+--- is its own vocabulary and is its own business.
+function runtime.layoutProps(props, into)
+  into = into or {}
+  for key in pairs(STRUCTURAL) do
+    if key ~= "Children" and props[key] ~= nil then
+      into[key] = props[key]
+    end
+  end
+  return into
+end
 
 ---------------------------------------------------------------------------
 -- Nodes
@@ -359,6 +384,10 @@ end
 --- `muted` selected row is invisible, and that was a real bug before it was a
 --- rule.
 local function paintSubtree(node, frame, surface)
+  if node.Hidden then
+    return
+  end
+
   local own = node.Background
   local here = own or surface
   node._surface = here

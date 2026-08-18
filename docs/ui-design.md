@@ -313,10 +313,16 @@ Built (**bold**) and planned:
 **Data** — **`Text`**, **`Heading`**, **`Muted`**, **`Table`**, **`Meter`**, **`Badge`**,
 `List`, `Sparkline`, `Gauge`, `KeyValue`.
 
-**Input** — **`Button`**, `Toggle`, `Stepper`, `TextField`, `Select`, `Menu`. Buttons take
-clicks, touches, focus and keyboard activation as of phase 3; the rest wait for a screen
-that needs them. `TextField` is the one with real work behind it — a cursor, a selection
-and an edit model — and nothing in the fleet UI has asked for it yet.
+**Input** — **`Button`**, **`Stepper`**, `Toggle`, `TextField`, `Select`, `Menu`. Buttons
+take clicks, touches, focus and keyboard activation; `Stepper` is a labelled number with
+minus and plus, which is the whole of the fleet's configuration UI. The rest wait for a
+screen that needs them. `TextField` is the one with real work behind it — a cursor, a
+selection and an edit model — and nothing in the fleet UI has asked for it yet.
+
+A `Stepper` is **one tab stop**, not three: the row is focusable and its two buttons are
+deliberately not. A person with a mouse presses the buttons; a person on a turtle tabs to
+the row and uses left and right. Making the buttons focusable would put three stops on
+every setting, so a page of six fields would take eighteen presses to cross.
 
 **Feedback** — `Toast`, `Spinner`, `Skeleton`, `Empty`, `Banner`.
 

@@ -288,6 +288,36 @@ local function buildDevices(scope)
     onDeploy = function() end,
     onRecall = function() end,
     onStop = function() end,
+    onSetting = function() end,
+  })
+end
+
+--- The same page with the settings editor showing, which is the half of the
+--- acceptance test in section 14 that the first rebuild missed.
+local function buildSettings(scope)
+  local roster = {}
+  for index, entry in ipairs(ROSTER) do
+    roster[index] = {
+      id = entry.id,
+      label = entry.label,
+      phase = index == 5 and "parked" or entry.phase,
+      job = "rare",
+      fuel = entry.fuel,
+      fuelLimit = entry.fuelLimit,
+      since = index * 47,
+      settings = { targetY = -59, veinBudget = 64, veinRadius = 8, scanEvery = 100 },
+    }
+  end
+  local selected = scope:Value(5)
+  return devicesScreen.build(scope, {
+    devices = scope:Value(roster),
+    selected = selected,
+    capacity = 6,
+    editing = scope:Value(true),
+    onSelect = function(device)
+      selected:set(device.id)
+    end,
+    onSetting = function() end,
   })
 end
 
@@ -478,6 +508,7 @@ print(
 
 render(buildFleet, DARK, "Fleet, dark")
 render(buildDevices, DARK, "Devices, dark")
+render(buildSettings, DARK, "Devices settings, dark")
 render(buildSampler, DARK, "Components, dark")
 render(buildFleet, LIGHT, "Fleet, light")
 

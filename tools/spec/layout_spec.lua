@@ -140,6 +140,51 @@ it("the same tree in the same space always gives the same boxes", function()
   end
 end)
 
+it("a growable child gives space back when there is not enough", function()
+  -- `Grow` means "take what is spare"; the honest counterpart is "give up what
+  -- is missing". Without it a flexible label pushes the controls beside it off
+  -- the edge of its panel, which is what the Devices settings editor did.
+  local label = leaf(11, 1, { Grow = 1 })
+  local value, minus, plus = leaf(6, 1), leaf(3, 1), leaf(3, 1)
+  layout.solve({ Gap = 1, Children = { label, value, minus, plus } }, 1, 1, 20, 1)
+
+  local _, _, labelWidth = layout.box(label)
+  expect.equal(labelWidth, 5, "the label absorbed the whole shortfall")
+  expect.equal(boxOf(plus), "18,1 3x1", "so the last control still fits inside")
+end)
+
+it("an explicit width is not shrunk, because it is a promise", function()
+  -- A table whose columns silently narrowed under pressure would stop lining up
+  -- with its own headings.
+  local fixed = leaf(0, 1, { Width = 12 })
+  local flexible = leaf(10, 1, { Grow = 1 })
+  layout.solve({ Children = { fixed, flexible } }, 1, 1, 14, 1)
+
+  local _, _, fixedWidth = layout.box(fixed)
+  local _, _, flexibleWidth = layout.box(flexible)
+  expect.equal(fixedWidth, 12, "the promise is kept")
+  expect.equal(flexibleWidth, 2, "and the flexible child pays for it")
+end)
+
+it("shrinking stops at zero rather than going negative", function()
+  local a = leaf(4, 1, { Grow = 1 })
+  local b = leaf(4, 1, { Grow = 1 })
+  layout.solve({ Children = { a, b } }, 1, 1, 3, 1)
+
+  local _, _, widthA = layout.box(a)
+  local _, _, widthB = layout.box(b)
+  expect.truthy(widthA >= 0 and widthB >= 0, "no negative widths")
+  expect.truthy(widthA + widthB <= 8, "and nothing grew")
+end)
+
+it("with nothing growable, an over-full row overflows and is clipped", function()
+  -- The documented behaviour, unchanged: there is no shrink below a measured
+  -- size except by clipping, and only `Grow` opts in.
+  local a, b = leaf(20, 1), leaf(20, 1)
+  layout.solve({ Children = { a, b } }, 1, 1, 10, 1)
+  expect.equal(boxOf(a), "1,1 20x1", "the first keeps its measured size")
+end)
+
 ---------------------------------------------------------------------------
 -- Justify and align
 ---------------------------------------------------------------------------

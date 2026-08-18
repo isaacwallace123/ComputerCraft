@@ -77,6 +77,11 @@ end
 --- not a preference; a column that says it is 12 wide is 12 wide whatever the
 --- text inside it does, because that is what makes a table's columns line up.
 function layout.measure(node)
+  if node.Hidden then
+    node._measuredW, node._measuredH = 0, 0
+    return 0, 0
+  end
+
   local children = node.Children
   local left, right, top, bottom = padding(node)
 
@@ -90,11 +95,15 @@ function layout.measure(node)
 
     for _, child in ipairs(children) do
       layout.measure(child)
-      -- An absolute child is measured but contributes nothing to its parent's
-      -- size, because it is not in the flow. A modal that made its page as tall
-      -- as the dialog inside it would push the page's own content around every
-      -- time the dialog opened.
-      if not child.Absolute then
+      -- A hidden child contributes nothing and is not in the flow. `Hidden` used
+      -- to affect only hit testing, which meant a hidden node still reserved its
+      -- space and still painted - invisible to a click and perfectly visible to a
+      -- person, which is the worst of both.
+      --
+      -- An absolute child is measured but also contributes nothing, because it is
+      -- not in the flow either. A modal that made its page as tall as the dialog
+      -- inside it would push the page's own content around every time one opened.
+      if not child.Absolute and not child.Hidden then
         local childMain = row and child._measuredW or child._measuredH
         local childCross = row and child._measuredH or child._measuredW
         counted = counted + 1
@@ -144,8 +153,45 @@ local function distribute(children, sizes, free)
   for _, child in ipairs(children) do
     totalGrow = totalGrow + (child.Grow or 0)
   end
-  if totalGrow <= 0 or free <= 0 then
+  if totalGrow <= 0 or free == 0 then
     return free
+  end
+
+  -- Negative free space: the flexible children give it back.
+  --
+  -- `Grow` means "take what is spare", and the honest counterpart is "give up
+  -- what is missing" - a label saying it will flex and then pushing the buttons
+  -- beside it off the edge of its panel is not flexible, it is just wrong. That
+  -- was a real bug: the Devices settings editor overflowed its card because the
+  -- longest field name was wider than the space left for it.
+  --
+  -- Only growable children shrink. An explicit `Width` is a promise (see
+  -- `measure`), and a table whose columns silently narrowed under pressure would
+  -- stop lining up with its own headings.
+  if free < 0 then
+    local deficit = -free
+    local shrinkable = 0
+    for index, child in ipairs(children) do
+      if (child.Grow or 0) > 0 then
+        shrinkable = shrinkable + sizes[index]
+      end
+    end
+    if shrinkable <= 0 then
+      return free
+    end
+
+    local taken = 0
+    for index, child in ipairs(children) do
+      if (child.Grow or 0) > 0 and taken < deficit then
+        -- In proportion to how much each one has, not to its grow weight: a
+        -- child holding two cells cannot give up four however eagerly it flexes.
+        local share =
+          math.min(sizes[index], math.ceil(deficit * sizes[index] / shrinkable), deficit - taken)
+        sizes[index] = sizes[index] - share
+        taken = taken + share
+      end
+    end
+    return free + taken
   end
 
   local handed = 0
@@ -214,6 +260,11 @@ end
 --- the edge of a pocket computer - and much easier to reason about than a node
 --- with no box at all, which every painter would then have to test for.
 function layout.arrange(node, x, y, width, height)
+  if node.Hidden then
+    node._x, node._y, node._w, node._h = math.floor(x), math.floor(y), 0, 0
+    return
+  end
+
   node._x, node._y = math.floor(x), math.floor(y)
   node._w, node._h = math.max(0, math.floor(width)), math.max(0, math.floor(height))
 
@@ -238,7 +289,12 @@ function layout.arrange(node, x, y, width, height)
   -- and it is deliberately the only escape from the flow the solver offers.
   local flow = {}
   for _, child in ipairs(children) do
-    if child.Absolute then
+    if child.Hidden then
+      -- Still given a box, and a zero one. Every painter and hit test already
+      -- handles a zero-size box; leaving the old coordinates on a hidden node
+      -- would make it reappear at its last position the moment anything asked.
+      layout.arrange(child, innerX, innerY, 0, 0)
+    elseif child.Absolute then
       layout.arrange(child, innerX, innerY, innerW, innerH)
     else
       flow[#flow + 1] = child

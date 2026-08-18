@@ -63,6 +63,35 @@ local function field(scope, label, value, tone)
   })
 end
 
+--- The default configuration fields, when a snapshot does not carry its own.
+---
+--- Real turtles advertise `settingFields` in their heartbeat, because which
+--- settings exist depends on the job the turtle is running. This is the fallback
+--- for a device that has not reported any yet, and it is deliberately the same
+--- shape, so the panel below has one code path rather than two.
+devices.FIELDS = {
+  { key = "targetY", label = "target Y", step = 1, min = -63, max = 320 },
+  { key = "veinBudget", label = "vein budget", step = 8, min = 0, max = 512 },
+  { key = "veinRadius", label = "vein radius", step = 1, min = 0, max = 32 },
+  { key = "scanEvery", label = "scan every", step = 10, min = 0, max = 10000 },
+}
+
+--- May this device's settings be changed right now?
+---
+--- The fleet's standing rule, and one of the high-risk invariants in
+--- docs/ai-handoff.md: remote configuration and job assignment require a parked
+--- turtle. A turtle halfway down a shaft that has its target depth changed
+--- underneath it is how a run ends somewhere nobody expected.
+---
+--- Expressed as a function over a record so the panel *derives* it rather than
+--- being told, which means there is no code path that leaves the editor enabled
+--- while a turtle is working.
+local PARKED = { parked = true, ready = true }
+
+function devices.configurable(device)
+  return device ~= nil and PARKED[tostring(device.phase or "")] == true
+end
+
 ---------------------------------------------------------------------------
 
 --- Build the page.
@@ -73,11 +102,18 @@ end
 --- The action callbacks are optional, exactly as in the Fleet view, so that a
 --- display-only monitor mounts the same page with none of them and there is no
 --- code path that could put a deploy button on a wall. D020's `requiresInput`
---- boundary, expressed as an absent argument rather than as a branch.
+--- boundary, expressed as an absent argument rather than as a branch. The
+--- settings editor follows the same rule: no `onSetting`, no editor and no
+--- button to reach it.
 function devices.build(scope, options)
   local roster = options.devices
   local selected = options.selected
   local offset = options.offset or scope:Value(0)
+  -- Which half of the right-hand panel is showing. Screen state, so it defaults
+  -- to a `Value` the view owns - but accepted from the caller like `offset`,
+  -- because a composition root that restores a page across a reopen needs to be
+  -- able to hold it, and a spec needs to be able to start in either half.
+  local editing = options.editing or scope:Value(false)
 
   --- The selected device, or nil. Every other derived value hangs off this one,
   --- which is what makes it impossible for the detail panel to be showing a
@@ -117,6 +153,9 @@ function devices.build(scope, options)
     Width = 22,
     Padding = 1,
     Gap = 0,
+    Hidden = scope:Computed(function(use)
+      return use(editing)
+    end),
     Children = {
       scope:Text({
         Text = about(function(device)
@@ -178,7 +217,79 @@ function devices.build(scope, options)
     },
   })
 
+  --- The settings editor: one Stepper per advertised field.
+  ---
+  --- Built once, for the fields the *first* selected device advertises, and then
+  --- bound - the same fixed-pool reasoning as a table (D031). A device running a
+  --- different job advertises different fields, and the honest answer is to show
+  --- the ones this panel knows about and let the rest arrive when the panel is
+  --- rebuilt, rather than to rebuild the binding graph every time a row is
+  --- clicked.
+  local fieldRows = {}
+  for _, setting in ipairs(options.fields or devices.FIELDS) do
+    fieldRows[#fieldRows + 1] = scope:Stepper({
+      Label = setting.label,
+      Step = setting.step,
+      Min = setting.min,
+      Max = setting.max,
+      ValueWidth = 6,
+      Value = about(function(device)
+        return tonumber((device.settings or {})[setting.key]) or 0
+      end, 0),
+      -- D019 and the fleet's own rule: configuration requires a parked turtle.
+      -- Derived from the same record the panel is showing, so there is no path
+      -- that enables these while a turtle is underground.
+      Disabled = scope:Computed(function(use)
+        local device = use(current)
+        return device == nil or not devices.configurable(device)
+      end),
+      OnChange = options.onSetting and function(value)
+        local device = current:get()
+        if device then
+          options.onSetting(device, setting.key, value)
+        end
+      end or nil,
+    })
+  end
+
+  --- The editor takes the whole body, and the list steps aside.
+  ---
+  --- The first attempt put it in the detail panel's 22-cell slot beside the
+  --- list. The solver duly shrank the longest field name to five characters -
+  --- correctly, since `Grow` now gives space back - and "vein budget" became
+  --- "vein ". `src/apps/devices.lua` is a full-width view for the same reason;
+  --- a settings editor is a place you go, not a thing you glance at.
+  local settings = scope:Column({
+    Grow = 1,
+    Padding = 1,
+    Gap = 0,
+    Background = T.card,
+    Hidden = scope:Computed(function(use)
+      return not use(editing)
+    end),
+    Children = {
+      scope:Text({ Text = "Settings" }),
+      scope:Muted({
+        Text = scope:Computed(function(use)
+          local device = use(current)
+          if device == nil then
+            return "no device"
+          end
+          if not devices.configurable(device) then
+            return "park it first"
+          end
+          return device.job or "no job"
+        end),
+      }),
+      scope:Spacer({ Height = 1 }),
+      scope:Column({ Gap = 0, Children = fieldRows }),
+    },
+  })
+
   local list = scope:Table({
+    Hidden = scope:Computed(function(use)
+      return use(editing)
+    end),
     Rows = roster,
     Selected = selected,
     Offset = offset,
@@ -218,6 +329,20 @@ function devices.build(scope, options)
   action("Recall", nil, options.onRecall)
   action("Stop", "destructive", options.onStop)
 
+  -- The panel switch. Only offered when the screen supplied a way to persist a
+  -- change; a display-only surface gets neither the button nor the editor.
+  if options.onSetting then
+    actions[#actions + 1] = scope:Button({
+      Text = scope:Computed(function(use)
+        return use(editing) and "Detail" or "Settings"
+      end),
+      Disabled = nothingSelected,
+      OnClick = function()
+        editing:set(not editing:get())
+      end,
+    })
+  end
+
   return scope:Page({
     Title = options.title or "Devices",
     Status = scope:Computed(function(use)
@@ -227,7 +352,7 @@ function devices.build(scope, options)
       scope:Row({
         Grow = 1,
         Gap = 2,
-        Children = { list, detail },
+        Children = { list, detail, settings },
       }),
     },
     Actions = actions,

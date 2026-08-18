@@ -211,11 +211,12 @@ runtime.compose("Table", function(scope, props)
     return offset:set(wanted)
   end
 
-  return scope:Column({
-    Grow = props.Grow,
+  -- Structural properties belong to the caller, so they are forwarded onto the
+  -- node this composite builds rather than being silently dropped.
+  return scope:Column(runtime.layoutProps(props, {
     OnScroll = offset and onScroll or nil,
     Children = children,
-  })
+  }))
 end)
 
 --- Exposed so a screen can reuse the cell rules without reaching into the
