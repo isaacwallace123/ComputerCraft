@@ -461,8 +461,8 @@ flag day, because there is a live fleet to keep running.
 | 0 | Finish the worksite redesign | Shared shaft, spines | — | |
 | 1 | Extract `domain/` + `ports/` + `adapters/` | No behaviour change. Specs stop needing globals. | Low, purely mechanical | **started** |
 | 2 | Device registry + last known location | Missing turtles become findable | Low, additive | **domain done** |
-| 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events | |
-| 4 | Drop-off list | Multiple depots | Medium — touches return fuel | |
+| 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events | **domain done** |
+| 4 | Drop-off list | Multiple depots | Medium — touches return fuel | **domain done** |
 | 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | |
 | 6 | App folders and manifests, commands split out | The layout above | Low, mechanical | |
 
@@ -548,6 +548,55 @@ Three smaller decisions, all of which are specced:
 
 Still to do for phase 2: `fleet/service.lua` writing through it, and a Devices view sorted
 by staleness so a missing turtle is the first thing on the screen rather than the ninth.
+
+### Phase 3: desired state
+
+`domain/fleet/desired.lua` is built and specced. Not wired.
+
+Each of the five properties §5 promises is a test rather than a claim, and two of them
+turned out to need more care than the plan states:
+
+- **Idempotent** is not enough on its own. A policy loop that re-asserts "park" every pass
+  would bump the generation every pass and make every device re-apply an order it was
+  already obeying — the event model wearing a new hat. So `want` compares goals *by
+  content* and only moves the generation when the goal genuinely differs, including for
+  the settings table, which the caller rebuilds on every call.
+- **Monotonic** matters more than "generations increase". Rednet promises nothing about
+  ordering, so a reply carrying generation 40 can arrive after one carrying 41. `apply`
+  refuses anything at or below what the device has already applied, which is the only
+  thing standing between that and a recalled turtle quietly going back to work.
+
+The autonomy invariant is expressed as a return value rather than as a comment. `apply`
+returns nil for a duplicate, a stale reply, a malformed message, a mode it does not know,
+and no reply at all — and **nil means carry on, never stop**. Losing the server cannot
+strand a turtle, because none of these functions can be reached without a reply having
+arrived in the first place.
+
+### Phase 4: drop-offs
+
+`domain/depot/list.lua` and `domain/depot/select.lua` are built and specced. Not wired.
+
+§7 names two things that had to be handled in the same change, and both are:
+
+- **The chosen drop-off is picked before the outward fuel check.** `select.plan` returns
+  the depot *and* the fuel that choice commits, in one call, so the two cannot be computed
+  from different positions. A turtle that flew out on a reserve computed for home, filled
+  up, and only then decided to visit a depot the other way has already spent the fuel it
+  needed to get back. The cost includes the leg from the depot **home again**, because a
+  turtle is not safe when it reaches a chest.
+- **An empty list behaves exactly like today.** `choose` returns nil for an empty list, a
+  list with nothing enabled, nothing that accepts the cargo, and nothing in fuel range.
+  Every path that is not a positive answer is D008, unchanged, which is what makes this
+  safe to ship to a fleet that never opens the screen.
+
+Two smaller decisions worth knowing:
+
+- Distance is **Manhattan**, because `nav.goTo` only travels on cardinals and a diagonal is
+  walked as a staircase. Euclidean would under-estimate every route and the error would
+  land in the one number that must never be optimistic.
+- A `full` report **expires** after twenty minutes. Nothing ever reports a depot empty
+  again — a person walks over, takes the diamonds, and tells nobody — so a flag without an
+  expiry removes a depot from service permanently on the strength of one bad trip.
 
 ## 13. Migration
 

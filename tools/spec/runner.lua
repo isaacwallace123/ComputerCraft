@@ -25,6 +25,8 @@ local SPECS = {
   "depot_spec",
   "registry_spec",
   "fleet_registry_spec",
+  "desired_spec",
+  "depots_spec",
   "ports_spec",
   "buffer_spec",
   "reactive_spec",

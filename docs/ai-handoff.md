@@ -95,6 +95,8 @@ different tradeoff:
 | seeing the new UI on real hardware | `src/apps/showcase.lua`, run `apps/showcase` in game |
 | sector leases and frontiers | `src/domain/mine/registry.lua`, `src/fleet/coordinator.lua` |
 | device roster, last known position | `src/domain/fleet/registry.lua` (new, unwired), `src/fleet/roster.lua` (live) |
+| what a device should be doing | `src/domain/fleet/desired.lua` (new, unwired) |
+| drop-offs and which one to use | `src/domain/depot/list.lua`, `src/domain/depot/select.lua` (new, unwired) |
 | turtle sector claiming | `src/mine/site.lua` |
 | movement/protected blocks | `src/turtle/nav.lua` |
 | turtle-to-turtle awareness | `src/turtle/peers.lua` |

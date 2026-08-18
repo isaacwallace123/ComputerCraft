@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T06:56:51-04:00",
+    "generated":  "2026-08-18T07:06:39-04:00",
     "files":  [
                   "adapters/cc/body.lua",
                   "adapters/cc/clock.lua",
@@ -41,6 +41,9 @@
                   "core/ui.lua",
                   "core/util.lua",
                   "core/version.lua",
+                  "domain/depot/list.lua",
+                  "domain/depot/select.lua",
+                  "domain/fleet/desired.lua",
                   "domain/fleet/registry.lua",
                   "domain/mine/plan.lua",
                   "domain/mine/registry.lua",
