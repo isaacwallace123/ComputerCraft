@@ -32,6 +32,26 @@ local util = require("core.util")
 
 local registry = {}
 
+--- The clock, injectable, falling back to CC's.
+---
+--- D027 records that this file was moved into `domain/` without being
+--- de-globalised, and that it is the single entry in the layering check's allow
+--- list. This does not clear that - `os.epoch` is still named below - but it is
+--- the half of the fix that can be made without touching live code.
+---
+--- Every function that stamps a time now takes an optional `now`. An ICOS 2
+--- caller that has a clock port passes it; `fleet/coordinator.lua` and
+--- `core/console.lua`, which are ICOS 1 and are being replaced, pass nothing and
+--- behave exactly as before. The allow-list entry goes when those callers do.
+---
+--- The alternative was a required parameter, which would have changed three live
+--- call sites and the unmodified spec suite in one go - a refactor of the sector
+--- bookkeeping a running fleet depends on, in exchange for deleting one line
+--- from a check. Wrong trade.
+local function stamp(now)
+  return now or os.epoch("utc")
+end
+
 registry.PATH = ".mine"
 
 --- Long enough to cover ordinary connectivity gaps. Running turtles renew this
@@ -119,7 +139,7 @@ end
 --- unfinished sector keeps it, so redeploying after an unload continues down the
 --- same shaft rather than opening a new one. Only when a sector is genuinely
 --- finished does the fleet pay for a fresh hole.
-function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier)
+function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier, now)
   registry.expire(state)
 
   local capacity = plan.capacity(state.plan)
@@ -145,7 +165,7 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier)
     end
     record.holder = turtleId
     record.holderWorkKey = workKey
-    record.leasedAt = os.epoch("utc")
+    record.leasedAt = stamp(now)
     return index, work
   end
 
@@ -213,7 +233,7 @@ end
 --- turtle being replaced, lets a fresh one skip re-probing a head that has
 --- already been found, and makes "which sectors are open right now" a question
 --- with an answer.
-function registry.surface(state, turtleId, index, report)
+function registry.surface(state, turtleId, index, report, now)
   if index < 1 or index > plan.capacity(state.plan) or type(report) ~= "table" then
     return false, "surface report is outside the mine plan"
   end
@@ -231,7 +251,7 @@ function registry.surface(state, turtleId, index, report)
     headY = tonumber(report.headY) and math.floor(report.headY) or record.surface.headY,
     headOffset = math.floor(tonumber(report.headOffset) or record.surface.headOffset or 0),
     reason = type(report.reason) == "string" and report.reason:sub(1, 120) or nil,
-    at = os.epoch("utc"),
+    at = stamp(now),
     by = turtleId,
   }
   return true, record.surface
@@ -271,7 +291,7 @@ function registry.surfaceOf(state, index)
 end
 
 --- Record progress for one profile/depth key within a sector.
-function registry.report(state, turtleId, index, workKey, frontier, blocks, exhausted)
+function registry.report(state, turtleId, index, workKey, frontier, blocks, exhausted, now)
   if not state.plan.configured or index < 1 or index > plan.capacity(state.plan) then
     return false, "sector is outside the mine plan"
   end
@@ -288,13 +308,13 @@ function registry.report(state, turtleId, index, workKey, frontier, blocks, exha
   local work = workEntry(record, workKey)
   record.holder = turtleId
   record.holderWorkKey = workKey
-  record.leasedAt = os.epoch("utc")
+  record.leasedAt = stamp(now)
   local sector = plan.sector(state.plan, index)
   local reportedFrontier = math.max(0, math.floor(tonumber(frontier) or 0))
   work.frontier =
     math.max(work.frontier or 0, math.min(reportedFrontier, sector and sector.trunkLength or 0))
   work.blocks = (work.blocks or 0) + math.max(0, math.floor(tonumber(blocks) or 0))
-  work.lastMined = os.epoch("utc")
+  work.lastMined = stamp(now)
 
   if exhausted == true or (sector and work.frontier >= sector.trunkLength) then
     work.exhausted = true
@@ -309,7 +329,7 @@ end
 
 --- Renew a live lease from ordinary status traffic without writing on every
 --- two-second heartbeat. Returns true only when the caller should save state.
-function registry.renew(state, turtleId, index, workKey)
+function registry.renew(state, turtleId, index, workKey, now)
   if not state.plan.configured or index < 1 or index > plan.capacity(state.plan) then
     return false
   end
@@ -320,7 +340,7 @@ function registry.renew(state, turtleId, index, workKey)
   if util.since(record.leasedAt) < 30 then
     return false
   end
-  record.leasedAt = os.epoch("utc")
+  record.leasedAt = stamp(now)
   return true
 end
 

@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T07:38:14-04:00",
+    "generated":  "2026-08-18T07:43:10-04:00",
     "files":  [
                   "adapters/cc/body.lua",
                   "adapters/cc/clock.lua",
@@ -70,6 +70,7 @@
                   "miner/context.lua",
                   "miner/network.lua",
                   "miner/runtime.lua",
+                  "os/miner/agent.lua",
                   "os/roles.lua",
                   "os/server/main.lua",
                   "os/server/services/discovery.lua",

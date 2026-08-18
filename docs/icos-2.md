@@ -598,6 +598,32 @@ Two smaller decisions worth knowing:
   again — a person walks over, takes the diamonds, and tells nobody — so a flag without an
   expiry removes a depot from service permanently on the strength of one bad trip.
 
+### Phase 5: the miner, and the rolling update
+
+`os/miner/agent.lua` is the device half of desired state: what a turtle persists, what it
+puts in a heartbeat, and what it does with what comes back. It returns an *intent* rather
+than acting, so the whole of it is testable without a turtle; translating an intent into
+the runtime's control flags is the composition root's job.
+
+**It takes orders from both protocols**, and that is not laziness. It would be tidier to
+handle desired state alone — but **turtles update before the base does.** The updater
+deploys by manifest and a fleet upgrades a machine at a time, so there is a window where a
+new turtle is talking to an old server that has never heard of desired state. A turtle that
+ignored `command` in that window would ignore recall, which is a safety control.
+
+So it takes both, and stops taking commands only when the server stops sending them — one
+switch, in one place, thrown once. Acting on both is harmless for the same reason
+`reconcile` can send both: every mode is a state to be in, so recall twice is recall.
+
+The applied generation is persisted in `.desired`, its own file rather than a field in
+`.node`. `.node` is written by setup and read at boot by code that predates all of this,
+and the whole migration story rests on old code tolerating new files by not knowing about
+them.
+
+A missing file means generation zero, which means the next order looks new. That is the
+safe direction: worst case a turtle re-applies an order it had already applied, and every
+mode is idempotent precisely so that costs nothing.
+
 ### Phase 5: reconcile, persist, and the dual run
 
 Three of the server's seven services are built: `discovery`, `reconcile` and `persist`.

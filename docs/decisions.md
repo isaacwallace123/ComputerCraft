@@ -305,6 +305,20 @@ storage port through `fleet/coordinator.lua` and `core/console.lua` empties the 
 The allow list is the mechanism that keeps the debt visible. A rule with an exception
 nobody can see is a rule that has already been abandoned.
 
+**Half-paid, deliberately.** Every function in `domain/mine/registry.lua` that stamps a
+time now takes an optional `now`, so an ICOS 2 caller with a clock port passes it and gets
+a pure function. `os.epoch` survives only as the fallback, and the allow-list entry stays.
+
+Making `now` *required* was the obvious finish and is the wrong trade. It would change
+three live call sites - `fleet/coordinator.lua`, `core/console.lua`, `fleet/operations.lua`
+- and the unmodified spec suite in one go: a refactor of the sector bookkeeping a running
+fleet depends on, in exchange for deleting one line from a check. Those callers are being
+replaced by `os/server/services/leases.lua` anyway, and the entry comes off when they go.
+
+The general rule that produced this: **debt is paid where it is cheap, not where it is
+visible.** An allow-list entry that everybody can see and nobody is tripping over is
+costing less than the refactor that removes it would risk.
+
 ## D028 — A changed row is one blit, spanning first change to last
 
 **Status:** accepted
