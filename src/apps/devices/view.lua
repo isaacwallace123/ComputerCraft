@@ -28,6 +28,7 @@
 --- The composition root that wires it to `fleet/roster.lua` and the desktop is
 --- `app.lua`, and that is the file that touches a running fleet.
 
+local catalogue = require("domain.turtle.jobs")
 local fleetView = require("apps.fleet.view")
 local theme = require("ui.theme")
 local util = require("ui.util")
@@ -65,10 +66,25 @@ end
 
 --- The jobs a turtle can be switched to, in the order the picker cycles.
 ---
---- Copied from `src/apps/devices.lua`'s `JOB_ORDER` rather than derived, because
---- which jobs exist is a fleet fact and this is a view. When the two diverge the
---- turtle is the authority: it refuses a job it does not have.
-devices.JOBS = { "quarry", "rare", "fuel", "hollow", "resources" }
+--- Derived from `domain/turtle/jobs.lua` rather than listed here. It used to be
+--- a copy of `src/apps/devices.lua`'s `JOB_ORDER`, with a comment admitting it
+--- was a copy and pointing out that the turtle is the authority when the two
+--- diverge - which is true, and is a description of a bug rather than a design.
+---
+--- The catalogue is data in `domain/` precisely so both ends of the radio read
+--- the same list. A picker that offered a job no turtle has is a picker that
+--- produces a refusal somebody has to interpret, and it happened every time a
+--- job was added and this line was not.
+---
+--- Catalogue order, which is a deliberate statement about what a person most
+--- likely wants and would be thrown away by sorting.
+devices.JOBS = (function()
+  local ids = {}
+  for index, entry in ipairs(catalogue.list()) do
+    ids[index] = entry.id
+  end
+  return ids
+end)()
 
 --- The default configuration fields, when a snapshot does not carry its own.
 ---

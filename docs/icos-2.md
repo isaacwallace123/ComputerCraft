@@ -704,6 +704,46 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 6: the first real app
+
+`apps/devices/view.lua` was already built on the framework — it is §14's acceptance test.
+What it lacked was the other half: `apps/devices/app.lua`, the composition root that turns
+a function-from-state-to-nodes into something you can open.
+
+The split is §4's rule made concrete. **Services own state, apps read it.** This app holds
+no roster, opens no radio of its own, and coordinates nothing: it reads `context.state.fleet`,
+which the client's `sync` service keeps fresh, and it writes by *asking the server*. D018 is
+why — sector leasing used to live inside the Fleet page, so closing the page stopped two
+turtles being kept out of the same shaft. An app that is closed, crashed, or was never
+opened must change nothing, and the only way to guarantee that is for it to own nothing.
+
+**Actions are goals, not commands.** Deploy does not send "deploy"; it asks the server to
+*want* the device deployed, and `reconcile` keeps saying so until the device agrees. A press
+dropped by a radio is retried without the person who pressed it knowing — which is why the
+page has no "sent" state to display, because "sent" was never the honest word for it.
+Pressing the same button twice returns `ok` with `changed = false`: reporting it as a
+failure would make a second click on Recall look like something went wrong when the correct
+answer is "it is already recalled".
+
+**A device the server has never heard of is refused, not invented.** The registry is built
+from heartbeats, and creating an entry from a click would put a device on the page that does
+not exist — destroying the one distinction §6 exists to preserve, between "there is no
+miner-7" and "we do not know where miner-7 is".
+
+**A quiet device does not claim to still be mining.** `phase` comes from the last snapshot,
+and a snapshot is a fact about when it was sent. An offline device reads `offline`, because
+"mining" on a device nobody has heard from in twenty minutes is a claim the server cannot
+support and is exactly how a dashboard misleads somebody at 2am.
+
+The job picker now reads the catalogue instead of a hard-coded list that carried a comment
+admitting it was a copy. A picker offering a job no turtle has produces a refusal somebody
+has to interpret, and it happened every time a job was added and the copy was not.
+
+There is no authentication on `want`, and there cannot be: CC has no way for one computer to
+prove who it is, and a shared secret in a file every device holds is not a secret. This is
+the same exposure ICOS 1 has today with `command`, bounded the same way — the modem is in a
+base nobody else can reach. Stated rather than left as an assumption somebody discovers.
+
 ### Phase 5: the job catalogue
 
 The rename made a second problem visible. ICOS 1 kept jobs as a table built at the

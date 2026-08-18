@@ -52,6 +52,20 @@ discovery.STATUS = "status"
 --- reboot is a list that goes stale and gets written to forever.
 discovery.MIRROR = "mirror"
 
+--- A client asking the server to want something of a device.
+---
+--- The only way an app changes anything. An app never sends an order to a
+--- device: it asks the server to set a goal, and `reconcile` carries it. So a
+--- button press dropped by a radio is retried by machinery that already exists,
+--- and closing the page changes nothing about what the fleet is doing (D018).
+---
+--- There is no authentication, and there cannot be - CC has no notion of one
+--- computer proving who it is, and a shared secret in a file every device holds
+--- is a secret. This is the same exposure ICOS 1 has today with `command`, and
+--- it is bounded the same way: the modem is in a base nobody else can reach.
+--- Worth stating rather than leaving as an assumption somebody discovers.
+discovery.WANT = "want"
+
 --- Record one heartbeat and work out the reply.
 ---
 --- Returns the reply table, or nil when the message is not ours. Nil rather than
@@ -61,6 +75,10 @@ function discovery.handle(context, sender, message)
   if type(message) ~= "table" then
     return nil
   end
+  if message.kind == discovery.WANT then
+    return discovery.want(context, message)
+  end
+
   if message.kind == discovery.MIRROR then
     -- The whole registry, not a diff. Ten devices is a small table and a diff
     -- would need the client and the server to agree about what the client
@@ -95,6 +113,55 @@ function discovery.handle(context, sender, message)
     -- The server's own clock, so a device can tell how far its own has drifted
     -- without needing anything to agree about the past.
     now = now,
+  }
+end
+
+--- Set a goal on behalf of a client.
+---
+--- Returns an acknowledgement, or a refusal that says why. Refusing loudly
+--- rather than silently matters here more than anywhere else on the server: the
+--- person who pressed the button is standing in front of a screen waiting to see
+--- something happen, and a page that showed nothing would leave them pressing it
+--- again.
+---
+--- A device the server has never heard of is refused rather than created. The
+--- registry is built from heartbeats, and inventing an entry from a click would
+--- put a device on the Devices page that does not exist - which is the one thing
+--- a fleet dashboard must never do, because the whole point of §6 is telling
+--- "there is no miner-7" from "we do not know where miner-7 is".
+function discovery.want(context, message)
+  local record = registry.get(context.state.fleet, message.id)
+  if record == nil then
+    return { kind = "want_result", ok = false, id = message.id, message = "no such device" }
+  end
+  if not desired.MODES[message.mode] then
+    return {
+      kind = "want_result",
+      ok = false,
+      id = message.id,
+      message = "no such mode: " .. tostring(message.mode),
+    }
+  end
+
+  local goal, changed = desired.want(record, message.mode, {
+    job = message.job,
+    settings = message.settings,
+  }, context.clock.now())
+
+  if changed then
+    persist.mark(context, "fleet")
+  end
+
+  -- `changed = false` is still `ok`. Asking for a goal the device already has is
+  -- not a failure, and reporting it as one would make a second click on Recall
+  -- look like something went wrong when the correct answer is "it is already
+  -- recalled".
+  return {
+    kind = "want_result",
+    ok = true,
+    id = message.id,
+    generation = goal.generation,
+    changed = changed,
   }
 end
 
