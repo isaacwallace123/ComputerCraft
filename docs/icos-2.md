@@ -694,6 +694,38 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 5: the miner's composition root, and the `waitForAny` bug
+
+`apps/miner.lua` runs four coroutines under `parallel.waitForAny`, which returns when
+**any** of them finishes. So a heartbeat loop that throws on a missing modem takes the
+mining job down with it, and a turtle halfway down a shaft stops — not because mining
+failed, but because *talking about* mining failed. D004 says job correctness may never
+depend on a message arriving, and `waitForAny` is a direct contradiction of it sitting in
+the entrypoint.
+
+`os/miner/main.lua` supervises instead. The radio backs off and retries while the job
+carries on down the shaft, and the health model says the honest thing in both directions:
+`heartbeat` is **not** critical, because a turtle that cannot reach the base is still
+mining; `job` **is**, because a turtle that has stopped mining is a box in a hole and
+should not report green.
+
+It runs the ICOS 1 job code unchanged. `miner/runtime.lua` is what actually drives a
+turtle, it is proven, and the fleet is running it — rewriting it in the same change that
+rewrites supervision and orders would put a fleet in a hole with two untested halves. So
+`os/miner/control.lua` writes the `ctx.control` flags the existing runtime already reads,
+and from the runtime's point of view nothing happened.
+
+Heartbeat and orders are **one** loop, unlike ICOS 1's two. The exchange is a request and
+its reply; splitting it meant a turtle whose receive loop had died kept reporting cheerfully
+while ignoring every order — which looks identical, from the base, to a turtle that is fine.
+
+The interesting behavioural change is what happens to an order a turtle cannot carry out
+yet. ICOS 1 replied "recall this turtle first" and dropped it, so setting a job on a running
+turtle produced a message and nothing else. Under desired state the goal stays on the
+server, the turtle keeps reporting a generation it has not applied, and the Devices page
+shows it as pending. The order is not lost — it is waiting. Nothing in the miner has to do
+anything for that to be true, which is the point of §5.
+
 ### Phase 5: reconcile, persist, and the dual run
 
 Three of the server's seven services are built: `discovery`, `reconcile` and `persist`.
