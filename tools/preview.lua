@@ -143,7 +143,8 @@ local RESET = ESC .. "[0m"
 local function capture(width, height)
   local cells = {}
   for y = 1, height do
-    cells[y] = { text = string.rep(" ", width), fg = string.rep("0", width), bg = string.rep("f", width) }
+    cells[y] =
+      { text = string.rep(" ", width), fg = string.rep("0", width), bg = string.rep("f", width) }
   end
   local HEX = buffer.HEX
   local port = {
@@ -174,16 +175,18 @@ end
 local function show(cells, palette, indexOf, width, label, blits)
   local frameFg = 0x52525B
   print("")
-  print(("  %s%s%s  %s%d x %d, %d blits%s"):format(
-    fgSeq(0xFAFAFA),
-    label,
-    RESET,
-    fgSeq(frameFg),
-    width,
-    #cells,
-    blits or 0,
-    RESET
-  ))
+  print(
+    ("  %s%s%s  %s%d x %d, %d blits%s"):format(
+      fgSeq(0xFAFAFA),
+      label,
+      RESET,
+      fgSeq(frameFg),
+      width,
+      #cells,
+      blits or 0,
+      RESET
+    )
+  )
   print(("  %s+%s+%s"):format(fgSeq(frameFg), string.rep("-", width), RESET))
   for y = 1, #cells do
     local row = cells[y]
@@ -214,12 +217,35 @@ end
 
 local ui = require("ui.init")
 local fleetScreen = require("apps.fleet.view")
+local devicesScreen = require("apps.devices.view")
 
 local ROSTER = {
   { id = 1, label = "miner-1", phase = "mining", fuel = 82000, fuelLimit = 100000, online = true },
-  { id = 2, label = "miner-2", phase = "returning", fuel = 31000, fuelLimit = 100000, online = true },
-  { id = 3, label = "miner-3", phase = "unloading", fuel = 77000, fuelLimit = 100000, online = true },
-  { id = 4, label = "miner-4", phase = "no cap block", fuel = 2000, fuelLimit = 100000, online = true, alert = true },
+  {
+    id = 2,
+    label = "miner-2",
+    phase = "returning",
+    fuel = 31000,
+    fuelLimit = 100000,
+    online = true,
+  },
+  {
+    id = 3,
+    label = "miner-3",
+    phase = "unloading",
+    fuel = 77000,
+    fuelLimit = 100000,
+    online = true,
+  },
+  {
+    id = 4,
+    label = "miner-4",
+    phase = "no cap block",
+    fuel = 2000,
+    fuelLimit = 100000,
+    online = true,
+    alert = true,
+  },
   { id = 5, label = "miner-5", phase = "parked", fuel = 55000, fuelLimit = 100000, online = false },
   { id = 6, label = "miner-6", phase = "mining", fuel = 48000, fuelLimit = 100000, online = true },
 }
@@ -229,6 +255,36 @@ local function buildFleet(scope)
     devices = scope:Value(ROSTER),
     selected = scope:Value(4),
     capacity = 6,
+    onDeploy = function() end,
+    onRecall = function() end,
+    onStop = function() end,
+  })
+end
+
+--- The densest page in ICOS: a list, a detail panel, selection, and scrolling.
+--- The acceptance test section 14 of the framework plan set for the project.
+local function buildDevices(scope)
+  local roster = {}
+  for index, entry in ipairs(ROSTER) do
+    roster[index] = {
+      id = entry.id,
+      label = entry.label,
+      phase = entry.phase,
+      job = index % 2 == 0 and "rare" or "resources",
+      fuel = entry.fuel,
+      fuelLimit = entry.fuelLimit,
+      since = index * 47,
+      alert = entry.alert,
+    }
+  end
+  local selected = scope:Value(4)
+  return devicesScreen.build(scope, {
+    devices = scope:Value(roster),
+    selected = selected,
+    capacity = 6,
+    onSelect = function(device)
+      selected:set(device.id)
+    end,
     onDeploy = function() end,
     onRecall = function() end,
     onStop = function() end,
@@ -339,7 +395,8 @@ end
 local function reportGreyscale(palette, label)
   local values = {}
   for _, name in ipairs(SEMANTIC) do
-    values[#values + 1] = { name = name, index = TOKENS[name], grey = greyscale(palette[TOKENS[name]]) }
+    values[#values + 1] =
+      { name = name, index = TOKENS[name], grey = greyscale(palette[TOKENS[name]]) }
   end
   table.sort(values, function(a, b)
     return a.grey < b.grey
@@ -354,37 +411,43 @@ local function reportGreyscale(palette, label)
   end
 
   print("")
-  print(("  %sgreyscale separation, %s%s  %s(all a non-advanced terminal shows)%s"):format(
-    fgSeq(0xFAFAFA),
-    label,
-    RESET,
-    fgSeq(0x71717A),
-    RESET
-  ))
+  print(
+    ("  %sgreyscale separation, %s%s  %s(all a non-advanced terminal shows)%s"):format(
+      fgSeq(0xFAFAFA),
+      label,
+      RESET,
+      fgSeq(0x71717A),
+      RESET
+    )
+  )
   for i, entry in ipairs(values) do
     local gap = i > 1 and ("+%d"):format(entry.grey - values[i - 1].grey) or ""
     local swatch = bgSeq(palette[entry.index]) .. "    " .. RESET
     local grey = greyscale(palette[entry.index])
     local greySwatch = bgSeq(grey * 65536 + grey * 256 + grey) .. "    " .. RESET
-    print(("    %s %s  %s%s %s%3d  %s%s"):format(
-      swatch,
-      greySwatch,
-      fgSeq(0xE4E4E7),
-      ui.util.pad(entry.name, 12),
-      fgSeq(0xA1A1AA),
-      entry.grey,
-      gap,
-      RESET
-    ))
+    print(
+      ("    %s %s  %s%s %s%3d  %s%s"):format(
+        swatch,
+        greySwatch,
+        fgSeq(0xE4E4E7),
+        ui.util.pad(entry.name, 12),
+        fgSeq(0xA1A1AA),
+        entry.grey,
+        gap,
+        RESET
+      )
+    )
   end
   local ok = worst >= 20
-  print(("    %sclosest pair %s, %d apart - %s%s"):format(
-    fgSeq(ok and 0x22C55E or 0xFDE68A),
-    worstPair,
-    worst,
-    ok and "clears the 20 point target" or "under target, usable but tight",
-    RESET
-  ))
+  print(
+    ("    %sclosest pair %s, %d apart - %s%s"):format(
+      fgSeq(ok and 0x22C55E or 0xFDE68A),
+      worstPair,
+      worst,
+      ok and "clears the 20 point target" or "under target, usable but tight",
+      RESET
+    )
+  )
 end
 
 ---------------------------------------------------------------------------
@@ -406,12 +469,15 @@ local function render(build, palette, label)
 end
 
 print(("%sICOS 2 - proposed look%s"):format(fgSeq(0xFAFAFA), RESET))
-print(("%s  painted through src/ui/buffer.lua at a real 51x19 computer terminal%s"):format(
-  fgSeq(0xA1A1AA),
-  RESET
-))
+print(
+  ("%s  painted through src/ui/buffer.lua at a real 51x19 computer terminal%s"):format(
+    fgSeq(0xA1A1AA),
+    RESET
+  )
+)
 
 render(buildFleet, DARK, "Fleet, dark")
+render(buildDevices, DARK, "Devices, dark")
 render(buildSampler, DARK, "Components, dark")
 render(buildFleet, LIGHT, "Fleet, light")
 

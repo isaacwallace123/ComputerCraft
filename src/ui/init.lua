@@ -21,9 +21,11 @@ local runtime = require("ui.runtime")
 
 local ui = {
   buffer = require("ui.buffer"),
+  input = require("ui.input"),
   layout = require("ui.layout"),
   reactive = require("ui.reactive"),
   runtime = runtime,
+  host = require("ui.host"),
   theme = require("ui.theme"),
   util = require("ui.util"),
 }
@@ -36,6 +38,20 @@ ui.scoped = runtime.scoped
 
 --- Attach a tree to a screen port. See `runtime.mount`.
 ui.mount = runtime.mount
+
+--- Wire a screen and an input port into something runnable. The composition
+--- root for a page; see `ui/host.lua`.
+ui.page = function(options)
+  return require("ui.host").mount(options)
+end
+
+ui.run = function(root, input, options)
+  return require("ui.host").run(root, input, options)
+end
+
+--- Set a node property from outside the binding graph. Focus uses it; a screen
+--- should reach for a `Value` instead.
+ui.set = runtime.set
 
 --- Register a component. Apps may do this; it is how a game or a one-off view
 --- adds a shape without editing the framework.

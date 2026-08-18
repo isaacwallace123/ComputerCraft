@@ -93,9 +93,23 @@ runtime.compose("Table", function(scope, props)
   local capacity = props.Capacity or 12
   local gap = props.Gap or 1
 
+  --- Slot `index` shows whichever row is `index` places past the scroll offset.
+  ---
+  --- This is the whole of scrolling, and it needs no clipping, no relayout and
+  --- no new nodes. Moving the offset by one changes what every cell computes to,
+  --- and the bindings turn that into one repaint per cell that actually differs -
+  --- which for a table of similar rows is far fewer than the number of rows.
+  ---
+  --- It also means a table can never scroll to a place where the layout is
+  --- wrong, because the layout never moves.
+  local offset = props.Offset
+
   local function rowAt(use, index)
     local list = use(rows)
-    return list and list[index] or nil
+    if not list then
+      return nil
+    end
+    return list[index + (offset and use(offset) or 0)]
   end
 
   --- The heading row, and the one-cell gutter every row starts with.
@@ -161,16 +175,45 @@ runtime.compose("Table", function(scope, props)
       end
     end
 
+    -- A row is clickable, and the click reports the row rather than the slot.
+    -- A screen cares which device was pressed; that it happened to be in the
+    -- fourth widget from the top is the table's business and nobody else's.
+    local function rowFor()
+      local list = rows:get()
+      local index = slot + (offset and offset:get() or 0)
+      return list and list[index] or nil
+    end
+
     children[#children + 1] = scope:Row({
       Gap = gap,
       Height = 1,
       Background = surface,
+      OnClick = props.OnSelect and function()
+        local row = rowFor()
+        if row ~= nil then
+          props.OnSelect(row)
+        end
+        return row ~= nil
+      end or nil,
       Children = cells,
     })
   end
 
+  --- Scrolling is the table's own business, so it handles the wheel itself and
+  --- clamps against the list length rather than making every screen do it.
+  local function onScroll(_, event)
+    if not offset then
+      return false
+    end
+    local list = rows:get() or {}
+    local maximum = math.max(0, #list - capacity)
+    local wanted = math.max(0, math.min(maximum, offset:get() + (event.delta or 0)))
+    return offset:set(wanted)
+  end
+
   return scope:Column({
     Grow = props.Grow,
+    OnScroll = offset and onScroll or nil,
     Children = children,
   })
 end)

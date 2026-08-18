@@ -119,7 +119,8 @@ function basaltStyle:blit(x, y, text, fg, bg)
     return
   end
   local sub = string.sub
-  self.text[y] = sub(sub(self.text[y], 1, x - 1) .. text .. sub(self.text[y], x + #text), 1, self.width)
+  self.text[y] =
+    sub(sub(self.text[y], 1, x - 1) .. text .. sub(self.text[y], x + #text), 1, self.width)
   self.fg[y] = sub(sub(self.fg[y], 1, x - 1) .. fg .. sub(self.fg[y], x + #fg), 1, self.width)
   self.bg[y] = sub(sub(self.bg[y], 1, x - 1) .. bg .. sub(self.bg[y], x + #bg), 1, self.width)
   self:addDirtyRect(x, y, #text, 1)
@@ -398,12 +399,47 @@ local fleetScreen = require("apps.fleet.view")
 
 local function roster(fuel, phase)
   return {
-    { id = 1, label = "miner-1", phase = "mining", fuel = 82000, fuelLimit = 100000, online = true },
+    {
+      id = 1,
+      label = "miner-1",
+      phase = "mining",
+      fuel = 82000,
+      fuelLimit = 100000,
+      online = true,
+    },
     { id = 2, label = "miner-2", phase = phase, fuel = fuel, fuelLimit = 100000, online = true },
-    { id = 3, label = "miner-3", phase = "unloading", fuel = 77000, fuelLimit = 100000, online = true },
-    { id = 4, label = "miner-4", phase = "parked", fuel = 2000, fuelLimit = 100000, online = false },
-    { id = 5, label = "miner-5", phase = "mining", fuel = 55000, fuelLimit = 100000, online = true },
-    { id = 6, label = "miner-6", phase = "mining", fuel = 48000, fuelLimit = 100000, online = true },
+    {
+      id = 3,
+      label = "miner-3",
+      phase = "unloading",
+      fuel = 77000,
+      fuelLimit = 100000,
+      online = true,
+    },
+    {
+      id = 4,
+      label = "miner-4",
+      phase = "parked",
+      fuel = 2000,
+      fuelLimit = 100000,
+      online = false,
+    },
+    {
+      id = 5,
+      label = "miner-5",
+      phase = "mining",
+      fuel = 55000,
+      fuelLimit = 100000,
+      online = true,
+    },
+    {
+      id = 6,
+      label = "miner-6",
+      phase = "mining",
+      fuel = 48000,
+      fuelLimit = 100000,
+      online = true,
+    },
   }
 end
 

@@ -52,6 +52,12 @@ function Find-Tool([string]$exeName) {
 # APIs it is standing in for. A `--` inside a string literal would truncate that
 # line early, which can only make the check more permissive - it is a guardrail
 # against drift, not a proof.
+#
+# A name the file declares as a local is skipped, because in Lua a local shadows
+# the global for the rest of the scope - `local host = {}` followed by `host.run`
+# is not a reference to anything global. Without this the check reports a file
+# for using its own variable, which is the kind of false positive that gets a
+# check switched off rather than fixed.
 Write-Host "== layering ==" -ForegroundColor Cyan
 $pureRoots = @("domain", "ports", "ui")
 $ccGlobals = @(
@@ -77,6 +83,7 @@ foreach ($root in $pureRoots) {
     $code = [regex]::Replace($code, "--[^\r\n]*", "")
     foreach ($name in $ccGlobals) {
       if ($allowed -contains $name) { continue }
+      if ($code -match "(?m)^\s*local\s+$name\b") { continue }
       if ($code -match "(?<![\w.:])$name\s*[.\[]") {
         $violations += "  $relative references the CC global '$name'"
       }

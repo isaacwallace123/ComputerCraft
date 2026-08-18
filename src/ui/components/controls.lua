@@ -40,8 +40,14 @@ local SIZES = {
   md = 2,
 }
 
+--- A button is focusable unless it is disabled, which is decided per node rather
+--- than here: `Disabled` is usually a `Computed`, so a button can drop out of
+--- the tab ring the moment nothing is selected without anybody rebuilding the
+--- ring. `input.focusables` re-reads it on every keypress for exactly that
+--- reason.
 runtime.define({
   kind = "Button",
+  defaults = { Focusable = true },
   layout = { Text = true, Size = true },
 
   measure = function(node)

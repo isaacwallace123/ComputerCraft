@@ -29,6 +29,7 @@ local SPECS = {
   "reactive_spec",
   "layout_spec",
   "runtime_spec",
+  "input_spec",
 }
 
 local filter = ...

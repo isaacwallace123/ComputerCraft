@@ -108,7 +108,11 @@ it("two growers split evenly and the remainder goes leftmost", function()
   local row = { Children = { a, b, c } }
 
   layout.solve(row, 1, 1, 51, 1)
-  expect.equal(boxOf(a) .. " " .. boxOf(b) .. " " .. boxOf(c), "1,1 17x1 18,1 17x1 35,1 17x1", "51 divides")
+  expect.equal(
+    boxOf(a) .. " " .. boxOf(b) .. " " .. boxOf(c),
+    "1,1 17x1 18,1 17x1 35,1 17x1",
+    "51 divides"
+  )
 
   layout.solve(row, 1, 1, 50, 1)
   expect.equal(boxOf(a), "1,1 17x1", "the leftmost keeps the odd cell")

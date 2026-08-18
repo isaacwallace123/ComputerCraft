@@ -37,6 +37,7 @@
 --- change. Paint freely into the back buffer; the diff decides what is sent.
 
 local buffer = require("ui.buffer")
+local inputModel = require("ui.input")
 local layout = require("ui.layout")
 local reactive = require("ui.reactive")
 
@@ -220,6 +221,27 @@ function create(scope, definition, props)
   return node
 end
 
+--- Set a property from outside the binding graph, and schedule the repaint.
+---
+--- Focus is the reason this exists. It is not application state - no screen
+--- should have to hold a `Value` for "which control has the ring" - but it does
+--- change how a node paints, so something has to mark the node. Anything a
+--- screen genuinely owns should be a `Value` and arrive through a binding
+--- instead of through here.
+function runtime.set(node, key, value)
+  if node[key] == value then
+    return false
+  end
+  node[key] = value
+  local definition = node._def
+  if STRUCTURAL[key] or (definition and definition.layout[key]) then
+    markMeasure(node)
+  else
+    markPaint(node)
+  end
+  return true
+end
+
 ---------------------------------------------------------------------------
 -- Scopes that can build nodes
 ---------------------------------------------------------------------------
@@ -321,6 +343,7 @@ function runtime.mount(options)
     _dirty = true,
     _relayout = true,
     background = options.background or 15,
+    onError = options.onError,
   }, Root)
 
   root.tree = options.build(scope)
@@ -407,10 +430,177 @@ function Root:render()
   return self.frame:present()
 end
 
+---------------------------------------------------------------------------
+-- Input
+---------------------------------------------------------------------------
+
+--- Move the focus ring, repainting only the two nodes that changed.
+---
+--- Focus is a property of a node, not a search performed at paint time, so
+--- moving it costs exactly two repaints however large the tree is. Both are
+--- one-cell changes in practice - a button's leading pad - so a full pass around
+--- a form's tab ring costs about what one label changing costs.
+function Root:focus(node)
+  if self.focused == node then
+    return self.focused
+  end
+  if self.focused then
+    runtime.set(self.focused, "Focused", false)
+  end
+  self.focused = node
+  if node then
+    runtime.set(node, "Focused", true)
+  end
+  return self.focused
+end
+
+--- Every focusable node, recomputed on demand rather than cached.
+---
+--- The ring changes whenever a button is disabled or a panel is hidden, both of
+--- which are bound properties that can move at any time. Walking the tree costs
+--- a few dozen table reads and happens only on a keypress, where nothing is
+--- watching; a cached ring would have to be invalidated from places that have no
+--- business knowing focus exists.
+function Root:focusRing()
+  return inputModel.focusables(self.tree)
+end
+
+function Root:moveFocus(step)
+  return self:focus(inputModel.nextFocus(self:focusRing(), self.focused, step))
+end
+
+--- Fire a handler, tolerating a screen that throws.
+---
+--- An app's click handler is application code and may be wrong. Letting it take
+--- the UI down means a typo in one button leaves a fleet dashboard frozen on a
+--- wall, so the error is caught, reported through `onError` when the composition
+--- root supplied one, and the frame carries on. Same reasoning as the service
+--- supervisor in docs/icos-2.md section 8: one broken thing must not stop the
+--- machine.
+---
+--- A handler that explicitly returns `false` is saying it did not want the
+--- event, which lets it fall through to whatever is underneath.
+function Root:_fire(handler, node, event)
+  local ok, result = pcall(handler, node, event)
+  if not ok then
+    if self.onError then
+      self.onError(result, node)
+    end
+    return true
+  end
+  return result ~= false
+end
+
+--- Route one normalised event into the tree. Returns whether anything took it.
+---
+--- The order is deliberate. A pointer goes to what is under it; a key goes to
+--- what has focus and then bubbles up; nothing else is guessed at. Tab is
+--- handled before the tree sees it, because a screen that had to implement its
+--- own tab order would implement a different one on every page.
+function Root:dispatch(event)
+  if event.kind == "resize" then
+    self:resize()
+    return true
+  end
+
+  if event.kind == "pointer" then
+    local node = inputModel.hit(self.tree, event.x, event.y)
+    if not node then
+      return false
+    end
+
+    if event.phase == "scroll" then
+      local target = inputModel.bubble(node, "OnScroll")
+      return target ~= nil and self:_fire(target.OnScroll, target, event)
+    end
+
+    if event.phase == "down" then
+      -- Focus follows the press rather than the release, so a control looks
+      -- focused while it is being held. A monitor touch produces both at once
+      -- and the distinction costs nothing there.
+      local focusable = inputModel.bubble(node, "Focusable")
+      if focusable and not focusable.Disabled then
+        self:focus(focusable)
+      end
+      local target = inputModel.bubble(node, "OnPress")
+      return target ~= nil and self:_fire(target.OnPress, target, event)
+    end
+
+    if event.phase == "up" then
+      local target = inputModel.bubble(node, "OnClick")
+      if target and not target.Disabled then
+        return self:_fire(target.OnClick, target, event)
+      end
+      return false
+    end
+
+    if event.phase == "drag" then
+      local target = inputModel.bubble(node, "OnDrag")
+      return target ~= nil and self:_fire(target.OnDrag, target, event)
+    end
+    return false
+  end
+
+  if event.kind == "key" and event.down then
+    if event.key == inputModel.KEY.leftShift or event.key == inputModel.KEY.rightShift then
+      self.shifted = true
+      return true
+    end
+    if event.key == inputModel.KEY.tab then
+      self:moveFocus(self.shifted and -1 or 1)
+      return true
+    end
+    -- Enter and space activate whatever holds the ring. This is the only way a
+    -- keyboard reaches a button, and it is what keeps a screen usable on a
+    -- turtle, which has no mouse at all.
+    local focused = self.focused
+    if
+      focused
+      and focused.OnClick
+      and not focused.Disabled
+      and (event.key == inputModel.KEY.enter or event.key == inputModel.KEY.space)
+    then
+      return self:_fire(focused.OnClick, focused, event)
+    end
+    local target = inputModel.bubble(focused or self.tree, "OnKey")
+    return target ~= nil and self:_fire(target.OnKey, target, event)
+  end
+
+  if event.kind == "key" then
+    if event.key == inputModel.KEY.leftShift or event.key == inputModel.KEY.rightShift then
+      self.shifted = false
+      return true
+    end
+    return false
+  end
+
+  if event.kind == "char" then
+    local target = inputModel.bubble(self.focused or self.tree, "OnChar")
+    return target ~= nil and self:_fire(target.OnChar, target, event)
+  end
+
+  -- Everything else - a rednet message, a timer, an ICOS app event - is offered
+  -- to the tree unchanged. The framework does not need to know what those are
+  -- for a screen to be able to act on one.
+  local target = inputModel.bubble(self.tree, "OnEvent")
+  return target ~= nil and self:_fire(target.OnEvent, target, event)
+end
+
+--- Normalise a raw event from the input port and dispatch everything it became.
+--- A monitor touch becomes two.
+function Root:handle(name, ...)
+  local handled = false
+  for _, event in ipairs(inputModel.normalise(name, ...)) do
+    handled = self:dispatch(event) or handled
+  end
+  return handled
+end
+
 --- Tear down the tree and its bindings. Closing an app calls this; not calling
 --- it is the leak.
 function Root:destroy()
   self.scope:destroy()
+  self.focused = nil
   self.tree = nil
   self._paint = {}
   self._measure = {}

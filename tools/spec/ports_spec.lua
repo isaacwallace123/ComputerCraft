@@ -32,6 +32,37 @@ it("every cc adapter satisfies its port at construction", function()
   require("adapters.cc.body").new()
   require("adapters.cc.locator").new()
   require("adapters.cc.screen").new()
+  require("adapters.cc.input").new()
+end)
+
+it("the scripted input port replays what a person did", function()
+  local hands = require("adapters.sim.input").new({ { "char", "q" } })
+  hands.click(4, 2)
+
+  local name, button, x, y = hands.port.pull()
+  expect.equal(name, "char", "the scripted event comes first")
+
+  name, button, x, y = hands.port.pull()
+  expect.equal(name, "mouse_click", "then the pushed one")
+  expect.equal(button, 1, "left button by default")
+  expect.equal(x, 4, "at x")
+  expect.equal(y, 2, "at y")
+
+  -- Nil rather than blocking. A test that runs out of events is finished, and
+  -- blocking would hang the suite rather than fail it.
+  expect.equal(hands.port.pull(), nil, "and nil once the script is spent")
+end)
+
+it("an app can wake its own loop through the input port", function()
+  -- The reason `queue` is on the port at all: without it the desktop's own
+  -- events need a side channel, and the loop needs a polling timeout to notice
+  -- them - which is the difference between an idle dashboard costing nothing
+  -- and costing a wakeup a second.
+  local hands = require("adapters.sim.input").new()
+  hands.port.queue("icos_open_app", "devices")
+  local name, payload = hands.port.pull()
+  expect.equal(name, "icos_open_app", "the injected event arrives")
+  expect.equal(payload, "devices", "with its argument")
 end)
 
 it("every sim port satisfies its contract", function()

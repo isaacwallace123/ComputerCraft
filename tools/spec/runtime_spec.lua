@@ -348,10 +348,38 @@ it("the Fleet screen renders, and a heartbeat costs one blit per changed cell", 
 
   local function roster(fuel2, phase3)
     return {
-      { id = 1, label = "miner-1", phase = "mining", fuel = 51000, fuelLimit = 100000, online = true },
-      { id = 2, label = "miner-2", phase = "returning", fuel = fuel2, fuelLimit = 100000, online = true },
-      { id = 3, label = "miner-3", phase = phase3, fuel = 47800, fuelLimit = 100000, online = true },
-      { id = 4, label = "miner-4", phase = "parked", fuel = 640, fuelLimit = 100000, online = false },
+      {
+        id = 1,
+        label = "miner-1",
+        phase = "mining",
+        fuel = 51000,
+        fuelLimit = 100000,
+        online = true,
+      },
+      {
+        id = 2,
+        label = "miner-2",
+        phase = "returning",
+        fuel = fuel2,
+        fuelLimit = 100000,
+        online = true,
+      },
+      {
+        id = 3,
+        label = "miner-3",
+        phase = phase3,
+        fuel = 47800,
+        fuelLimit = 100000,
+        online = true,
+      },
+      {
+        id = 4,
+        label = "miner-4",
+        phase = "parked",
+        fuel = 640,
+        fuelLimit = 100000,
+        online = false,
+      },
     }
   end
 
@@ -419,7 +447,9 @@ it("a display-only surface simply has no actions", function()
     screen = screen.port,
     build = function(s)
       return fleetScreen.build(s, {
-        devices = s:Value({ { id = 1, label = "miner-1", phase = "mining", fuel = 100, online = true } }),
+        devices = s:Value({
+          { id = 1, label = "miner-1", phase = "mining", fuel = 100, online = true },
+        }),
         selected = s:Value(nil),
         capacity = 4,
       })
@@ -437,7 +467,11 @@ it("phase tones say what a state means, not what it looks like", function()
   local fleetScreen = require("apps.fleet.view")
   expect.equal(fleetScreen.phaseTone({ phase = "mining" }), T.good, "working is good")
   expect.equal(fleetScreen.phaseTone({ phase = "parked" }), T.mutedFg, "parked is neither")
-  expect.equal(fleetScreen.phaseTone({ phase = "mining", stuck = true }), T.destructive, "stuck is bad")
+  expect.equal(
+    fleetScreen.phaseTone({ phase = "mining", stuck = true }),
+    T.destructive,
+    "stuck is bad"
+  )
   expect.equal(fleetScreen.phaseTone({ phase = "reticulating" }), T.warn, "an unknown phase warns")
   expect.equal(fleetScreen.phaseTone(nil), T.mutedFg, "an empty slot is muted")
 end)
