@@ -704,6 +704,40 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 5: the job catalogue
+
+The rename made a second problem visible. ICOS 1 kept jobs as a table built at the
+entrypoint, keyed by name, whose values were the modules themselves — fine while every
+turtle mined, and broken the moment one does not.
+
+**The base cannot see the list.** A console offering "which job?" had to hard-code the
+names or ask a turtle, and a turtle down a shaft cannot answer. So `domain/turtle/jobs.lua`
+is data, and both ends of the radio read the same file. `module` is a *string*, resolved by
+the turtle when it starts work — which is what lets a server with no `turtle` global at all
+list, validate and assign jobs it could not itself run. A base that had to `require`
+`jobs/quarry.lua` to know a quarry exists is a base that crashes on `turtle.dig` being nil.
+
+**Nothing declared what a job needs.** A farming turtle wants a hoe; a quarry wants a
+pickaxe and a lot of fuel; a fuel hunt wants neither — and notably **not a modem**, because
+a fuel hunt is the job a turtle does *because* something has gone wrong, and requiring the
+base for it would mean a fleet that cannot refuel itself once the base is unreachable.
+
+Two of the four capabilities can be observed and two cannot, and the catalogue says so
+rather than pretending otherwise. Fuel is a number; a modem answers or does not. `dig` and
+`place` a turtle *cannot* check: `turtle.dig` with no tool and `turtle.dig` with nothing in
+front both return false, so telling them apart means breaking a block to ask a question, and
+a capability check that damages the world to run is worse than the problem it detects. Those
+two are a declaration for the person — setup says what a job needs before they choose it —
+and the runtime still discovers the truth the first time it digs, parks, and reports why.
+
+A job the machine cannot run is **still selected**, and reported as unrunnable rather than
+silently swapped. A turtle that quietly started fuel-hunting because its pickaxe fell out is
+a turtle nobody can diagnose from the base; one reporting "quarry — needs a tool equipped
+that can break blocks" is one somebody fixes in ten seconds.
+
+Adding a job is one entry and one module. Setup offers whatever the catalogue lists, the
+base assigns from the same list, and the turtle resolves `module` when it starts.
+
 ### Phase 5: booting it, without changing what a machine does on power-up
 
 `os/boot.lua` is the one file in ICOS 2 allowed to know both that CC exists and that there

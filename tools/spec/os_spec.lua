@@ -12,6 +12,7 @@ local client = require("os.client.main")
 local discovery = require("os.server.services.discovery")
 local leases = require("os.server.services.leases")
 local logrotate = require("os.server.services.logrotate")
+local jobs = require("domain.turtle.jobs")
 local turtleOs = require("os.turtle.main")
 local mobile = require("os.mobile.main")
 local osBoot = require("os.boot")
@@ -1481,4 +1482,85 @@ it("the halt flag stops the machine, because a service cannot stop itself", func
 
   expect.equal(outcome, "halted", "halted rather than terminated")
   expect.equal(machine.supervisor:running(), 0, "and everything was stopped")
+end)
+
+---------------------------------------------------------------------------
+-- The job catalogue: what a turtle can be told to do
+---------------------------------------------------------------------------
+
+it("the catalogue is data, so a machine with no turtle global can read it", function()
+  -- The point of `module` being a string. A base listing jobs must not have to
+  -- load jobs/quarry.lua, which would crash on turtle.dig being nil.
+  for _, entry in ipairs(jobs.list()) do
+    expect.equal(type(entry.module), "string", entry.id .. " names its module")
+    expect.equal(type(entry.label), "string", entry.id .. " has a label")
+    expect.truthy(#entry.needs > 0, entry.id .. " declares what it needs")
+  end
+  expect.truthy(jobs.default(), "and exactly one is the fallback")
+end)
+
+it("a job name from an older build resolves rather than refusing to start", function()
+  -- A turtle that will not start is one somebody has to walk to.
+  local entry, corrected = jobs.resolve("expedition")
+  expect.equal(entry.id, "rare", "the rename is followed")
+  expect.truthy(corrected, "and reported, so the node is fixed once")
+
+  entry, corrected = jobs.resolve("archaeology")
+  expect.equal(entry.id, jobs.default().id, "an unknown job falls back")
+  expect.truthy(corrected, "and that is a correction too")
+
+  entry, corrected = jobs.resolve("quarry")
+  expect.equal(entry.id, "quarry", "a current one is left alone")
+  expect.falsy(corrected, "with nothing to write")
+end)
+
+it("a fuel hunt does not need the base, because it is what you do without one", function()
+  -- Requiring a modem here would mean a fleet that cannot refuel itself once
+  -- the base is unreachable.
+  local offline = { dig = true, fuel = true, modem = false }
+  expect.truthy(jobs.runnable(jobs.get("fuel"), offline), "fuel hunting works alone")
+  expect.falsy(jobs.runnable(jobs.get("quarry"), offline), "a coordinated quarry does not")
+end)
+
+it("a missing capability is explained as the thing to do about it", function()
+  local ok, why = jobs.runnable(jobs.get("quarry"), { dig = true, modem = true })
+  expect.falsy(ok, "refused")
+  expect.contains(why, "fuel", "and it names what to fix")
+
+  -- One reason, not four. A list of deficiencies is a list somebody skims.
+  ok, why = jobs.runnable(jobs.get("quarry"), {})
+  expect.falsy(ok, "still refused")
+  expect.falsy(why:find(" and "), "with a single actionable sentence: " .. tostring(why))
+end)
+
+it("a setup menu offers only what this machine can run", function()
+  local unfuelled = { dig = true, place = true, modem = true, fuel = false }
+  expect.equal(#jobs.available(unfuelled), 0, "an empty turtle is offered nothing")
+
+  local ready = { dig = true, place = true, modem = true, fuel = true }
+  expect.equal(#jobs.available(ready), #jobs.list(), "a ready one is offered everything")
+end)
+
+it("a turtle keeps its unrunnable job rather than being quietly swapped", function()
+  -- A turtle that silently started fuel-hunting because its pickaxe fell out is
+  -- a turtle nobody can diagnose from the base.
+  local entry, corrected, runnable, why =
+    turtleOs.selectJob({ job = "quarry" }, { dig = true, fuel = false, modem = true })
+
+  expect.equal(entry.id, "quarry", "still the job it was given")
+  expect.falsy(corrected, "nothing to rewrite")
+  expect.falsy(runnable, "but it cannot run")
+  expect.contains(why, "fuel", "and the base will be told why")
+end)
+
+it("a renamed job is written back once rather than re-derived every boot", function()
+  local clock = fakeClock(0)
+  local machine = turtleOs.boot(fakePorts(clock), {
+    node = { job = "expedition", parked = true },
+    capabilities = { dig = true, fuel = true, modem = true },
+  })
+
+  expect.equal(machine.context.job.id, "rare", "resolved before anything started")
+  expect.equal(machine.context.node.job, "rare", "and the node was corrected")
+  expect.truthy(machine.context.nodeChanged, "with the write flagged for the caller")
 end)

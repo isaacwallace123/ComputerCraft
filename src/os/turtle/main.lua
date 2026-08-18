@@ -50,6 +50,7 @@
 
 local agent = require("os.turtle.agent")
 local control = require("os.turtle.control")
+local jobs = require("domain.turtle.jobs")
 local service = require("os.service")
 local supervisor = require("os.supervisor")
 
@@ -63,6 +64,60 @@ turtleOs.PROTOCOL = "icos"
 --- are calibrated against, so changing it here would silently re-tune when the
 --- base decides a turtle has gone quiet.
 turtleOs.HEARTBEAT = 2
+
+---------------------------------------------------------------------------
+-- Which job, and whether this machine can run it
+---------------------------------------------------------------------------
+
+--- What this turtle can observe about itself.
+---
+--- Only the things that can actually be checked without doing them, which is a
+--- shorter list than it looks. Fuel is a number the turtle can read; a modem
+--- either answers or does not.
+---
+--- **`dig` and `place` are assumed**, and that is the honest answer rather than
+--- a shortcut. A turtle cannot find out whether it has a tool without trying to
+--- use one: `turtle.dig` with nothing equipped and `turtle.dig` with nothing in
+--- front both return false, and telling them apart means breaking a block to ask
+--- a question. A capability check that damaged the world to run would be worse
+--- than the problem it detects.
+---
+--- So the declaration in the catalogue is for the *person* - setup can say "this
+--- job needs a tool that breaks blocks" before they choose it - and the runtime
+--- discovers the truth the first time it digs, parks, and reports why. That is
+--- the existing D004 park path and it already works; the catalogue makes the
+--- requirement visible ten seconds earlier, where it is cheap.
+function turtleOs.capabilities(ports)
+  local body = ports.body
+  local level = body and body.fuel() or 0
+
+  return {
+    -- Level -1 is an unlimited-fuel world, where every job is fuelled forever.
+    fuel = level ~= 0,
+    dig = body ~= nil,
+    place = body ~= nil,
+    modem = ports.transport ~= nil and ports.transport.id() ~= nil,
+  }
+end
+
+--- The job this turtle is going to run, and whether the node needs correcting.
+---
+--- Never nil. A turtle whose job cannot be resolved gets the default, because
+--- the alternative is a turtle that will not start - and a turtle that will not
+--- start is one somebody has to walk to. The correction is returned rather than
+--- written here, so the composition root persists it once instead of the boot
+--- path re-deriving it every time.
+---
+--- A job the machine cannot run is *still selected*, and reported as unrunnable
+--- rather than silently swapped. A turtle that quietly started fuel-hunting
+--- because its pickaxe fell out would be a turtle nobody could diagnose from the
+--- base; one that says "quarry - needs a tool equipped that can break blocks" is
+--- one somebody fixes in ten seconds.
+function turtleOs.selectJob(node, capabilities)
+  local entry, corrected = jobs.resolve(node and node.job)
+  local runnable, why = jobs.runnable(entry, capabilities)
+  return entry, corrected, runnable, why
+end
 
 ---------------------------------------------------------------------------
 -- Services
@@ -211,6 +266,23 @@ function turtleOs.boot(ports, options)
     runJob = options.runJob or function() end,
     runControls = options.runControls or function() end,
   }
+
+  -- Resolved before the services start, so the job service has something to
+  -- run and the first heartbeat already reports the truth rather than a job
+  -- name the base will have to correct on the next one.
+  local capabilities = options.capabilities or turtleOs.capabilities(ports)
+  local entry, corrected, runnable, why = turtleOs.selectJob(context.node, capabilities)
+  context.job = entry
+  context.jobRunnable = runnable
+  context.jobProblem = why
+
+  if corrected then
+    -- Written once, here. A node whose job was renamed two versions ago would
+    -- otherwise be re-translated on every boot forever, and the one thing worse
+    -- than a stale record is a stale record that looks fresh.
+    context.node.job = entry.id
+    context.nodeChanged = true
+  end
 
   for _, definition in ipairs(turtleOs.services()) do
     sup:add(definition)
