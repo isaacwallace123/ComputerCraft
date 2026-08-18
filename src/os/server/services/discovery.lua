@@ -88,6 +88,40 @@ function discovery.isNew(context, sender)
   return registry.get(context.state.fleet, sender) == nil
 end
 
+--- The server's single inbox, and everything that wants to read from it.
+---
+--- Only one loop can call `transport.receive`, because receiving consumes: two
+--- services polling the same protocol would each silently eat half the fleet's
+--- traffic, and both would look perfectly healthy while doing it. So this
+--- service owns the radio and every other one registers a handler.
+---
+--- Returns a list of replies rather than one, because a single message can
+--- legitimately concern two services - a status heartbeat is a device report to
+--- this service *and* a lease renewal to `leases`. Handlers that have nothing to
+--- say return nil and contribute nothing.
+---
+--- The order is fixed: this service first, then `context.handlers` as given. A
+--- handler therefore sees state this service has already updated, which is the
+--- direction that makes sense - everything else on a server operates on facts
+--- that arrived as a heartbeat.
+function discovery.dispatch(context, sender, message)
+  local replies = {}
+
+  local reply = discovery.handle(context, sender, message)
+  if reply then
+    replies[#replies + 1] = reply
+  end
+
+  for _, handler in ipairs(context.handlers or {}) do
+    local extra = handler(context, sender, message)
+    if extra then
+      replies[#replies + 1] = extra
+    end
+  end
+
+  return replies
+end
+
 --- The manifest, attached rather than returned separately.
 ---
 --- `require` hands back one value, so a module that returned the definition and
@@ -107,8 +141,7 @@ discovery.service = service.define({
       local sender, message, protocol =
         context.transport.receive(discovery.PROTOCOL, context.pollSeconds or 2)
       if sender ~= nil and protocol == discovery.PROTOCOL then
-        local reply = discovery.handle(context, sender, message)
-        if reply then
+        for _, reply in ipairs(discovery.dispatch(context, sender, message)) do
           context.transport.send(sender, reply, discovery.PROTOCOL)
         end
       end

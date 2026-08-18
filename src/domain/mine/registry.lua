@@ -52,24 +52,55 @@ local function stamp(now)
   return now or os.epoch("utc")
 end
 
+--- Seconds since a stamp, measured against the same clock that wrote it.
+---
+--- `util.since` reads `os.epoch` directly, which means a caller holding a clock
+--- port and this module were measuring against two different clocks - and the
+--- leases service found it immediately: every lease it took looked fifteen
+--- minutes stale the instant it was written, so two turtles were handed the same
+--- shaft. A comparison is as much a use of the clock as a stamp is.
+local function elapsed(at, now)
+  if at == nil then
+    return math.huge
+  end
+  if now == nil then
+    return util.since(at)
+  end
+  return math.max(0, (now - at) / 1000)
+end
+
 registry.PATH = ".mine"
 
 --- Long enough to cover ordinary connectivity gaps. Running turtles renew this
 --- from status traffic; parked or lost turtles eventually give the sector back.
 registry.LEASE_SECONDS = 900
 
-local function defaults()
+--- A mine nobody has configured yet.
+function registry.empty()
   return {
     plan = plan.normalise({}),
     sectors = {},
   }
 end
 
-function registry.load()
-  local state = config.load(registry.PATH, defaults())
+--- Make a table read off disk safe to use.
+---
+--- Separated from `load` so a caller that reads through the storage port - which
+--- is every ICOS 2 caller - gets the same guarantees as one that goes through
+--- `core.config`. Without this an ICOS 2 server would hand `plan.capacity` a raw
+--- decoded table and get arithmetic on nil the first time a turtle asked for a
+--- sector.
+function registry.normalise(state)
+  if type(state) ~= "table" then
+    return registry.empty()
+  end
   state.plan = plan.normalise(state.plan)
   state.sectors = type(state.sectors) == "table" and state.sectors or {}
   return state
+end
+
+function registry.load()
+  return registry.normalise(config.load(registry.PATH, registry.empty()))
 end
 
 function registry.save(state)
@@ -115,15 +146,15 @@ local function workEntry(record, workKey)
   return work
 end
 
-local function held(record)
-  return record.holder ~= nil and util.since(record.leasedAt) < registry.LEASE_SECONDS
+local function held(record, now)
+  return record.holder ~= nil and elapsed(record.leasedAt, now) < registry.LEASE_SECONDS
 end
 
 --- Drop leases whose holder has gone quiet. Returns how many were released.
-function registry.expire(state)
+function registry.expire(state, now)
   local released = 0
   for _, record in pairs(state.sectors) do
-    if record.holder ~= nil and not held(record) then
+    if record.holder ~= nil and not held(record, now) then
       record.holder = nil
       record.holderWorkKey = nil
       record.leasedAt = nil
@@ -140,7 +171,7 @@ end
 --- same shaft rather than opening a new one. Only when a sector is genuinely
 --- finished does the fleet pay for a fresh hole.
 function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier, now)
-  registry.expire(state)
+  registry.expire(state, now)
 
   local capacity = plan.capacity(state.plan)
   workKey = tostring(workKey or "")
@@ -174,7 +205,7 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier,
   if preferredIndex >= 1 and preferredIndex <= capacity then
     local record = entry(state, preferredIndex)
     local work = workEntry(record, workKey)
-    if (not held(record) or record.holder == turtleId) and not work.exhausted then
+    if (not held(record, now) or record.holder == turtleId) and not work.exhausted then
       local sector = plan.sector(state.plan, preferredIndex)
       local trunkLength = sector and sector.trunkLength or 0
       work.frontier = math.max(work.frontier or 0, math.min(localFrontier, trunkLength))
@@ -199,7 +230,7 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier,
   -- somebody noticing it.
   for index = 1, capacity do
     local record = entry(state, index)
-    if not held(record) and exposed(record) then
+    if not held(record, now) and exposed(record) then
       return take(index, record, workEntry(record, workKey))
     end
   end
@@ -211,7 +242,7 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier,
   for index = 1, capacity do
     local record = entry(state, index)
     local work = workEntry(record, workKey)
-    if not held(record) and not work.exhausted then
+    if not held(record, now) and not work.exhausted then
       if not bestWork or (work.frontier or 0) > (bestWork.frontier or 0) then
         best, bestRecord, bestWork = index, record, work
       end
@@ -337,7 +368,7 @@ function registry.renew(state, turtleId, index, workKey, now)
   if record.holder ~= turtleId or record.holderWorkKey ~= workKey then
     return false
   end
-  if util.since(record.leasedAt) < 30 then
+  if elapsed(record.leasedAt, now) < 30 then
     return false
   end
   record.leasedAt = stamp(now)
@@ -359,8 +390,8 @@ function registry.release(state, turtleId, index)
 end
 
 --- Rows for the console and the Fleet page.
-function registry.summary(state)
-  registry.expire(state)
+function registry.summary(state, now)
+  registry.expire(state, now)
   local rows = {}
   for index = 1, plan.capacity(state.plan) do
     local record = state.sectors[tostring(index)]

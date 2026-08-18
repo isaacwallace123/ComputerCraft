@@ -22,6 +22,8 @@
 
 local depotList = require("domain.depot.list")
 local discovery = require("os.server.services.discovery")
+local leases = require("os.server.services.leases")
+local mine = require("domain.mine.registry")
 local persist = require("os.server.services.persist")
 local reconcile = require("os.server.services.reconcile")
 local registry = require("domain.fleet.registry")
@@ -36,9 +38,18 @@ local server = {}
 --- drop-off list changes when a person edits it, perhaps monthly. One file would
 --- mean rewriting the depots ten times a minute, and a crash during that write
 --- would risk a list that has nothing to do with the thing being saved.
+--- `.mine` is shared with ICOS 1 rather than renamed, which is the opposite
+--- choice from `.fleet2` and deliberate. The registry has a different shape in
+--- ICOS 2, so sharing that name would mean a rollback reading a roster it cannot
+--- parse. The mine has the *same* shape - `domain/mine/registry.lua` is the
+--- ICOS 1 file, moved - so sharing the name means a rollback keeps every sector
+--- lease and every surveyed shaft head. Only one of the two servers is ever
+--- running, because `startup.lua` picks one, so there is no question of both
+--- writing it at once.
 server.PATHS = {
   fleet = ".fleet2",
   depots = ".depots",
+  mine = mine.PATH,
 }
 
 --- The state a server holds, empty.
@@ -47,10 +58,20 @@ server.PATHS = {
 --- `.fleet` and has a different shape; sharing the filename would mean a
 --- downgrade reading an ICOS 2 registry as a roster and finding every device
 --- malformed. Two files, and a rollback is just a rollback.
+--- How a section read off disk is made safe to use.
+---
+--- Only the sections that need it. A device registry rebuilds itself from the
+--- next heartbeat, so a malformed one costs a minute; a mine plan does not
+--- rebuild from anything, so a malformed one is arithmetic on nil.
+server.NORMALISE = {
+  mine = mine.normalise,
+}
+
 function server.state()
   return {
     fleet = registry.empty(),
     depots = depotList.empty(),
+    mine = mine.empty(),
   }
 end
 
@@ -67,7 +88,12 @@ function server.load(ports)
     if text then
       local ok, saved = pcall(ports.serialise.decode, text)
       if ok and type(saved) == "table" then
-        state[key] = saved
+        -- Normalised where the section knows how, raw where it does not. A mine
+        -- read off disk has a plan that has to be made whole before anything
+        -- asks it for a sector count, and a rollback-and-upgrade cycle is
+        -- exactly how a half-written plan gets there.
+        local repair = server.NORMALISE[key]
+        state[key] = repair and repair(saved) or saved
       end
     end
   end
@@ -89,12 +115,23 @@ end
 ---   discovery   heartbeats in, desired state out          built
 ---   reconcile   nudge devices that are behind             built
 ---   persist     write state to disk, batched              built
----   leases      sector claims and frontiers
+---   leases      sector claims and frontiers                built
 ---   gps         the constellation beacon
 ---   policy      conservative auto-recovery
 ---   logrotate   keep the log from filling the disk
 function server.services()
-  return { discovery.service, reconcile.service, persist.service }
+  return { discovery.service, reconcile.service, persist.service, leases.service }
+end
+
+--- Handlers that read the server's single inbox.
+---
+--- `discovery` owns the radio because only one loop can, so anything else that
+--- needs to see a message registers here instead of opening its own receive. The
+--- list is a composition-root decision rather than something a service
+--- discovers, which keeps "what reads the radio" answerable by reading one
+--- function.
+function server.handlers()
+  return { leases.handle }
 end
 
 --- Build a supervisor with everything a server runs, ready to be stepped.
@@ -120,6 +157,7 @@ function server.boot(ports, options)
     serialise = ports.serialise,
     state = state,
     paths = server.PATHS,
+    handlers = server.handlers(),
     pollSeconds = options.pollSeconds,
 
     -- §12's dual run. Both the desired-state reply and the ICOS 1 command go out

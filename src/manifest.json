@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T07:43:10-04:00",
+    "generated":  "2026-08-18T07:52:17-04:00",
     "files":  [
                   "adapters/cc/body.lua",
                   "adapters/cc/clock.lua",
@@ -74,6 +74,7 @@
                   "os/roles.lua",
                   "os/server/main.lua",
                   "os/server/services/discovery.lua",
+                  "os/server/services/leases.lua",
                   "os/server/services/persist.lua",
                   "os/server/services/reconcile.lua",
                   "os/service.lua",

@@ -598,6 +598,35 @@ Two smaller decisions worth knowing:
   again — a person walks over, takes the diamonds, and tells nobody — so a flag without an
   expiry removes a depot from service permanently on the strength of one bad trip.
 
+### Phase 5: leases, and the server's single inbox
+
+`os/server/services/leases.lua` is the ICOS 2 half of what `fleet/coordinator.lua` does
+today, and it is the clearest illustration of §4's rule. Sector leasing used to live inside
+the Fleet page, so closing the page stopped two turtles being kept out of the same shaft
+(D018) — a UI decision silently became a mining collision.
+
+**Only one loop can call `transport.receive`,** because receiving consumes. Two services
+polling the same protocol would each silently eat half the fleet's traffic, and both would
+look perfectly healthy doing it. So `discovery` owns the radio and everything else
+registers a handler; `discovery.dispatch` returns a *list* of replies, because one message
+can legitimately concern two services — a status heartbeat is a device report to
+`discovery` and a lease renewal to `leases`. Which handlers exist is a composition-root
+decision, so "what reads the radio" is answerable by reading one function.
+
+**Claims are written immediately; reports are batched.** The opposite of the device
+registry, and the reason is the cost of losing one. A lost report costs a few blocks of
+re-counted footage and the turtle re-reports within seconds. A lost *claim* is a sector the
+server has forgotten is occupied, and the next turtle to ask for work gets sent down a
+shaft that already has a turtle in it. One is arithmetic; the other is two turtles in one
+hole. Writing claims immediately costs nothing, because a claim happens when a turtle
+finishes a sector — minutes apart — while reports arrive constantly.
+
+`.mine` is shared with ICOS 1 rather than renamed, which is the opposite choice from
+`.fleet2` and deliberate. The registry has a different shape in ICOS 2, so sharing that
+name would mean a rollback reading a roster it cannot parse; the mine has the *same* shape,
+so sharing the name means a rollback keeps every lease and every surveyed shaft head. Only
+one server is ever running, because `startup.lua` picks one.
+
 ### Phase 5: the miner, and the rolling update
 
 `os/miner/agent.lua` is the device half of desired state: what a turtle persists, what it

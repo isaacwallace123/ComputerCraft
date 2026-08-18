@@ -319,6 +319,19 @@ The general rule that produced this: **debt is paid where it is cheap, not where
 visible.** An allow-list entry that everybody can see and nobody is tripping over is
 costing less than the refactor that removes it would risk.
 
+**A comparison is as much a use of the clock as a stamp is.** The first attempt threaded
+`now` through the four functions that *write* a timestamp and stopped there, because those
+were the ones that named `os.epoch`. The lease-expiry test failed on the next run: `held`
+and `renew` measured age with `util.since`, which reads `os.epoch` directly, so a caller
+holding a clock port and the registry were on two different clocks. Every lease the server
+took looked fifteen minutes stale the instant it was written, and two turtles were handed
+the same shaft - the exact failure D018 exists to prevent, reintroduced by a half-finished
+injection.
+
+Grepping for the global finds the writes and misses the reads, because the reads go through
+a helper. The check that actually works is "which functions here depend on what time it
+is", and that set includes every function that subtracts.
+
 ## D028 — A changed row is one blit, spanning first change to last
 
 **Status:** accepted
