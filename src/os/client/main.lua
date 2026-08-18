@@ -134,10 +134,13 @@ end
 
 --- Build a supervised client, ready to be stepped.
 ---
---- `options.draw` is the seam: the entrypoint passes a loop built on
---- `ui/host.lua`, and a spec passes a function and no screen. The UI framework
---- is not required from here, so a headless client - which is a real thing
---- during a sync test - costs nothing to construct.
+--- `options.draw` is the seam: a spec passes a function and no screen, and a
+--- machine gets `os/client/shell.lua`.
+---
+--- The shell is required *inside* the default rather than at the top of the
+--- file, which is the one deliberate piece of laziness here. Requiring it pulls
+--- in the whole UI framework and every app it lists, and a headless client -
+--- which is what every sync test is - would pay for a screen it never opens.
 function client.boot(ports, options)
   options = options or {}
 
@@ -160,7 +163,13 @@ function client.boot(ports, options)
     -- be days. Three seconds of blankness is the honest alternative.
     state = { fleet = registry.empty() },
 
-    draw = options.draw or function() end,
+    -- The default is the real desktop, not a stub. A client whose screen
+    -- service does nothing is a client that boots, reports healthy, and shows a
+    -- black rectangle - and the supervisor would be right to call that running.
+    -- A spec overrides it; a machine gets the shell.
+    draw = options.draw or function(inner)
+      return require("os.client.shell").run(inner, options.shell)
+    end,
   }
 
   for _, definition in ipairs(client.services()) do

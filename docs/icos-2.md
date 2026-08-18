@@ -704,6 +704,41 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 6: the desktop shell
+
+`client.boot` took a `draw` and nothing provided one, so a client booted with two services
+one of which did nothing — and the supervisor was right to call that running.
+`os/client/shell.lua` is that function: the composition root for the *screen*, in the same
+way `main.lua` is the composition root for the machine.
+
+**Two event loops that turn out to be one.** `ui/host.lua` runs its own loop pulling from
+the input port, and the supervisor runs its own loop resuming coroutines. That reads like a
+collision and is not: the input port's `pull` is `os.pullEvent`, which is `coroutine.yield`
+with a filter, so a supervised `host.run` parks on exactly the yield the supervisor is built
+to resume. `boot.run` pulls the event, the supervisor hands it to the coroutine, and
+`host.run` receives it as the return value of its own `pull`. Nothing had to change on
+either side — the supervisor's filter honouring was written for this and it worked first
+time.
+
+**Switching apps destroys the one that was open**, rather than hiding it. The alternative is
+ten pages of `Computed` recalculating on every heartbeat so that nine of them can be
+invisible, and `reactive.live()` exists precisely to catch that — the shell being the most
+likely place to leak it, so it has a spec that asserts the count returns to where it started.
+
+**The taskbar is text, not buttons**, and that is D020 rather than laziness. A wall monitor
+has no keyboard and no mouse, so a row of buttons there is a row of things that cannot be
+pressed. The same row on a desktop tells somebody which key to press.
+
+Which apps appear is filtered by role *and* surface, so a Pocket Computer and a wall monitor
+run identical code and disagree only about what they are. `mobile.boot` fills in
+`role = "mobile"`, `surface = "handheld"` itself rather than requiring the caller to — a
+mobile that had to be told it was mobile is a mobile that works until somebody forgets.
+
+The shell is required *inside* `client.boot`'s default rather than at the top of the file.
+That is the one deliberate piece of laziness: requiring it pulls in the whole UI framework
+and every app it lists, and a headless client — which is what every sync test is — would pay
+for a screen it never opens.
+
 ### Phase 6: the first real app
 
 `apps/devices/view.lua` was already built on the framework — it is §14's acceptance test.

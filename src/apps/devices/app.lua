@@ -52,7 +52,7 @@ app.manifest = {
   id = "devices",
   name = "Devices",
   roles = { "client", "mobile" },
-  surfaces = { "desktop", "monitor" },
+  surfaces = { "desktop", "monitor", "handheld" },
   requiresInput = false,
 }
 

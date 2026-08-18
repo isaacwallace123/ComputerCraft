@@ -119,6 +119,14 @@ end
 function mobile.boot(ports, options)
   options = options or {}
 
+  -- The shell needs to know it is on a handheld, or it offers the desktop's
+  -- apps on a 26x20 screen. Filled in rather than required from the caller,
+  -- because a mobile that had to be told it was mobile would be a mobile that
+  -- worked until somebody forgot.
+  options.shell = options.shell or {}
+  options.shell.role = options.shell.role or "mobile"
+  options.shell.surface = options.shell.surface or "handheld"
+
   local machine = client.boot(ports, options)
 
   -- Rebuilt rather than adjusted. A supervisor with the client's `sync` already
