@@ -2,8 +2,31 @@
 types/
 
 # Per-computer runtime state written in game, not source.
+#
+# `tools\link-world.ps1` junctions a test world's computer folder straight at
+# `src/`, so every dotfile the OS writes at runtime lands in the working tree.
+# All of them are listed, not only the ones seen so far: a turtle that gets as
+# far as mining writes six of these within a minute, and a `git status` full of
+# them is how a real change gets committed with somebody's saved position in it.
 .door
 .pulse
 .update
 .settings
+.node
+.nav
+.log
+.location
+.site
+.mine
+.fleet
+.gps
+.expedition
+.rare
+.resources
+.quarry
+.hollow
+.swarm
+.fuel_hunt
+# Every config write lands as `<name>.tmp` first; a crash can leave one behind.
+*.tmp
 *.bak-*

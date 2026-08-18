@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T02:31:18-04:00",
+    "generated":  "2026-08-18T02:42:58-04:00",
     "files":  [
                   "adapters/cc/body.lua",
                   "adapters/cc/clock.lua",
@@ -24,6 +24,7 @@
                   "apps/operations.lua",
                   "apps/power.lua",
                   "apps/scan.lua",
+                  "apps/showcase.lua",
                   "apps/swarm.lua",
                   "apps/where.lua",
                   "core/apps.lua",

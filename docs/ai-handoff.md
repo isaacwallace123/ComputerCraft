@@ -91,6 +91,8 @@ different tradeoff:
 | how we compare to Basalt | `tools/compare.lua`, `tools/compare.ps1`, `docs/ui-framework.md` sections 12 and 16 |
 | a colour, a token, or the theme | `docs/ui-design.md`, `tools/preview.lua` |
 | what a screen should look like | `docs/ui-design.md`, then `.\tools\preview.ps1` |
+| trying the OS in a local world | `tools/link-world.ps1`, `docs/operations.md` |
+| seeing the new UI on real hardware | `src/apps/showcase.lua`, run `apps/showcase` in game |
 | sector leases and frontiers | `src/domain/mine/registry.lua`, `src/fleet/coordinator.lua` |
 | turtle sector claiming | `src/mine/site.lua` |
 | movement/protected blocks | `src/turtle/nav.lua` |

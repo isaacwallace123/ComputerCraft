@@ -245,14 +245,22 @@ for _, surface in ipairs(SURFACES) do
   -- Pixel work is substantially heavier than cell painting, so 50 frames are
   -- enough to smooth timer noise without making the normal verification loop
   -- wait on a synthetic wall-sized animation.
-  local canvasRepaint = run("full canvas repaint", surface.width, surface.height, 50, function(frame)
-    paintCanvas(frame, 0)
-  end, function(frame, tick)
-    paintCanvas(frame, tick)
-  end)
+  local canvasRepaint = run(
+    "full canvas repaint",
+    surface.width,
+    surface.height,
+    50,
+    function(frame)
+      paintCanvas(frame, 0)
+    end,
+    function(frame, tick)
+      paintCanvas(frame, tick)
+    end
+  )
 
   if surface.width == 164 then
-    worst.idle, worst.dashboard, worst.repaint, worst.canvas = idle, dashboard, repaint, canvasRepaint
+    worst.idle, worst.dashboard, worst.repaint, worst.canvas =
+      idle, dashboard, repaint, canvasRepaint
   end
   print("")
 end

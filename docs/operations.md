@@ -119,6 +119,72 @@ apply. Mine Control actions on the handheld execute at the base, so mine plans, 
 leases, and coordinated quarry assignments remain authoritative rather than becoming
 a second local copy.
 
+## Testing in a local world
+
+The fastest loop by a wide margin: point a singleplayer computer's filesystem straight at
+`src\` and skip publishing entirely. Save in the editor, reboot the computer in game, and
+it is running the new code. No commit, no push, no `update`.
+
+```powershell
+.\tools\link-world.ps1 -List
+.\tools\link-world.ps1 -World "CC Testing" -Id 0
+```
+
+That replaces `<instance>\saves\<world>\computercraft\computer\0\` with a directory
+junction to `src\`. Junctions need no administrator rights. Place a computer in the world
+first — the first one placed gets ID 0 — and re-run with `-Id n` for a second machine, or
+after making a new world.
+
+`-Instance` defaults to the Valhelsia 6 CurseForge path; pass it explicitly for any other
+launcher or pack.
+
+Undo it before zipping or sharing the world, because a junction is not portable and the
+receiving machine sees an empty computer:
+
+```powershell
+.\tools\unlink-world.ps1 -World "CC Testing" -CopyBack
+```
+
+**This is for a singleplayer world on your own machine only.** On a server the computer's
+files live on the host, so use the normal route: `make-manifest`, push, then `update` in
+game.
+
+### What a linked computer writes into your working tree
+
+The junction goes both ways. Everything the OS persists — `.node`, `.nav`, `.mine`,
+`.log`, a job file, and a `.tmp` beside each during a save — is written into `src\` and
+shows up in `git status`. They are all listed in `.gitignore`, so this is safe; but if a
+new dotfile appears in a diff, that is why, and it belongs in `.gitignore` rather than in
+a commit. A turtle that gets as far as mining writes six of them within a minute.
+
+`.settings` is CC's own, written when you use the `set` program.
+
+### Seeing the ICOS 2 UI framework
+
+The framework is built but deliberately not wired into the desktop — the running fleet
+still uses `core/ui.lua`, and putting a framework screen on the desktop is a change that
+touches live machines. To look at it, run it by hand on a linked computer:
+
+```text
+apps/showcase
+```
+
+It mounts the rebuilt Fleet and Devices pages plus a motion page against a fake roster,
+using the real `adapters/cc` screen and input ports, and **reports the frame cost along the
+bottom**: frames, mean blit count, and milliseconds per frame. Keys are `1`–`3` to switch
+page, `tab` to move focus, `enter`/`space` to press, and `q` to quit.
+
+Those numbers are the point. Every figure in `docs/ui-framework.md` section 12 was measured
+on desktop Lua with a conservative 10× margin assumed for Cobalt, and that section says to
+re-measure on hardware before trusting the margin. This is how. It is also the gate on two
+pieces of work: wiring the framework into the desktop, and building the Blackjack showcase,
+which is a full-screen animated canvas — the one workload D037 says does not fit a
+contended scheduling slice.
+
+An advanced (gold) computer shows the palette properly. A standard one is worth a look too,
+since it renders the same theme flattened to greyscale, which is the case
+`docs/ui-design.md` designs the semantic colours around.
+
 ## Normal deployment workflow
 
 From the repository root:
