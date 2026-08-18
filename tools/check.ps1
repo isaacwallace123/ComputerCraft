@@ -102,10 +102,28 @@ else {
 Write-Host "== lua-language-server ==" -ForegroundColor Cyan
 $luals = Find-Tool "lua-language-server.exe"
 if ($luals) {
-  $out = & $luals --check $repo --checklevel=Warning --logpath="$env:TEMP\cc-check" 2>&1
+  $logs = "$env:TEMP\cc-check"
+  $out = & $luals --check $repo --checklevel=Warning --logpath=$logs 2>&1
   $summary = $out | Select-Object -Last 1
   Write-Host "  $summary"
-  if ($summary -notmatch "no problems found") { $failed = $true }
+  if ($summary -notmatch "no problems found") {
+    # Print the diagnostics, not just the count. The same reason the selene
+    # branch below prints everything: "1 problems found" without a file and a
+    # line is a check that tells you to go and find it yourself, and the report
+    # is sitting in a file this script already knows the path of.
+    $report = Join-Path $logs "check.json"
+    if (Test-Path $report) {
+      $json = Get-Content $report -Raw | ConvertFrom-Json
+      foreach ($file in $json.PSObject.Properties) {
+        $path = $file.Name -replace [regex]::Escape("file:///"), "" -replace "%3A", ":"
+        foreach ($d in $file.Value) {
+          $line = $d.range.start.line + 1
+          Write-Host "  $path`:$line - $($d.message)" -ForegroundColor Yellow
+        }
+      }
+    }
+    $failed = $true
+  }
 }
 else {
   Write-Host "  skipped (install the sumneko.lua extension)" -ForegroundColor DarkGray

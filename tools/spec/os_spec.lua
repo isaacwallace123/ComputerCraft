@@ -1530,7 +1530,7 @@ it("a missing capability is explained as the thing to do about it", function()
   -- One reason, not four. A list of deficiencies is a list somebody skims.
   ok, why = jobs.runnable(jobs.get("quarry"), {})
   expect.falsy(ok, "still refused")
-  expect.falsy(why:find(" and "), "with a single actionable sentence: " .. tostring(why))
+  expect.falsy(tostring(why):find(" and "), "with one actionable sentence: " .. tostring(why))
 end)
 
 it("a setup menu offers only what this machine can run", function()
