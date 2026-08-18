@@ -460,7 +460,7 @@ flag day, because there is a live fleet to keep running.
 | --- | --- | --- | --- | --- |
 | 0 | Finish the worksite redesign | Shared shaft, spines | — | |
 | 1 | Extract `domain/` + `ports/` + `adapters/` | No behaviour change. Specs stop needing globals. | Low, purely mechanical | **started** |
-| 2 | Device registry + last known location | Missing turtles become findable | Low, additive | |
+| 2 | Device registry + last known location | Missing turtles become findable | Low, additive | **domain done** |
 | 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events | |
 | 4 | Drop-off list | Multiple depots | Medium — touches return fuel | |
 | 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | |
@@ -509,6 +509,45 @@ Still open in phase 1, and deliberately deferred rather than forgotten:
 Phase 3 is the one to be careful with. Recall is a safety control; replacing its
 mechanism while turtles are underground is how a fleet gets stranded. Both paths run
 together until the dashboard shows every device converging, then events go.
+
+### Phase 2: the device registry
+
+`domain/fleet/registry.lua` is built and specced. It is **not wired** — `fleet/service.lua`
+still writes `fleet/roster.lua`, and swapping them is a base-side change that wants an
+in-world test.
+
+It exists because §1's second failure turned out to be sharper than written. The claim was
+*"position is broadcast and discarded"*; in fact it is broadcast, recorded **and then
+destroyed by the next message**. `roster.update` replaces the whole record:
+
+```lua
+devices[key] = { snap = snapshot, lastSeen = now, pairedAt = ... }
+```
+
+A turtle's snapshot carries `world` only while it has an origin. Reboot one underground, or
+run a build that has never been given its position, and it reports `world = nil` — at which
+point the base overwrites the last position it knew with nothing. The information arrived
+and the next heartbeat deleted it.
+
+So the registry keeps the location **apart from the snapshot**, and only ever replaces a
+location with another location. A device that stops knowing where it is does not make the
+fleet stop knowing where it was, and `locatedAt` records when the fix was true rather than
+when the device last spoke.
+
+Three smaller decisions, all of which are specced:
+
+- **Pure, with the clock injected.** No `os.epoch`, no `core/config`, no CC global. This is
+  the shape D027 says `domain/mine/registry.lua` has to be rewritten into; writing the new
+  one the old way would have doubled the debt rather than paid it.
+- **`seenAt` is the receiving machine's clock.** A turtle's own clock resets on reboot and
+  drifts against every other computer, so a device-supplied timestamp is uncomparable with
+  the one from the turtle beside it — and "which of these went quiet first" is the question
+  the module exists to answer.
+- **A malformed position is no position.** `0, 0, 0` is a real place, and a half-filled
+  record is how a device ends up claiming to be there.
+
+Still to do for phase 2: `fleet/service.lua` writing through it, and a Devices view sorted
+by staleness so a missing turtle is the first thing on the screen rather than the ninth.
 
 ## 13. Migration
 

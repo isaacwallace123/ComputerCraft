@@ -94,6 +94,7 @@ different tradeoff:
 | trying the OS in a local world | `tools/link-world.ps1`, `docs/operations.md` |
 | seeing the new UI on real hardware | `src/apps/showcase.lua`, run `apps/showcase` in game |
 | sector leases and frontiers | `src/domain/mine/registry.lua`, `src/fleet/coordinator.lua` |
+| device roster, last known position | `src/domain/fleet/registry.lua` (new, unwired), `src/fleet/roster.lua` (live) |
 | turtle sector claiming | `src/mine/site.lua` |
 | movement/protected blocks | `src/turtle/nav.lua` |
 | turtle-to-turtle awareness | `src/turtle/peers.lua` |
@@ -266,6 +267,10 @@ large AFK run.
   The world keeps `install()`, which writes CC's APIs onto `_G`, beside its new `ports()`.
   Both are correct for now: modules written before ports existed read those globals, and
   rewriting them all at once is the flag day the plan exists to avoid.
+- `domain/fleet/registry.lua` is built but **nothing writes through it yet**. The live path
+  is still `fleet/roster.lua`, which replaces a device's whole record on every heartbeat -
+  so a turtle reporting no position erases the last one known. That is the bug the new
+  module fixes, and swapping them over is a base-side change wanting an in-world test.
 - `domain/mine/registry.lua` still reads `os.epoch` and persists through `core/config`, so
   it is not yet pure domain code. It is the one entry in the layering check's allow list.
   Threading a clock and a storage port through `fleet/coordinator.lua` and

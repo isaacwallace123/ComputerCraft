@@ -24,6 +24,7 @@ local SPECS = {
   "hazard_spec",
   "depot_spec",
   "registry_spec",
+  "fleet_registry_spec",
   "ports_spec",
   "buffer_spec",
   "reactive_spec",
