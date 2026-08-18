@@ -52,6 +52,21 @@ runtime.define({
   paint = fill,
 })
 
+--- An overlay: a dialog, a toast, a menu.
+---
+--- `Absolute` takes it out of the flow, so it is laid out over its parent's whole
+--- inner box and contributes nothing to its parent's size. That second half
+--- matters more than it sounds: a modal that made its page as tall as the dialog
+--- inside it would shove the page's own content around every time one opened.
+---
+--- It clips, because a dialog whose contents overflow should be a dialog with
+--- something missing rather than a dialog leaking over the page behind it.
+runtime.define({
+  kind = "Overlay",
+  defaults = { Direction = "column", Absolute = true, Clip = true, Background = T.card },
+  paint = fill,
+})
+
 --- A raised surface: one step lighter than the page, no drawn edge.
 ---
 --- The elevation is a default rather than something the caller supplies, so that
@@ -92,4 +107,22 @@ runtime.define({
     end
     frame:fill(node._x, node._y, node._w, 1, " ", T.border, node.Color or T.border)
   end,
+})
+
+--- A panel whose contents can be taller than it is.
+---
+--- `Scroll` is how far the contents have been pushed up, in cells. The children
+--- keep their sizes and the container keeps its box; only the origin moves. So a
+--- scroll costs no re-measure and cannot put the layout into a state that the
+--- unscrolled version would not also reach - which is the same reasoning D033
+--- records for a table's slot offset, applied to arbitrary content instead of
+--- rows.
+---
+--- Clipping is the part a table did not need. A table only ever draws the rows
+--- it means to; a scrolled column genuinely has content above and below its box
+--- and would paint over its neighbours without a mask.
+runtime.define({
+  kind = "ScrollView",
+  defaults = { Direction = "column", Clip = true },
+  paint = fill,
 })

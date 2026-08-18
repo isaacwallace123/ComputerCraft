@@ -90,7 +90,7 @@ end
 --- a label wider than its column, a component laid out against the edge. The
 --- real terminal clips silently and so does this, or every caller would need
 --- bounds arithmetic the buffer is better placed to do once.
-local function clip(x, length, width)
+local function clipRun(x, length, width)
   local from = 1
   if x < 1 then
     from = 2 - x
@@ -130,6 +130,7 @@ function buffer.new(screen, width, height)
     back = {},
     front = {},
     dirty = {},
+    _clips = {},
   }, Buffer)
 
   for y = 1, h do
@@ -143,6 +144,58 @@ end
 
 function Buffer:size()
   return self.width, self.height
+end
+
+---------------------------------------------------------------------------
+-- Clipping
+---------------------------------------------------------------------------
+
+--- Restrict painting to a rectangle until the matching `unclip`.
+---
+--- A stack rather than a single rectangle, and each push intersects with what is
+--- already in force. That is the only behaviour that composes: a scrolling list
+--- inside a modal inside a page has to be clipped by all three, and a component
+--- that replaced the clip instead of narrowing it would paint its contents
+--- outside the dialog containing it.
+---
+--- The clip lives on the buffer rather than being applied by each component to
+--- its own coordinates, because a component does not know what it is inside. A
+--- `Text` two levels down a scrolled list has a perfectly valid box that happens
+--- to be off the top of its container, and it has no way to discover that.
+---
+--- Nothing is clipped by default. An unclipped buffer costs one nil test per
+--- run, which is the same as it cost before this existed.
+function Buffer:clip(x, y, width, height)
+  local stack = self._clips
+  local x1, y1 = math.floor(x), math.floor(y)
+  local x2, y2 = x1 + math.floor(width) - 1, y1 + math.floor(height) - 1
+
+  local current = stack[#stack]
+  if current then
+    x1, y1 = math.max(x1, current.x1), math.max(y1, current.y1)
+    x2, y2 = math.min(x2, current.x2), math.min(y2, current.y2)
+  end
+
+  stack[#stack + 1] = { x1 = x1, y1 = y1, x2 = x2, y2 = y2 }
+  self._clip = stack[#stack]
+  return self
+end
+
+function Buffer:unclip()
+  local stack = self._clips
+  stack[#stack] = nil
+  self._clip = stack[#stack]
+  return self
+end
+
+--- Drop every clip. Called at the start of a frame so that a component which
+--- threw halfway through painting cannot leave the rest of the screen masked -
+--- which would look like the missing content was never drawn rather than like
+--- something errored.
+function Buffer:resetClip()
+  self._clips = {}
+  self._clip = nil
+  return self
 end
 
 --- Re-read the screen size and rebuild, keeping whatever content still fits.
@@ -221,7 +274,32 @@ function Buffer:blit(x, y, text, fg, bg)
     error(("blit at %d,%d: text %d, fg %d, bg %d"):format(x, y, #text, #fg, #bg), 2)
   end
 
-  local at, from, to = clip(x, #text, self.width)
+  -- The clip is applied before the screen bounds, and narrows the same run, so
+  -- a clipped write costs one comparison and no extra allocation.
+  local region = self._clip
+  if region then
+    if y < region.y1 or y > region.y2 then
+      return
+    end
+    local trimLeft = region.x1 - x
+    if trimLeft > 0 then
+      if trimLeft >= #text then
+        return
+      end
+      text, fg, bg = text:sub(trimLeft + 1), fg:sub(trimLeft + 1), bg:sub(trimLeft + 1)
+      x = region.x1
+    end
+    local overhang = (x + #text - 1) - region.x2
+    if overhang > 0 then
+      local keep = #text - overhang
+      if keep <= 0 then
+        return
+      end
+      text, fg, bg = text:sub(1, keep), fg:sub(1, keep), bg:sub(1, keep)
+    end
+  end
+
+  local at, from, to = clipRun(x, #text, self.width)
   if not at then
     return
   end

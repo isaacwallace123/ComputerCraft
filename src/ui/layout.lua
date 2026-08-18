@@ -86,19 +86,31 @@ function layout.measure(node)
     local gap = node.Gap or 0
     local row = isRow(node)
     local mainTotal, crossMax = 0, 0
+    local counted = 0
 
-    for index, child in ipairs(children) do
+    for _, child in ipairs(children) do
       layout.measure(child)
-      local childMain = row and child._measuredW or child._measuredH
-      local childCross = row and child._measuredH or child._measuredW
-      mainTotal = mainTotal + childMain
-      if index > 1 then
-        mainTotal = mainTotal + gap
-      end
-      if childCross > crossMax then
-        crossMax = childCross
+      -- An absolute child is measured but contributes nothing to its parent's
+      -- size, because it is not in the flow. A modal that made its page as tall
+      -- as the dialog inside it would push the page's own content around every
+      -- time the dialog opened.
+      if not child.Absolute then
+        local childMain = row and child._measuredW or child._measuredH
+        local childCross = row and child._measuredH or child._measuredW
+        counted = counted + 1
+        mainTotal = mainTotal + childMain
+        if counted > 1 then
+          mainTotal = mainTotal + gap
+        end
+        if childCross > crossMax then
+          crossMax = childCross
+        end
       end
     end
+
+    -- How tall the children actually are, kept for scrolling: a container needs
+    -- to know how far past its own box its contents run in order to clamp.
+    node._contentW, node._contentH = row and mainTotal or crossMax, row and crossMax or mainTotal
 
     if row then
       intrinsicW, intrinsicH = mainTotal, crossMax
@@ -221,21 +233,40 @@ function layout.arrange(node, x, y, width, height)
   local mainSpace = row and innerW or innerH
   local crossSpace = row and innerH or innerW
 
+  -- Absolute children are laid out over the parent's whole inner box and take
+  -- no part in the flow. This is what a modal, an overlay and a toast all need,
+  -- and it is deliberately the only escape from the flow the solver offers.
+  local flow = {}
+  for _, child in ipairs(children) do
+    if child.Absolute then
+      layout.arrange(child, innerX, innerY, innerW, innerH)
+    else
+      flow[#flow + 1] = child
+    end
+  end
+  if #flow == 0 then
+    return
+  end
+
   local sizes = {}
   local used = 0
-  for index, child in ipairs(children) do
+  for index, child in ipairs(flow) do
     sizes[index] = row and child._measuredW or child._measuredH
     used = used + sizes[index]
   end
-  used = used + gap * math.max(0, #children - 1)
+  used = used + gap * math.max(0, #flow - 1)
 
   local free = mainSpace - used
-  free = distribute(children, sizes, free)
+  free = distribute(flow, sizes, free)
 
-  local offset, spacing = justify(node.Justify, free, #children)
-  local cursor = (row and innerX or innerY) + offset
+  local offset, spacing = justify(node.Justify, free, #flow)
+  -- Scrolling shifts where the children start and nothing else. The container
+  -- keeps its box, the children keep their sizes, and only the origin moves -
+  -- which is why a scroll costs no re-measure and cannot put the layout into a
+  -- state the unscrolled version would not also have reached.
+  local cursor = (row and innerX or innerY) + offset - (node.Scroll or 0)
 
-  for index, child in ipairs(children) do
+  for index, child in ipairs(flow) do
     local main = clamp(sizes[index], 0)
     -- Cross-axis sizing. `stretch` is the default because it is what a row of
     -- table cells wants, and a component that does not want it says so with an

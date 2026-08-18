@@ -30,6 +30,7 @@ local SPECS = {
   "layout_spec",
   "runtime_spec",
   "input_spec",
+  "anim_spec",
 }
 
 local filter = ...

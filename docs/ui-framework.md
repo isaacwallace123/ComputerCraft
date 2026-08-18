@@ -320,6 +320,18 @@ mid-flight.
 one animation is in flight; an idle screen is purely event-driven and costs nothing. On a
 server that is also reconciling a fleet, this is a hard requirement, not an optimisation.
 
+**Built in phase 4**, and the requirement above holds in a stronger form than it was
+written: a screen that animates nothing never allocates a driver at all, so the loop's
+"is anything moving" question is answered without one existing.
+
+One thing the plan did not anticipate. **A spring cannot be integrated in one 50ms step at
+the speed this section gives as its example.** `Spring(goal, 25, 1)` puts `speed² · dt²` at
+1.56, and a semi-implicit Euler integrator above 1 gains energy every step: the value
+reached six figures within six frames, never settled, and therefore kept the frame loop
+awake forever — turning a runaway animation into a machine that never idles. Frames are
+sub-stepped at 1/60s, which is a stability limit rather than a smoothness setting. See
+D034; the motion budget above is unaffected.
+
 Motion budget, given 20 FPS: 150ms for state feedback, 250–300ms for transitions, nothing
 continuous except a deliberate pulse on an alert. Long or elaborate motion reads as jank
 at this frame rate — restraint here is a technical requirement, not taste.
@@ -588,8 +600,8 @@ Not on Server, and not on a turtle.
 | 1 | `ports/screen`, `ui/buffer`, diff + blit, bench | Flicker-free painting, measured | **done** |
 | 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app on it | **done** |
 | 3 | `ui/input`, focus, gestures | Full interaction parity with today | **done** |
-| 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity | **next** |
-| 5 | `ui/canvas` + sprites + theming | Imagery and real palettes | |
+| 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity | **done** |
+| 5 | `ui/canvas` + sprites | Imagery; theming landed early, in phase 2 | **next** |
 | 6 | Blackjack | Showcase and soak test | |
 | 7 | Port remaining apps, add AP ports | Old `core/ui.lua` deleted; chat notifications | |
 
@@ -673,6 +685,36 @@ Three things are worth knowing before phase 4:
 Fleet was rebuilt first, in phase 2, because it is the screen the performance claim is
 actually about and because it needs no input at all — which made it the one screen that
 could be finished before any of this existed.
+
+### What phase 4 delivered
+
+- `ui/anim.lua` — `Spring`, `Tween`, the four easings, and the driver. Both are state
+  objects, so anything that consumes a value consumes an animated one and no component
+  knows it is being animated.
+- A clip stack in `ui/buffer.lua`, `Scroll` and `Absolute` in the solver, and the
+  `ScrollView` and `Overlay` components that need them. D033 flagged the clip region as
+  something to decide deliberately rather than bolt on; this is that.
+- `Root:advance(now)` and `Root:animating()`; the host loop wakes on a tick only while
+  something is moving and blocks on the next event otherwise.
+
+**The §8 claim holds: an idle screen costs nothing.** A screen that animates nothing never
+allocates a driver, so `animating()` answers false without one existing. A settled spring
+removes itself. Both are asserted rather than argued.
+
+Three findings, all now decisions because each is the kind of thing that gets simplified
+back:
+
+- **A spring at the speed §8 gives as its example diverges** if integrated in one 50ms
+  step — `speed² · dt²` is 1.56, and above 1 the integrator gains energy. It reached six
+  figures in six frames and, because it never settled, kept the host loop awake at 20 FPS
+  forever. Sub-stepping at 1/60s is a stability limit, not a quality setting (D034).
+- **`Scroll`, `Align` and `Justify` change arrangement without changing measurement**, so
+  the measure-and-compare path skipped the re-solve and a `ScrollView` rendered the top of
+  its list forever while reporting the right offset. Structural properties now force a
+  re-solve; content properties keep the fast path (D035).
+- **A targeted repaint inside a clipped container has to replay its ancestors' clips.**
+  Painting a subtree in isolation is not the same as painting it in context, and without
+  the replay a row scrolled off the top repaints itself over whatever is above the panel.
 
 ---
 

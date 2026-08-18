@@ -20,6 +20,7 @@ require("ui.components.table")
 local runtime = require("ui.runtime")
 
 local ui = {
+  anim = require("ui.anim"),
   buffer = require("ui.buffer"),
   input = require("ui.input"),
   layout = require("ui.layout"),

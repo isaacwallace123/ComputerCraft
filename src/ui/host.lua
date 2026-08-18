@@ -33,6 +33,8 @@
 --- station, where this is one of several coroutines sharing a terminal and the
 --- desktop owns what happens next.
 
+local anim = require("ui.anim")
+
 local host = {}
 
 --- Run `root` against an input port until it stops.
@@ -54,18 +56,34 @@ function host.run(root, input, options)
   -- as nobody did.
   root:render()
 
+  local clock = options.clock
+
   while running do
-    local event = { input.pull(options.timeout) }
+    -- The frame rate is a consequence, not a setting. A screen with nothing
+    -- moving blocks on the next event and costs nothing; one with a spring in
+    -- flight wakes every tick until it settles and then goes back to costing
+    -- nothing. §8 of docs/ui-framework.md calls this a hard requirement rather
+    -- than an optimisation, because the machine this runs on is also
+    -- reconciling ten turtles.
+    local timeout = options.timeout
+    if clock and root:animating() then
+      timeout = anim.FRAME
+    end
+
+    local event = { input.pull(timeout) }
     local name = event[1]
 
     if name == nil then
-      -- The port timed out, or a scripted input ran out. Both mean "nothing
-      -- more is coming"; a loop that kept spinning on nil would be a busy-wait
-      -- in production and a hang in a test.
-      if options.timeout == nil then
+      -- A timeout while something is animating is the animation frame, not the
+      -- end of the session.
+      if clock and root:animating() then
+        root:advance(clock.now())
+      elseif options.timeout == nil then
+        -- The port timed out with nothing pending, or a scripted input ran out.
+        -- Both mean nothing more is coming; a loop that kept spinning on nil
+        -- would be a busy-wait in production and a hang in a test.
         break
-      end
-      if options.onIdle and options.onIdle(root) == false then
+      elseif options.onIdle and options.onIdle(root) == false then
         break
       end
     else
@@ -75,6 +93,11 @@ function host.run(root, input, options)
       local consumed = options.onEvent and options.onEvent(name, table.unpack(event, 2))
       if not consumed then
         root:handle(table.unpack(event))
+      end
+      -- An event may have re-targeted a spring, so advance before rendering or
+      -- the first frame of every animation would be a frame late.
+      if clock then
+        root:advance(clock.now())
       end
     end
 

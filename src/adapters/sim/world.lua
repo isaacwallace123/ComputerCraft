@@ -948,13 +948,29 @@ function world:ports()
   }
 end
 
---- Modules a reboot forgets: everything that is the code under test.
+--- Modules a reboot forgets: the code that runs on the simulated machine.
 ---
---- `adapters%.` is deliberately absent. The world itself, and the port tables
---- built over it, are the harness holding the machine - dropping them mid-test
---- would be closer to swapping the computer than to restarting it, and a spec
---- still holding a reference to the old world would then be inspecting a world
---- nothing was running in.
+--- ## The rule for adding to this list
+---
+--- A module may only be forgotten if **nothing outside the reboot set holds a
+--- reference to it across the boundary**. Re-requiring a module produces a new
+--- copy of every table inside it, including its metatables - so a value created
+--- by the old copy fails an identity test in the new one, and does so silently.
+---
+--- `^ui%.` was on this list and had to come off. `ui/reactive.lua` identifies a
+--- state object by its metatable; `ui/anim.lua` requires reactive lazily; and a
+--- spec file holds its own reference from load time. After a world spec dropped
+--- the cache, an animation built through the old runtime asked the *new*
+--- reactive whether its goal was a state object, was told no, and quietly
+--- animated a table. Nothing errored where the mistake was.
+---
+--- `adapters%.` is absent for a related reason: the world and the port tables
+--- built over it are the harness holding the machine, and dropping them mid-test
+--- is closer to swapping the computer than to restarting it.
+---
+--- What remains is the code a rebooting turtle actually runs. None of it carries
+--- identity across a require - no metatables, no sentinel tables - which is what
+--- makes forgetting it equivalent to a reboot rather than to a subtle fork.
 local FORGOTTEN = {
   "^turtle%.",
   "^core%.",
@@ -962,7 +978,6 @@ local FORGOTTEN = {
   "^mine%.",
   "^domain%.",
   "^ports%.",
-  "^ui%.",
 }
 
 --- Wipe every loaded ICOS module. With the filesystem living in the world, this

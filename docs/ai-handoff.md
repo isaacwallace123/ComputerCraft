@@ -83,6 +83,8 @@ different tradeoff:
 | a component, or a new one | `src/ui/components/`, then register it with `ui.define` |
 | clicks, touches, focus, the tab ring | `src/ui/input.lua`, `Root:dispatch` in `src/ui/runtime.lua` |
 | the event loop a screen runs in | `src/ui/host.lua` |
+| springs, tweens, easings, the frame gate | `src/ui/anim.lua` |
+| clipping, scrolling, overlays | `Buffer:clip` in `src/ui/buffer.lua`, `Scroll`/`Absolute` in `src/ui/layout.lua` |
 | a screen built on the framework | `src/apps/<id>/view.lua` |
 | renderer performance numbers | `tools/bench.lua`, `tools/bench.ps1`, `docs/ui-framework.md` section 12 |
 | how we compare to Basalt | `tools/compare.lua`, `tools/compare.ps1`, `docs/ui-framework.md` sections 12 and 16 |
@@ -245,6 +247,13 @@ large AFK run.
   aliases exist so the spec suite resolved unchanged — which is the only evidence that a
   live fleet's sector bookkeeping came through the move unaltered — and are deleted when
   the specs are rewritten. Do not add new code against `mine.plan` or `mine.registry`.
+- `world.reboot()` drops `package.loaded` for the code a simulated turtle runs. **Only add
+  a pattern to that list if nothing outside the reboot set holds a reference across the
+  boundary.** Re-requiring a module makes a fresh copy of every table in it, metatables
+  included, so a value built by the old copy fails an identity test in the new one -
+  silently. `^ui%.` was on the list and had to come off: an animation built through the old
+  runtime asked a freshly required `ui/reactive.lua` whether its goal was a state object,
+  was told no, and quietly animated a table.
 - `tools/spec/support/world.lua` is likewise an alias for `src/adapters/sim/world.lua`.
   The world keeps `install()`, which writes CC's APIs onto `_G`, beside its new `ports()`.
   Both are correct for now: modules written before ports existed read those globals, and

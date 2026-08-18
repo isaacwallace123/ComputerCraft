@@ -109,9 +109,25 @@ local function constructorFor(kind)
   return nil
 end
 
---- Properties that change geometry whatever the component is. A component adds
---- its own - `Text` for a label, `Value` for nothing at all - through
---- `definition.layout`.
+--- Properties that change geometry whatever the component is, and which force a
+--- re-solve rather than a re-measure.
+---
+--- The distinction is the one thing to understand about this file's dirty model.
+--- A *content* property like `Text` is re-measured and only promoted to a full
+--- re-solve if the measurement actually moved - that is the optimisation that
+--- makes a heartbeat cost one blit. A *structural* property is not measured at
+--- all in the relevant sense: `Justify` going from start to end does not change
+--- a node's size by one cell, and neither does `Scroll`, and neither does
+--- `Align`. Sending those through the measure-and-compare path finds nothing
+--- changed and skips the re-solve, so the screen keeps the old arrangement
+--- while the property claims to have changed.
+---
+--- That was a real bug and it was invisible in exactly the way this kind of bug
+--- is: a `ScrollView` reported the right offset, re-measured to the same size,
+--- decided nothing needed moving, and rendered the top of the list forever.
+---
+--- A component adds its own content properties - `Text` for a label, `Value` for
+--- nothing at all - through `definition.layout`.
 local STRUCTURAL = {
   Width = true,
   Height = true,
@@ -122,6 +138,8 @@ local STRUCTURAL = {
   Align = true,
   Justify = true,
   Children = true,
+  Scroll = true,
+  Absolute = true,
 }
 
 ---------------------------------------------------------------------------
@@ -157,6 +175,17 @@ local function markMeasure(node)
   root._dirty = true
 end
 
+--- Everything moves. For structural properties, where asking whether the size
+--- changed answers the wrong question.
+local function markLayout(node)
+  local root = node._root
+  if not root then
+    return
+  end
+  root._relayout = true
+  root._dirty = true
+end
+
 function create(scope, definition, props)
   props = props or {}
 
@@ -189,7 +218,8 @@ function create(scope, definition, props)
         -- The binding is the entire reason this framework is not React. It
         -- writes one property and marks one node, and no component function
         -- runs again for the life of the tree.
-        local layoutAffecting = STRUCTURAL[key] or definition.layout[key]
+        local structural = STRUCTURAL[key]
+        local contentAffectsSize = definition.layout[key]
         scope:_sink(value, function()
           local fresh = value:get()
           -- Invalidation is not change. A `Computed` that reads a whole device
@@ -202,7 +232,9 @@ function create(scope, definition, props)
             return
           end
           node[key] = fresh
-          if layoutAffecting then
+          if structural then
+            markLayout(node)
+          elseif contentAffectsSize then
             markMeasure(node)
           else
             markPaint(node)
@@ -234,7 +266,9 @@ function runtime.set(node, key, value)
   end
   node[key] = value
   local definition = node._def
-  if STRUCTURAL[key] or (definition and definition.layout[key]) then
+  if STRUCTURAL[key] then
+    markLayout(node)
+  elseif definition and definition.layout[key] then
     markMeasure(node)
   else
     markPaint(node)
@@ -284,6 +318,29 @@ UIScope.__index = function(_, key)
   return nil
 end
 
+--- The animation driver this scope's springs and tweens run on.
+---
+--- Created on first use, so a screen with no animation allocates nothing and the
+--- host loop's "is anything moving" question answers false without a driver
+--- existing at all. Owned by the scope, so closing a page stops its animations
+--- along with everything else it made.
+function UIScope:_animator()
+  if not self._driver then
+    self._driver = require("ui.anim").driver()
+  end
+  return self._driver
+end
+
+--- A value that physically follows a goal. See `ui/anim.lua`.
+function UIScope:Spring(goal, speed, damping)
+  return require("ui.anim").Spring(self, goal, speed, damping)
+end
+
+--- A value that eases to a goal over a duration. See `ui/anim.lua`.
+function UIScope:Tween(goal, duration, easing)
+  return require("ui.anim").Tween(self, goal, duration, easing)
+end
+
 --- A scope that can make both state and nodes.
 function runtime.scoped()
   return setmetatable(reactive.scoped(), UIScope)
@@ -311,8 +368,22 @@ local function paintSubtree(node, frame, surface)
     definition.paint(node, frame, here)
   end
 
+  -- A clipping container narrows the buffer for its subtree and restores it
+  -- after. The clip is pushed *after* the node paints its own background, so a
+  -- scrolling panel still fills its whole box while its contents are masked to
+  -- it - which is what makes the empty part of a short list look like the panel
+  -- rather than like a hole.
+  local clipped = node.Clip and node._w > 0 and node._h > 0
+  if clipped then
+    frame:clip(node._x, node._y, node._w, node._h)
+  end
+
   for _, child in ipairs(node.Children) do
     paintSubtree(child, frame, here)
+  end
+
+  if clipped then
+    frame:unclip()
   end
 end
 
@@ -381,6 +452,32 @@ function Root:pending()
   return self._dirty
 end
 
+--- Step any running animations to `now`, in milliseconds, and report whether
+--- anything is still moving.
+---
+--- Takes the time rather than reading a clock, so a spec can advance an
+--- animation by exactly one tick and assert where it got to. It also means the
+--- framework needs no clock port of its own - the host that already has one
+--- passes the number in.
+---
+--- Answers false with no work at all when the scope never made an animation,
+--- which is the common case and has to stay free: a fleet dashboard that
+--- animates nothing must not pay a frame timer for the possibility.
+function Root:advance(now)
+  local driver = rawget(self.scope, "_driver")
+  if not driver then
+    return false
+  end
+  return driver:advance(now)
+end
+
+--- Is anything mid-animation? The host loop asks before deciding whether to wake
+--- on a timer or block on the next event.
+function Root:animating()
+  local driver = rawget(self.scope, "_driver")
+  return driver ~= nil and driver:busy()
+end
+
 --- One frame. Returns the number of blit calls it took, which is the number the
 --- specs and the bench assert on.
 ---
@@ -410,6 +507,11 @@ function Root:render()
 
   local width, height = self.frame:size()
 
+  -- Any clip left over from a component that threw halfway through painting is
+  -- dropped here rather than being carried into the next frame, where it would
+  -- mask unrelated content and look like the missing part was never drawn.
+  self.frame:resetClip()
+
   if relayout then
     -- Everything may have moved, so everything is repainted. The cell diff makes
     -- the parts that did not actually change free, so this is not the disaster
@@ -420,7 +522,32 @@ function Root:render()
     self._paint = {}
   else
     for node in pairs(self._paint) do
+      -- A targeted repaint starts partway down the tree, so the clips its
+      -- ancestors would have pushed are not in force. They have to be replayed,
+      -- outermost first, or a row scrolled off the top of a panel repaints
+      -- itself over whatever is above the panel.
+      --
+      -- This is the one place where painting a subtree in isolation is not the
+      -- same as painting it in context, and it is worth the walk: without it the
+      -- bug appears only when something scrolled changes, which is a long way
+      -- from where anyone would look.
+      local clips = {}
+      local ancestor = node._parent
+      while ancestor do
+        if ancestor.Clip and ancestor._w > 0 and ancestor._h > 0 then
+          table.insert(clips, 1, ancestor)
+        end
+        ancestor = ancestor._parent
+      end
+      for _, container in ipairs(clips) do
+        self.frame:clip(container._x, container._y, container._w, container._h)
+      end
+
       paintSubtree(node, self.frame, node._surface or self.background)
+
+      for _ = 1, #clips do
+        self.frame:unclip()
+      end
       self._paint[node] = nil
     end
   end

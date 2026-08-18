@@ -508,6 +508,85 @@ There is still no clip region in `ui/buffer.lua`. `ScrollView`, `Modal` and `Tab
 need one and should get it deliberately, with its own decision, rather than by somebody
 adding a bounds check to `write` and discovering later that half the components ignore it.
 
+## D034 — A spring is integrated in sub-steps, and a settled one unschedules itself
+
+**Status:** accepted
+
+Two rules, both about the same thing: an animation must never be able to keep a machine
+awake.
+
+**Sub-stepping is a stability limit, not a quality setting.** A frame here is 50ms, which
+is enormous for a spring. At the speed section 8 of `ui-framework.md` gives as its worked
+example - `Spring(goal, 25, 1)` - the term `speed² · dt²` comes to 1.56. Above 1 a
+semi-implicit Euler integrator gains energy every step rather than losing it, so the value
+oscillates wider and wider instead of settling. The first version of `ui/anim.lua` did
+exactly this and reached six figures within six frames.
+
+The consequence is worse than a visual glitch. A spring that never settles is never
+removed from the driver; a driver that is never empty tells the host loop to keep waking
+on a timer; and the loop then spins at 20 FPS forever on the base station that is also
+running the fleet service. A runaway animation becomes a machine that never idles.
+
+`anim.MAX_STEP` splits each frame into slices of at most 1/60s, which puts the same spring
+at 0.17 and leaves headroom to about speed 50. Three sub-steps of arithmetic on four
+numbers costs nothing. Removing it would reintroduce a stability limit that nobody
+discovers until they pick a speed slightly too high.
+
+**A settled animation removes itself, and an idle screen allocates no driver at all.**
+Section 8 calls this a hard requirement rather than an optimisation, and it is enforced in
+two places: the driver drops an animation when it settles, and `Root:animating()` answers
+false without a driver existing when the scope never made one. The host loop asks before
+every pull, so a screen with nothing moving blocks on the next event and costs zero.
+
+The failure this prevents is quiet. An animation system that ticks unconditionally looks
+free in a test - nothing is slow, nothing errors - and shows up in production as a base
+station that competes for the 5ms scheduling slice with the fleet service beside it, which
+is exactly the budget D027's section 2 note establishes.
+
+Two smaller rules travel with these and are the same idea in miniature:
+
+- **Both a spring and a tween land exactly on their goal.** A spring assigns its goal when
+  it settles; a tween needs a tolerance, because accumulated floating point never sums to
+  a round number and six 50ms steps come to 0.24999999999999997. A `Width` left a whisker
+  under 24 renders as 23 cells forever, and the bug reads as an off-by-one in the layout
+  solver rather than as an animation that did not quite arrive.
+- **A long pause resumes rather than teleports.** A chunk unloads or the server hitches and
+  the next frame is four seconds later; integrating that whole gap snaps every animation
+  straight to its goal, which looks like the animation never happened. The delta is clamped
+  to 100ms - two ticks.
+
+## D035 — A structural property forces a re-solve; a content property is re-measured
+
+**Status:** accepted
+
+D030 established that a binding marks the node and that a size-affecting change
+re-measures, promoting to a full re-solve only when the measurement actually moved. That
+optimisation is what makes a heartbeat cost one blit, and it is wrong for half the
+properties it was originally applied to.
+
+`Justify` going from `start` to `end` does not change a node's size by one cell. Neither
+does `Align`. Neither does `Scroll`. Sending those through measure-and-compare finds
+nothing changed, skips the re-solve, and leaves the screen showing the old arrangement
+while the property reports the new value.
+
+That was a real bug and it was invisible in the way this kind of bug is: a `ScrollView`
+held the right offset, re-measured to the same size, concluded nothing needed moving, and
+rendered the top of the list forever. Nothing errored, nothing looked stale, and the state
+was correct everywhere it was inspected.
+
+So the two paths are separated by what the property *is*, not by what it might do:
+
+- **Structural** - `Width`, `Height`, `Grow`, `Gap`, `Padding`, `Direction`, `Align`,
+  `Justify`, `Children`, `Scroll`, `Absolute` - forces a re-solve outright. These are rare
+  and a re-solve is cheap; the cell diff still makes the parts that did not move free.
+- **Content** - whatever a component declares in `definition.layout`, such as `Text` -
+  re-measures and promotes only if the size changed. This is the hot path, it fires on
+  every heartbeat, and it is the one the optimisation exists for.
+
+The test for adding a property to the structural list is not "can it change the size" but
+"can it change where anything ends up". `Scroll` cannot change any size at all, and it is
+the clearest member of the set.
+
 ## D014 — Version changes happen at merge
 
 **Status:** accepted
