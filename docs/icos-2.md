@@ -463,7 +463,7 @@ flag day, because there is a live fleet to keep running.
 | 2 | Device registry + last known location | Missing turtles become findable | Low, additive | **domain done** |
 | 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events | **domain done** |
 | 4 | Drop-off list | Multiple depots | Medium — touches return fuel | **domain done** |
-| 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | |
+| 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | **supervisor done** |
 | 6 | App folders and manifests, commands split out | The layout above | Low, mechanical | |
 
 Phase 1 first is not tidying-before-features. It is what makes phases 3 and 4 testable —
@@ -597,6 +597,45 @@ Two smaller decisions worth knowing:
 - A `full` report **expires** after twenty minutes. Nothing ever reports a depot empty
   again — a person walks over, takes the diamonds, and tells nobody — so a flag without an
   expiry removes a depot from service permanently on the strength of one bad trip.
+
+### Phase 5: the supervisor
+
+`os/supervisor.lua` and `os/service.lua` are built and specced. The four composition roots
+are not.
+
+The supervisor exists because of one sentence of CC semantics: **`parallel.waitForAny`
+returns when *any* coroutine finishes.** So today an error escaping `fleet/service.lua`
+stops discovery, lease handling, policy, logging and persistence together — and on a server
+it would take GPS with it, which breaks navigation for the whole fleet. This resumes each
+service itself, so one dying is one dying.
+
+Four decisions worth knowing, each of them specced:
+
+- **A service that returns is a fault, not a success.** A service runs for the life of the
+  machine, so falling off the end of `run` is treated as a failure — which means it backs
+  off rather than being restarted in a tight loop that would spin the machine at full
+  speed forever.
+- **`failures` and `restarts` are different numbers.** One is the current consecutive run
+  and decides the backoff; the other is the lifetime count the panel shows. A service that
+  failed twice and then ran for a week should not be one failure from being abandoned.
+- **Giving up is loud.** Five consecutive failures and the service stops with its reason
+  attached; a **critical** one doing so makes the whole machine report unhealthy. Reviving
+  it is deliberately manual, because a supervisor that reset its own counter on a timer
+  would turn "gave up after five failures" into "retries forever, slowly" — which is the
+  state this design exists to make visible rather than to reach.
+- **Missing ports are refused before the service starts.** A service declares what it
+  needs; starting one without them produces a nil index somewhere inside its own loop, on
+  a machine with no screen, at whatever moment it first reaches that line.
+
+§8 says a service that does not yield starves its neighbours and calls that a review rule.
+It is still a review rule — no runtime built on `coroutine` can preempt — but the
+supervisor records how long each service ran between yields, so a starving one shows up as
+a number on the Services page rather than as a machine that feels sluggish.
+
+The whole thing is plain Lua coroutines with an injected clock, so the backoff curve, the
+give-up threshold and the revive path are exercised by advancing a number. Nobody would
+ever sit and wait thirty seconds five times over in a world, which is exactly why those are
+the parts that ship broken.
 
 ## 13. Migration
 
