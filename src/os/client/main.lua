@@ -175,6 +175,14 @@ function client.boot(ports, options)
   for _, definition in ipairs(client.services()) do
     sup:add(definition)
   end
+
+  -- The Services page reads this machine's own supervisor, not the server's.
+  -- Attached after construction because the context is what the supervisor is
+  -- started with, and a supervisor that held a reference to a context that held
+  -- a reference to it is a cycle the serialiser would refuse - which is exactly
+  -- the kind of thing that is discovered when a state file stops being written.
+  context.supervisor = sup
+
   sup:start(context)
 
   return { supervisor = sup, context = context, ports = ports }

@@ -78,6 +78,7 @@ end
 function shell.apps()
   return {
     require("apps.devices.app"),
+    require("apps.services.app"),
   }
 end
 

@@ -141,6 +141,7 @@ function mobile.boot(ports, options)
   for _, definition in ipairs(mobile.services()) do
     sup:add(definition)
   end
+  machine.context.supervisor = sup
   sup:start(machine.context)
 
   machine.supervisor = sup

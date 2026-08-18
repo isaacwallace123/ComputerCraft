@@ -210,6 +210,12 @@ turtleOs.job = service.define({
 --- somebody is standing in front of a turtle pressing keys is usually that the
 --- job has stopped doing what they expected - so the controls have to work when
 --- the job does not.
+---
+--- It runs the same shell a client does, with `surface = "launcher"`. That is
+--- the whole benefit of filtering apps by surface rather than by machine: the
+--- Services page - which is exactly what somebody standing in front of a stopped
+--- turtle wants, because it says "job: gave up - bedrock" - needed no turtle
+--- version written for it. It declared the surface and appeared.
 turtleOs.controls = service.define({
   id = "controls",
   requires = { "state" },
@@ -264,7 +270,19 @@ function turtleOs.boot(ports, options)
       return {}
     end,
     runJob = options.runJob or function() end,
-    runControls = options.runControls or function() end,
+
+    -- The launcher, not a stub. A turtle whose controls service does nothing is
+    -- a turtle somebody has to diagnose by reading a log file over the top of a
+    -- program that is still running.
+    runControls = options.runControls or function(inner)
+      return require("os.client.shell").run(inner, {
+        role = "turtle",
+        surface = "launcher",
+        -- A turtle's screen is 39x13 with the job's own status above it, so the
+        -- table gets what is left rather than a client's eight rows.
+        capacity = 5,
+      })
+    end,
   }
 
   -- Resolved before the services start, so the job service has something to
@@ -287,6 +305,13 @@ function turtleOs.boot(ports, options)
   for _, definition in ipairs(turtleOs.services()) do
     sup:add(definition)
   end
+
+  -- What the Services page reads. Attached after construction rather than built
+  -- into the context, because a context holding the supervisor that was started
+  -- with that context is a cycle the serialiser would refuse - and that is
+  -- discovered when a state file quietly stops being written.
+  context.supervisor = sup
+
   sup:start(context)
 
   return { supervisor = sup, context = context, ports = ports }

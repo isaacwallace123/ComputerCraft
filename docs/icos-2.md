@@ -704,6 +704,42 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 6: the Services page, and what surface filtering buys
+
+The supervisor's comments have referred to "the Services page" since it was written. It
+exists now, and it is the diagnostic surface for everything else: when a turtle will not
+deploy, or a client shows nothing, or GPS is down, this is the page that says which loop is
+failing and what it said.
+
+**It reads a supervisor, not a fleet.** Every other app reads the mirror; this one reads
+`context.supervisor`, which is *this machine's own*. The moment somebody needs this page is
+the moment the radio might be the broken thing, and a services page that had to ask the
+server what it was running would be useless in exactly the case it exists for.
+
+**Three states, and the middle one matters most.** `running` is boring, `gave up` is
+obvious, and **`waiting`** — a service failing and backing off — looks like nothing on every
+other screen and is the state a machine spends its time in while a person walks over to look
+at it. So it reads "retrying 8s", because 8s and 30s are different situations. The
+supervisor calls it `waiting` and the page calls it retrying; the internal word is accurate
+and the displayed one is useful, and they are allowed to differ.
+
+**A degraded machine is still healthy, and the page says both.** A client that cannot reach
+its server still draws, so `healthy()` is true with a red row on screen — and somebody
+reading that needs to be told why both are true, or they conclude the page is lying. A
+non-critical failure is amber, not red: painting a degraded client the same colour as a dead
+turtle trains somebody to ignore both.
+
+**It counts restarts, not failures.** `failures` resets to zero the moment a service comes
+back, so a service that has crashed forty times today and is up right now shows zero — true
+and useless.
+
+Then the payoff for filtering apps by *surface* rather than by machine. The turtle's
+`controls` service was still a stub; it now runs the same shell with
+`surface = "launcher"` — and the Services page, which is exactly what somebody standing in
+front of a stopped turtle wants because it says `job: gave up — bedrock`, needed no turtle
+version written for it. It declared the surface and appeared. Devices deliberately did not:
+a turtle showing a fleet roster would be drawing something it has no copy of.
+
 ### Phase 6: the desktop shell
 
 `client.boot` took a `draw` and nothing provided one, so a client booted with two services
