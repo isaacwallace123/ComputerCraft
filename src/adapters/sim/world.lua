@@ -924,6 +924,17 @@ function world:ports()
         protocol = protocol,
       }
     end,
+    --- Yields when it has nothing, because a real one does.
+    ---
+    --- `rednet.receive` blocks on `os.pullEvent`, and `sleep` blocks on a timer;
+    --- either way a CC service loop hands control back between messages. This
+    --- simulated one used to advance a counter and return, which is fine for a
+    --- spec that calls it directly and a hang for one that runs a service under
+    --- `os/supervisor.lua` - the loop spins, `coroutine.resume` never returns,
+    --- and there is nothing a supervisor can do about it from the outside.
+    ---
+    --- Guarded by `isyieldable` so a spec calling this on the main coroutine,
+    --- which is most of them, behaves exactly as before.
     receive = function(protocol, timeoutSeconds)
       for index, entry in ipairs(self_.messages) do
         if protocol == nil or entry.protocol == protocol then
@@ -932,6 +943,9 @@ function world:ports()
         end
       end
       api.sleep(timeoutSeconds or 0)
+      if coroutine.isyieldable() then
+        coroutine.yield()
+      end
       return nil
     end,
     id = function()

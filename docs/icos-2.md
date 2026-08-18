@@ -463,7 +463,7 @@ flag day, because there is a live fleet to keep running.
 | 2 | Device registry + last known location | Missing turtles become findable | Low, additive | **domain done** |
 | 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events | **domain done** |
 | 4 | Drop-off list | Multiple depots | Medium — touches return fuel | **domain done** |
-| 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | **supervisor done** |
+| 5 | OS split | `os/server` absorbs fleet + gps | Medium — every device needs role migration | **server + roles done** |
 | 6 | App folders and manifests, commands split out | The layout above | Low, mechanical | |
 
 Phase 1 first is not tidying-before-features. It is what makes phases 3 and 4 testable —
@@ -597,6 +597,40 @@ Two smaller decisions worth knowing:
 - A `full` report **expires** after twenty minutes. Nothing ever reports a depot empty
   again — a person walks over, takes the diamonds, and tells nobody — so a flag without an
   expiry removes a depot from service permanently on the strength of one bad trip.
+
+### Phase 5: roles, the server, and the first wired service
+
+`os/roles.lua`, `os/server/main.lua` and `os/server/services/discovery.lua` join the
+supervisor. **Nothing calls `boot`** — `src/startup.lua` still runs the ICOS 1 paths, and
+switching it over is the one change in this branch that alters what an existing machine
+does on power-up.
+
+`discovery` is the first service to actually connect the domain modules: a heartbeat comes
+in, the registry records it and retains its position, and the reply carries the desired
+state. That exchange is the whole of §5, and it is now testable end to end without a world.
+
+**The migration is a read, not a write.** `roleOf` translates on every boot rather than
+rewriting `.node` once. A machine that rewrote its own role on first boot could not be
+rolled back, and a fleet half-migrated by a partial update would hold two incompatible
+ideas of what a `fleet` computer is. Translating means an old `.node` keeps working forever
+and a downgrade is just a downgrade.
+
+`fleet` is the only role that does not map one-to-one: §2 splits it into a server that holds
+authoritative state and a client that draws it, and one machine was doing both. It maps to
+**server**, with the client started beside it when the machine has a screen. Mapping it the
+other way would mean a base that lost its monitor stopped being the fleet's brain.
+
+Two things found while wiring it, both worth keeping:
+
+- **`registry.observe` replaced the whole record**, which erased the `desired` and
+  `observed` fields attached to it — so an order set while a device was away vanished the
+  moment it checked in, which is exactly the failure desired state exists to fix. It is the
+  same bug as the location one, one module over, and the fix is to mutate in place rather
+  than to copy a longer list of fields forward. A list falls out of date; a mutation cannot.
+- **The simulated transport did not yield.** A real `receive` blocks; this one advanced a
+  counter and returned, which is fine when a spec calls it directly and a **hang** when a
+  service loop runs under the supervisor — `coroutine.resume` never returns, and no
+  supervisor can preempt its way out of that. It yields now, which is what a real one does.
 
 ### Phase 5: the supervisor
 

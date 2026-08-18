@@ -86,31 +86,45 @@ function registry.locate(snapshot)
   }
 end
 
---- Record a heartbeat.
+--- Record a heartbeat, updating the record **in place** rather than replacing it.
 ---
---- Returns the updated record and whether this device was previously unknown, so
---- a caller can log a device joining without diffing the whole table itself.
+--- Returns the record and whether this device was previously unknown, so a
+--- caller can log a device joining without diffing the whole table itself.
+---
+--- This is the same rule as the location retention below, generalised, and it
+--- was learned twice. `fleet/roster.lua` replaces the whole record and thereby
+--- erases a position; the first version of this function replaced the whole
+--- record too, and thereby erased the `desired` and `observed` fields that
+--- `domain/fleet/desired.lua` attaches to it - so an order set while a device
+--- was away vanished on that device's next heartbeat, which is precisely the
+--- failure desired state exists to fix.
+---
+--- Copying the fields forward by name would work until somebody added a seventh
+--- and forgot. Mutating the record cannot have that bug, because there is no
+--- list to fall out of date.
 function registry.observe(state, id, snapshot, now)
   local key = tostring(id)
-  local previous = state.devices[key]
+  local record = state.devices[key]
+  local isNew = record == nil
+
+  if isNew then
+    record = { id = tonumber(id) or id, pairedAt = now }
+    state.devices[key] = record
+  end
+
+  record.snap = snapshot
+  record.seenAt = now
+
+  -- A fresh fix replaces the old one; no fix leaves the old one exactly where it
+  -- was, along with when it was taken - because "last seen at these coordinates
+  -- twenty minutes ago" is the difference between a search and a shrug.
   local fix = registry.locate(snapshot)
+  if fix then
+    record.location = fix
+    record.locatedAt = now
+  end
 
-  local record = {
-    id = tonumber(id) or id,
-    snap = snapshot,
-    seenAt = now,
-    pairedAt = previous and previous.pairedAt or now,
-
-    -- The whole point. A fresh fix replaces the old one; no fix leaves the old
-    -- one exactly where it was, along with when it was taken - because "last
-    -- seen at these coordinates twenty minutes ago" is the difference between a
-    -- search and a shrug.
-    location = fix or (previous and previous.location) or nil,
-    locatedAt = fix and now or (previous and previous.locatedAt) or nil,
-  }
-
-  state.devices[key] = record
-  return record, previous == nil
+  return record, isNew
 end
 
 --- Forget a device. The operator's "this one is gone for good".

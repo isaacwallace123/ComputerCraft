@@ -197,3 +197,25 @@ it("the registry touches no clock of its own", function()
   local fortnight = 14 * 24 * 60 * 60 * SECOND
   expect.equal(registry.health(registry.get(state, 7), fortnight), "offline", "no real time passed")
 end)
+
+it("a heartbeat keeps whatever else has been attached to the record", function()
+  -- The same bug as the location one, one module over. `domain/fleet/desired.lua`
+  -- attaches `desired` and `observed` to a registry record, and the first version
+  -- of `observe` built a fresh table each heartbeat - so an order set while a
+  -- device was away vanished the moment it checked in, which is exactly the
+  -- failure desired state exists to fix.
+  --
+  -- Copying fields forward by name would work until somebody added a seventh and
+  -- forgot. Mutating in place cannot have that bug.
+  local state = registry.empty()
+  local record = registry.observe(state, 7, snapshot(), 1000 * SECOND)
+  record.desired = { mode = "recall", generation = 41 }
+  record.somethingLater = "a field nobody has written yet"
+
+  registry.observe(state, 7, snapshot(), 1030 * SECOND)
+
+  local after = registry.get(state, 7)
+  expect.equal(after.desired.mode, "recall", "the order survived")
+  expect.equal(after.somethingLater, "a field nobody has written yet", "and so would anything else")
+  expect.equal(after, record, "because it is the same table")
+end)
