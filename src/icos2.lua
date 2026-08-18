@@ -46,7 +46,7 @@ end
 
 if command ~= nil and command ~= "status" and forced == nil then
   printError("unknown role: " .. tostring(command))
-  print("expected one of: server, client, miner, mobile - or `status`")
+  print("expected one of: server, client, turtle, mobile - or `status`")
   return
 end
 

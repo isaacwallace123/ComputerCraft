@@ -30,9 +30,18 @@
 local roles = {}
 
 --- The four operating systems.
+---
+--- Every one of these is a *form factor*, not a job. That is the whole rule, and
+--- it was worth restating because `miner` broke it: a mining turtle and a farming
+--- turtle are the same machine running different code, and giving one of them a
+--- role would have meant a second operating system that differed from the first
+--- only in which file it required.
+---
+--- What a turtle does is a **job**, chosen at setup and changeable from the base
+--- without reinstalling anything. What a turtle *is* is a turtle.
 roles.SERVER = "server"
 roles.CLIENT = "client"
-roles.MINER = "miner"
+roles.TURTLE = "turtle"
 roles.MOBILE = "mobile"
 
 --- §13's table, and the reason for each row that is not obvious.
@@ -47,7 +56,11 @@ roles.MOBILE = "mobile"
 local FROM_ROLE = {
   fleet = roles.SERVER,
   gps = roles.SERVER,
-  miner = roles.MINER,
+  -- ICOS 1 had no turtle role, it had a miner role - because mining was the
+  -- only thing a turtle did. The mapping keeps every existing turtle working:
+  -- the role becomes `turtle` and the job it was already running becomes its
+  -- job, which is where mining belonged all along.
+  miner = roles.TURTLE,
   controller = roles.MOBILE,
   utility = roles.CLIENT,
 
@@ -57,13 +70,14 @@ local FROM_ROLE = {
   server = roles.SERVER,
   client = roles.CLIENT,
   mobile = roles.MOBILE,
+  turtle = roles.TURTLE,
 }
 
 --- What operating system this node runs.
 ---
---- Defaults to client rather than to server or miner. A machine whose role is
+--- Defaults to client rather than to server or turtle. A machine whose role is
 --- unreadable should end up as the thing that holds no authority and moves
---- nothing: a client shows a screen and is wrong harmlessly, while a miner
+--- nothing: a client shows a screen and is wrong harmlessly, while a turtle
 --- starts driving a turtle and a server starts answering for the fleet.
 function roles.roleOf(node)
   local declared = node and node.role
@@ -92,16 +106,17 @@ end
 ---
 ---   * a **server** hosts GPS and answers the fleet, so it needs a modem and it
 ---     needs to know where it is (§10)
----   * a **miner** is a turtle, and nothing else can be one
+---   * a **turtle** is a turtle, and nothing else can be one - whatever job it
+---     is running
 ---   * a **mobile** is a pocket computer; it may run without a modem, but it is
 ---     offline until one is attached (D019)
 ---   * a **client** needs a screen, which every computer has
 function roles.check(role, capabilities)
   capabilities = capabilities or {}
 
-  if role == roles.MINER then
+  if role == roles.TURTLE then
     if not capabilities.turtle then
-      return false, "a miner must run on a turtle"
+      return false, "the turtle operating system must run on a turtle"
     end
     return true
   end

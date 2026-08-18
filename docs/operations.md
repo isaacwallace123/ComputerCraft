@@ -128,6 +128,9 @@ ICOS 2 machine by hand:
     icos2             boot the role in .node and run it until Ctrl-T
     icos2 server      force a role, for a machine that has not been set up
 
+The roles are `server`, `client`, `turtle` and `mobile` - form factors, not jobs. A mining
+turtle and a farming turtle are both `turtle`; what they do is the job in `.node`.
+
 Nothing is written that ICOS 1 reads, so a reboot puts the machine back exactly as it was.
 `.mine` is shared with ICOS 1 deliberately - the shape is identical, so leases and surveyed
 shaft heads survive in both directions. `.fleet2`, `.desired` and `.policy2` are new names

@@ -38,8 +38,18 @@ operating systems, each a composition root that wires the same shared code diffe
 | --- | --- | --- | --- |
 | **Server** | Advanced computer, chunk-loaded | Authoritative state, device registry, GPS host, desired state | `fleet` + `gps` |
 | **Client** | Advanced computer + monitor | Views and control surfaces. Holds no authority. | `fleet`'s desktop half |
-| **Miner** | Mining turtle | Movement, jobs, local safety | `miner` |
+| **Turtle** | Any turtle | Movement, jobs, local safety | `miner` |
 | **Mobile** | Pocket computer | The same views, touch-first | `controller` |
+
+**Every one of these is a form factor, not a job**, and that is the rule the role set has
+to obey. `miner` broke it. A mining turtle and a farming turtle are the same machine
+running different code — the same heartbeat, the same recall, the same fuel and depot and
+dead-reckoning problems, everything except which file drives the arms. Giving mining a role
+of its own would have meant a second operating system differing from the first by one
+`require`, and a third when somebody wanted a builder.
+
+So what a turtle *does* is a **job**, chosen at setup and changeable from the base without
+reinstalling anything, and what a turtle *is* is a turtle.
 
 The `gps` role disappears into Server. A server already has to be permanently loaded and
 already has to know exactly where it is — that is the entire job description of a GPS
@@ -62,7 +72,7 @@ required simulating a whole world.
                     ┌─────────────────────────────┐
    os/server ──────►│                             │
    os/client  ─────►│          domain/            │  pure Lua
-   os/miner   ─────►│   no globals, no CC APIs    │  no I/O
+   os/turtle  ─────►│   no globals, no CC APIs    │  no I/O
    os/mobile  ─────►│                             │  fully testable
                     └──────────────┬──────────────┘
                                    │ depends on
@@ -146,7 +156,7 @@ src/
   os/
     server/                  composition root + always-on services
     client/                  composition root + desktop shell
-    miner/                   composition root + job runtime
+    turtle/                  composition root + job runner
     mobile/                  composition root + handheld shell
   apps/
     fleet/                   app.lua, view.lua, state.lua
@@ -344,7 +354,7 @@ what the machine is doing.
 | **Server** | `discovery` · `reconcile` · `leases` · `gps` · `persist` · `policy` · `logrotate` |
 | **Client** | `mirror` · `intents` |
 | **Mobile** | `mirror` · `intents` |
-| **Miner** | `heartbeat` · `agent` · `peers` · `controls` |
+| **Turtle** | `heartbeat` · `job` · `controls` |
 
 Client and Mobile run exactly the same two, which is more evidence for one shared tree
 (§4) rather than a copy per OS.
@@ -668,9 +678,9 @@ premise is that a server is permanently loaded. It rotates rather than truncates
 something breaks at 3am and is noticed at 9am, the interesting lines are the first ones
 after it started, and truncation keeps six hours of consequences and deletes the cause.
 
-### Phase 5: the miner, and the rolling update
+### Phase 5: the turtle agent, and the rolling update
 
-`os/miner/agent.lua` is the device half of desired state: what a turtle persists, what it
+`os/turtle/agent.lua` is the device half of desired state: what a turtle persists, what it
 puts in a heartbeat, and what it does with what comes back. It returns an *intent* rather
 than acting, so the whole of it is testable without a turtle; translating an intent into
 the runtime's control flags is the composition root's job.
@@ -709,7 +719,7 @@ supervisor stays a pure state machine over coroutines. `pullEventRaw` rather tha
 `pullEvent`, so terminate reaches the services and they are stopped in order rather than
 having the loop pulled out from under them.
 
-The loop stops on three things: terminate, the miner's `halt` flag — checked here because
+The loop stops on three things: terminate, the turtle's `halt` flag — checked here because
 stopping is the one thing a service cannot do to itself, since a coroutine that returns is
 a fault — and **every service having given up**. That last check is `running() == 0` rather
 than `healthy()`, and the reason is worth stating: both of a client's services are
@@ -770,7 +780,7 @@ holding. A pocket computer that could lease sectors would be a coordinator that 
 of range, and D018 is precisely the lesson that coordination must not live somewhere that
 can disappear.
 
-### Phase 5: the miner's composition root, and the `waitForAny` bug
+### Phase 5: the turtle's composition root, and the `waitForAny` bug
 
 `apps/miner.lua` runs four coroutines under `parallel.waitForAny`, which returns when
 **any** of them finishes. So a heartbeat loop that throws on a missing modem takes the
@@ -779,17 +789,22 @@ failed, but because *talking about* mining failed. D004 says job correctness may
 depend on a message arriving, and `waitForAny` is a direct contradiction of it sitting in
 the entrypoint.
 
-`os/miner/main.lua` supervises instead. The radio backs off and retries while the job
-carries on down the shaft, and the health model says the honest thing in both directions:
-`heartbeat` is **not** critical, because a turtle that cannot reach the base is still
-mining; `job` **is**, because a turtle that has stopped mining is a box in a hole and
-should not report green.
+`os/turtle/main.lua` supervises instead. The radio backs off and retries while the job
+carries on, and the health model says the honest thing in both directions: `heartbeat` is
+**not** critical, because a turtle that cannot reach the base is still working; `job`
+**is**, because a turtle that has stopped working is a box standing still and should not
+report green.
+
+Nothing in that file knows what the turtle is *for*. `context.runJob` is whatever the node
+selected, and a farming turtle registers exactly the same three services with a different
+function behind one of them.
 
 It runs the ICOS 1 job code unchanged. `miner/runtime.lua` is what actually drives a
 turtle, it is proven, and the fleet is running it — rewriting it in the same change that
 rewrites supervision and orders would put a fleet in a hole with two untested halves. So
-`os/miner/control.lua` writes the `ctx.control` flags the existing runtime already reads,
-and from the runtime's point of view nothing happened.
+`os/turtle/control.lua` writes the `ctx.control` flags the existing runtime already reads,
+and from the runtime's point of view nothing happened. Its eventual replacement is a job
+module like any other, which is the point of not calling that directory `miner`.
 
 Heartbeat and orders are **one** loop, unlike ICOS 1's two. The exchange is a request and
 its reply; splitting it meant a turtle whose receive loop had died kept reporting cheerfully
@@ -799,8 +814,8 @@ The interesting behavioural change is what happens to an order a turtle cannot c
 yet. ICOS 1 replied "recall this turtle first" and dropped it, so setting a job on a running
 turtle produced a message and nothing else. Under desired state the goal stays on the
 server, the turtle keeps reporting a generation it has not applied, and the Devices page
-shows it as pending. The order is not lost — it is waiting. Nothing in the miner has to do
-anything for that to be true, which is the point of §5.
+shows it as pending. The order is not lost — it is waiting. Nothing in the turtle OS has to
+do anything for that to be true, which is the point of §5.
 
 ### Phase 5: reconcile, persist, and the dual run
 
@@ -911,7 +926,11 @@ the parts that ship broken.
 ## 13. Migration
 
 - `.node.role` maps: `fleet` → `client` (plus `server` on the machine that keeps the
-  state files), `controller` → `mobile`, `miner` → `miner`, `gps` → `server`.
+  state files), `controller` → `mobile`, `miner` → `turtle`, `gps` → `server`.
+- `miner` → `turtle` is the migration that actually runs on ten machines, since every
+  turtle in the live fleet is set up as a miner. It renames the role and leaves the job
+  alone, because mining was always the job — the record already carries `job = "quarry"`
+  or whatever was selected, and nothing about it changes.
 - Existing `.mine`, `.fleet`, and job files are read by the same domain code after
   phase 1, so no data migration is needed there.
 - The updater deploys by manifest and does not prune, so old module paths linger

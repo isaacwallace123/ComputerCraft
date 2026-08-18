@@ -65,7 +65,7 @@ end
 boot.ROOTS = {
   [roles.SERVER] = "os.server.main",
   [roles.CLIENT] = "os.client.main",
-  [roles.MINER] = "os.miner.main",
+  [roles.TURTLE] = "os.turtle.main",
   [roles.MOBILE] = "os.mobile.main",
 }
 
@@ -126,7 +126,7 @@ function boot.run(machine, pull)
       return "stopped", why
     end
 
-    -- The halt flag, which only the miner sets and only for the `stop` mode.
+    -- The halt flag, which only a turtle sets and only for the `stop` mode.
     -- Checked here rather than inside a service because stopping is the one
     -- thing a service cannot do to itself: a coroutine that returns is a fault.
     if machine.context.halt then

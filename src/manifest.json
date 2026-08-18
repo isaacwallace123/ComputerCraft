@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T08:24:57-04:00",
+    "generated":  "2026-08-18T08:30:12-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -76,9 +76,6 @@
                   "miner/runtime.lua",
                   "os/boot.lua",
                   "os/client/main.lua",
-                  "os/miner/agent.lua",
-                  "os/miner/control.lua",
-                  "os/miner/main.lua",
                   "os/mobile/main.lua",
                   "os/roles.lua",
                   "os/server/main.lua",
@@ -91,6 +88,9 @@
                   "os/server/services/reconcile.lua",
                   "os/service.lua",
                   "os/supervisor.lua",
+                  "os/turtle/agent.lua",
+                  "os/turtle/control.lua",
+                  "os/turtle/main.lua",
                   "ports/beacon.lua",
                   "ports/body.lua",
                   "ports/clock.lua",

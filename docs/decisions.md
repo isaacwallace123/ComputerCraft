@@ -745,3 +745,26 @@ a dedicated `gps` role on stationary modem-equipped computers and turtles. Setup
 the host block coordinates once and startup runs only the beacon, while preserving the
 normal updater and held-key recovery path. This also lets a Chunky + Ender Turtle serve
 as one host and keep the other three hosts' shared chunk loaded.
+
+## D036 - The four roles are form factors, not jobs
+
+`server`, `client`, `mobile` are all about what a machine *is*. `miner` was about what one
+*does*, and it was the odd one out - noticed only when the fleet was about to gain farming
+turtles.
+
+A mining turtle and a farming turtle are the same machine running different code: the same
+heartbeat, the same recall, the same fuel and depot and dead-reckoning problems, everything
+except which file drives the arms. `os/miner/` would have become `os/farmer/` differing by
+one `require`, and `os/builder/` after that - three operating systems for one machine.
+
+So the role is `turtle`, `os/miner/` is `os/turtle/`, and nothing in it knows what the
+turtle is for: `context.runJob` is whatever the node selected at setup. What a turtle does
+is a **job**, changeable from the base without reinstalling anything. What it is is a
+turtle.
+
+`miner` maps to `turtle` in `FROM_ROLE`, so every existing turtle migrates by renaming its
+role and leaving its job alone - the record already carries the job it was running, because
+mining was always the job.
+
+**The general rule:** a role that names an activity is a role that will need a sibling.
+Roles answer "what hardware is this?", and everything else is configuration.

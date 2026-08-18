@@ -7,9 +7,9 @@
 --- ## It must survive the server not existing
 ---
 --- D004, and it is the reason every function here has a nil path that means
---- "carry on". A turtle that cannot reach the base keeps mining; a turtle that
---- receives nonsense keeps mining; a turtle whose base has been broken for a
---- week keeps mining and comes home when its own fuel says so. Nothing in this
+--- "carry on". A turtle that cannot reach the base keeps working; a turtle that
+--- receives nonsense keeps working; a turtle whose base has been broken for a
+--- week keeps working and comes home when its own fuel says so. Nothing in this
 --- file can produce a stopped turtle, because nothing in it is reached without a
 --- message having arrived first.
 ---

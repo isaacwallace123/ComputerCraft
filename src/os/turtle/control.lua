@@ -95,7 +95,7 @@ function control.apply(node, flags, intent)
     return { applied = true, reason = "deploying" }
   end
 
-  -- `park` and `recall` do the same thing to a miner and are still two modes,
+  -- `park` and `recall` do the same thing to a turtle and are still two modes,
   -- because they mean different things to the fleet: recall is "come back, I
   -- want you", park is "stay where you are, do not take new work". A turtle has
   -- only one way to express either, so both raise the same flag - and a device
@@ -110,7 +110,7 @@ function control.apply(node, flags, intent)
 
   -- `stop` is the one mode that is not "be in this state" - it is "stop being
   -- anything". It raises no flag, because a stopped turtle is not a turtle
-  -- running the miner program with a flag set; the composition root ends the
+  -- running the turtle program with a flag set; the composition root ends the
   -- supervisor and the program exits. Reported applied, because it is: the
   -- turtle is about to stop reporting at all.
   if intent.mode == "stop" then

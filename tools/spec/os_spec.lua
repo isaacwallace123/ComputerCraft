@@ -12,7 +12,7 @@ local client = require("os.client.main")
 local discovery = require("os.server.services.discovery")
 local leases = require("os.server.services.leases")
 local logrotate = require("os.server.services.logrotate")
-local miner = require("os.miner.main")
+local turtleOs = require("os.turtle.main")
 local mobile = require("os.mobile.main")
 local osBoot = require("os.boot")
 local gpsService = require("os.server.services.gps")
@@ -30,7 +30,10 @@ local SECOND = 1000
 ---------------------------------------------------------------------------
 
 it("today's roles map onto the four operating systems", function()
-  expect.equal(roles.roleOf({ role = "miner" }), roles.MINER, "miner")
+  -- The role is a form factor, not a job. A mining turtle and a farming turtle
+  -- are the same machine running different code, so ICOS 1's `miner` maps to
+  -- `turtle` and mining becomes what it always was: the job it is running.
+  expect.equal(roles.roleOf({ role = "miner" }), roles.TURTLE, "a miner is a turtle")
   expect.equal(roles.roleOf({ role = "controller" }), roles.MOBILE, "controller becomes mobile")
   expect.equal(roles.roleOf({ role = "gps" }), roles.SERVER, "a gps host is already a server")
   expect.equal(roles.roleOf({ role = "utility" }), roles.CLIENT, "utility holds no authority")
@@ -53,15 +56,23 @@ it("fleet becomes a server, and a client beside it when there is a screen", func
 end)
 
 it("an ICOS 2 role reads back unchanged", function()
-  local plan = roles.plan({ role = "miner" }, { turtle = true })
+  local plan = roles.plan({ role = "turtle" }, { turtle = true })
   expect.falsy(plan.migrated, "a native role is not a migration")
 
   plan = roles.plan({ role = "controller" }, { pocket = true, modem = true })
   expect.truthy(plan.migrated, "but an ICOS 1 one is")
+
+  -- `miner` is now one of those, which it was not before. Every turtle in the
+  -- live fleet is set up as a miner, so this is the migration that runs on ten
+  -- machines rather than a hypothetical one - and what it does is rename the
+  -- role and leave the job alone, because mining was always the job.
+  plan = roles.plan({ role = "miner" }, { turtle = true })
+  expect.equal(plan.role, roles.TURTLE, "a miner becomes a turtle")
+  expect.truthy(plan.migrated, "and it is a migration")
 end)
 
 it("an unreadable role becomes the harmless one", function()
-  -- A client shows a screen and is wrong harmlessly. A miner starts driving a
+  -- A client shows a screen and is wrong harmlessly. A turtle starts driving a
   -- turtle and a server starts answering for the fleet.
   expect.equal(roles.roleOf(nil), roles.CLIENT, "no node at all")
   expect.equal(roles.roleOf({}), roles.CLIENT, "no role")
@@ -71,8 +82,8 @@ end)
 it("a machine is checked against what it claims to be", function()
   -- At boot, because "this turtle has no modem" is a sentence somebody can act
   -- on and "attempt to index a nil value" at three in the morning is not.
-  local ok, why = roles.check(roles.MINER, { turtle = false })
-  expect.falsy(ok, "a computer cannot be a miner")
+  local ok, why = roles.check(roles.TURTLE, { turtle = false })
+  expect.falsy(ok, "a computer cannot run the turtle operating system")
   expect.contains(why, "turtle", "and says so")
 
   ok, why = roles.check(roles.SERVER, { modem = false, located = true })
@@ -539,10 +550,10 @@ it("a server runs discovery, reconcile and persist", function()
 end)
 
 ---------------------------------------------------------------------------
--- The miner: the half that has to obey a recall
+-- The turtle agent: the half that has to obey a recall
 ---------------------------------------------------------------------------
 
-local agent = require("os.miner.agent")
+local agent = require("os.turtle.agent")
 
 local function turtle()
   return agent.empty()
@@ -1087,14 +1098,14 @@ it("a last line with no newline still counts", function()
 end)
 
 ---------------------------------------------------------------------------
--- The miner: a turtle that keeps mining when the radio stops
+-- The turtle OS: a turtle that keeps working when the radio stops
 ---------------------------------------------------------------------------
 
-local function minerContext(options)
+local function turtleContext(options)
   options = options or {}
   local clock = fakeClock(1000 * SECOND)
   local ports = fakePorts(clock)
-  local machine = miner.boot(ports, {
+  local machine = turtleOs.boot(ports, {
     node = options.node or { parked = true },
     snapshot = function()
       return options.node or { parked = true }
@@ -1107,10 +1118,10 @@ local function minerContext(options)
 end
 
 it("an order becomes a control flag the existing runtime already reads", function()
-  local machine = minerContext({ node = { parked = true } })
+  local machine = turtleContext({ node = { parked = true } })
   local goal = { mode = "deploy", generation = 4 }
 
-  local outcome = assert(miner.orders(machine.context, { kind = "desired", desired = goal }))
+  local outcome = assert(turtleOs.orders(machine.context, { kind = "desired", desired = goal }))
   expect.truthy(outcome.applied, "applied")
   expect.truthy(machine.context.flags.deploy, "the flag miner/runtime.lua reads")
   expect.equal(machine.context.state.applied, 4, "and the generation was recorded")
@@ -1120,26 +1131,26 @@ it("a job change on a running turtle waits instead of being lost", function()
   -- ICOS 1 replied "recall this turtle first" and dropped the order. Under
   -- desired state the goal stays on the server, the turtle keeps reporting a
   -- generation it has not applied, and the base shows it as pending.
-  local machine = minerContext({ node = { parked = false } })
+  local machine = turtleContext({ node = { parked = false } })
   local goal = { mode = "deploy", job = "rare", generation = 9 }
 
-  local outcome = assert(miner.orders(machine.context, { kind = "desired", desired = goal }))
+  local outcome = assert(turtleOs.orders(machine.context, { kind = "desired", desired = goal }))
   expect.falsy(outcome.applied, "not yet")
   expect.falsy(machine.context.flags.assignment, "no half-applied assignment")
   expect.equal(machine.context.state.applied, 0, "and it still reports being behind")
 
   -- Park it, send the same goal again, and it lands.
   machine.context.node.parked = true
-  outcome = assert(miner.orders(machine.context, { kind = "desired", desired = goal }))
+  outcome = assert(turtleOs.orders(machine.context, { kind = "desired", desired = goal }))
   expect.truthy(outcome.applied, "now it applies")
   expect.equal(machine.context.flags.assignment.name, "rare", "with the job attached")
   expect.equal(machine.context.state.applied, 9, "and the generation catches up")
 end)
 
 it("an update comes home before replacing the code that is driving", function()
-  local machine = minerContext({ node = { parked = false } })
+  local machine = turtleContext({ node = { parked = false } })
   local goal = { mode = "update", generation = 3 }
-  local outcome = assert(miner.orders(machine.context, { kind = "desired", desired = goal }))
+  local outcome = assert(turtleOs.orders(machine.context, { kind = "desired", desired = goal }))
 
   expect.truthy(outcome.applied, "accepted")
   expect.truthy(machine.context.flags.recall, "returning home first")
@@ -1150,10 +1161,10 @@ it("recalling a parked turtle is free, and doing it twice is free twice", functi
   -- Idempotence is what lets the server re-send an order it is not sure
   -- arrived, and it only works if arriving twice costs nothing. It costs
   -- nothing at two layers, which is worth pinning down separately.
-  local machine = minerContext({ node = { parked = true } })
+  local machine = turtleContext({ node = { parked = true } })
   local goal = { mode = "recall", generation = 2 }
 
-  local outcome = assert(miner.orders(machine.context, { kind = "desired", desired = goal }))
+  local outcome = assert(turtleOs.orders(machine.context, { kind = "desired", desired = goal }))
   expect.truthy(outcome.applied, "applied")
   expect.contains(outcome.reason, "already parked", "and it says so")
   expect.falsy(machine.context.flags.recall, "without asking a parked turtle to come home")
@@ -1162,7 +1173,7 @@ it("recalling a parked turtle is free, and doing it twice is free twice", functi
   -- a generation it has already applied and says nothing. The turtle does not
   -- re-decide, which is one layer better than deciding the same thing again.
   expect.falsy(
-    miner.orders(machine.context, { kind = "desired", desired = goal }),
+    turtleOs.orders(machine.context, { kind = "desired", desired = goal }),
     "the second copy stops at the agent"
   )
 
@@ -1170,17 +1181,17 @@ it("recalling a parked turtle is free, and doing it twice is free twice", functi
   -- reaches the flags every time, exactly as it does today.
   machine.context.node.parked = false
   local again =
-    assert(miner.orders(machine.context, { kind = "command", command = { action = "recall" } }))
+    assert(turtleOs.orders(machine.context, { kind = "command", command = { action = "recall" } }))
   expect.truthy(again.applied, "the old protocol still works during the rolling update")
   expect.truthy(machine.context.flags.recall, "and raises the flag")
 end)
 
-it("a dead radio does not stop the mining job", function()
+it("a dead radio does not stop the job", function()
   -- The bug this file exists to fix. apps/miner.lua runs four coroutines under
   -- parallel.waitForAny, which returns when ANY of them finishes - so a
   -- heartbeat that throws on a missing modem takes the job down with it.
   local mined = 0
-  local machine = minerContext({
+  local machine = turtleContext({
     runJob = function(context)
       while true do
         mined = mined + 1
@@ -1216,9 +1227,9 @@ it("a dead radio does not stop the mining job", function()
 end)
 
 it("a job that gives up makes the turtle unhealthy", function()
-  -- The other half: mining is the machine's entire job, so if it stops the
+  -- The other half: the job is the machine's entire purpose, so if it stops the
   -- supervisor must say so rather than report a healthy box in a hole.
-  local machine = minerContext({
+  local machine = turtleContext({
     runJob = function()
       error("bedrock", 0)
     end,
@@ -1408,7 +1419,7 @@ local function scripted(events)
 end
 
 it("every role has an operating system, and an unknown one says so", function()
-  for _, role in ipairs({ roles.SERVER, roles.CLIENT, roles.MINER, roles.MOBILE }) do
+  for _, role in ipairs({ roles.SERVER, roles.CLIENT, roles.TURTLE, roles.MOBILE }) do
     expect.truthy(osBoot.ROOTS[role], role .. " has a root")
   end
 
@@ -1462,7 +1473,7 @@ end)
 it("the halt flag stops the machine, because a service cannot stop itself", function()
   -- A coroutine that returns is a fault, so `stop` is checked by the loop
   -- rather than acted on by the service that received it.
-  local machine = booted(roles.MINER)
+  local machine = booted(roles.TURTLE)
   local outcome = osBoot.run(machine, function()
     machine.context.halt = true
     return { "timer", 1 }
