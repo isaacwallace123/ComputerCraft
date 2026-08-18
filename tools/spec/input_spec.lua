@@ -280,7 +280,7 @@ it("moving focus repaints exactly the two controls involved", function()
 end)
 
 it("two focus changes on the same row coalesce into one blit", function()
-  -- Not a special case in the input layer - the cell diff in ui/buffer.lua
+  -- Not a special case in the input layer - the cell diff in ui/core/buffer.lua
   -- emits one run per changed row spanning its first change to its last (D028),
   -- so two adjacent buttons cost one call between them. Worth pinning, because
   -- it is the interaction between two layers that neither one states alone.

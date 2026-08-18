@@ -17,13 +17,13 @@ local logrotate = require("os.server.services.logrotate")
 local jobs = require("domain.turtle.jobs")
 local turtleOs = require("os.turtle.main")
 local mobile = require("os.mobile.main")
-local osBoot = require("os.boot")
+local osBoot = require("os.kernel.boot")
 local gpsService = require("os.server.services.gps")
 local policy = require("os.server.services.policy")
 local policyRules = require("domain.fleet.policy")
 local minePlan = require("domain.mine.plan")
 local registry = require("domain.fleet.registry")
-local roles = require("os.roles")
+local roles = require("os.kernel.roles")
 local logPort = require("ports.log")
 local logs = require("apps.logs.app")
 local services = require("apps.services.app")
@@ -219,7 +219,7 @@ end)
 
 it("a turtle that loses its origin does not lose its last known position", function()
   -- The phase 2 bug, now reachable through the service that would have caused
-  -- it: `fleet/roster.lua` replaces the whole record, so a heartbeat with no
+  -- it: `legacy/fleet/roster.lua` replaces the whole record, so a heartbeat with no
   -- world erases the last position the base knew.
   local ctx = context()
   discovery.handle(ctx, 7, heartbeat())
@@ -1131,7 +1131,7 @@ it("an order becomes a control flag the existing runtime already reads", functio
 
   local outcome = assert(turtleOs.orders(machine.context, { kind = "desired", desired = goal }))
   expect.truthy(outcome.applied, "applied")
-  expect.truthy(machine.context.flags.deploy, "the flag miner/runtime.lua reads")
+  expect.truthy(machine.context.flags.deploy, "the flag legacy/miner/runtime.lua reads")
   expect.equal(machine.context.state.applied, 4, "and the generation was recorded")
 end)
 
@@ -1195,7 +1195,7 @@ it("recalling a parked turtle is free, and doing it twice is free twice", functi
 end)
 
 it("a dead radio does not stop the job", function()
-  -- The bug this file exists to fix. apps/miner.lua runs four coroutines under
+  -- The bug this file exists to fix. legacy/apps/miner.lua runs four coroutines under
   -- parallel.waitForAny, which returns when ANY of them finishes - so a
   -- heartbeat that throws on a missing modem takes the job down with it.
   local mined = 0
@@ -1497,7 +1497,7 @@ end)
 
 it("the catalogue is data, so a machine with no turtle global can read it", function()
   -- The point of `module` being a string. A base listing jobs must not have to
-  -- load jobs/quarry.lua, which would crash on turtle.dig being nil.
+  -- load jobs/mining/quarry.lua, which would crash on turtle.dig being nil.
   for _, entry in ipairs(jobs.list()) do
     expect.equal(type(entry.module), "string", entry.id .. " names its module")
     expect.equal(type(entry.label), "string", entry.id .. " has a label")
@@ -1940,7 +1940,7 @@ it("an unparseable line is still shown", function()
   expect.equal(logs.level({ level = "error" }), "error", "while a real level survives")
 
   -- The bug this pins down: the CC adapter recovers the level from a line
-  -- core/log.lua writes upper-case, and returning it raw made every page compare
+  -- adapters/cc/logfile.lua writes upper-case, and returning it raw made every page compare
   -- "WARN" against "warn" - so the warnings-only filter showed an empty screen
   -- while warnings were arriving. One function owns the vocabulary now.
   expect.equal(logPort.level("WARN"), "warn", "case is the port's business")

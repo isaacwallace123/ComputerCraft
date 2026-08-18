@@ -3,7 +3,7 @@
 --- Four methods, and `write` is the interesting one: it must REPLACE, not
 --- append and not truncate-then-fill. CC has no atomic replace, so the cc
 --- adapter writes a `.tmp` alongside, closes it, and only then moves it over the
---- live file - the same technique `core/config.lua` uses and for the same
+--- live file - the same technique `adapters/cc/config.lua` uses and for the same
 --- reason. A turtle that loses power mid-save must find either the old file or
 --- the new one, never half of either. `.nav` is the file that makes this a
 --- safety property rather than a tidiness one.

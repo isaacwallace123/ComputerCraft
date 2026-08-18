@@ -144,7 +144,7 @@ left obviously unmined.
 Each sector now stores a `frontier` for each job/depth key: how far along that trunk the
 fleet has mined. This lets different profiles share a shaft without sharing completion.
 It is held at the base (`domain/mine/registry.lua`) and cached on the turtle
-(`mine/site.lua`), and
+(`legacy/mine/site.lua`), and
 survives unload, reboot, recall, and fuel aborts. A cycle that ends early resumes at the
 same tunnel. When a vein outlasts the vein budget the frontier is deliberately not
 advanced past it, so the next cycle re-enters the same ore.
@@ -179,7 +179,7 @@ into one and dies, and being able to count them on one hand does not help.
 Each shaft is therefore sealed except while a turtle is passing through it. The descent
 locates the real top of the ground by inspection, steps below it, and places a block
 overhead before any mining starts; the return breaks that block from underneath, climbs
-through, and replaces it from above. `turtle/access.lua` owns the mechanics — block
+through, and replaces it from above. `device/access.lua` owns the mechanics — block
 classification, cap material selection, verified placement — and the prospecting runner
 owns when they happen.
 
@@ -260,7 +260,7 @@ night and looks busy doing it.
 
 **Status:** accepted
 
-`domain/mine/registry.lua` (then `mine/registry.lua`) held leases and frontiers — progress.
+`domain/mine/registry.lua` (then `domain/mine/registry.lua`) held leases and frontiers — progress.
 Where a sector's shaft head
 actually was, and whether it was open, lived only in the job file of whichever turtle
 last visited. Lose the turtle and nobody knew there was a hundred-block drop at those
@@ -287,7 +287,7 @@ costs a commute; a missed one costs somebody falling down a shaft.
 
 [`docs/icos-2.md`](icos-2.md) says `domain/` may not reference a CC global. Every previous
 architectural rule in this repository has been a sentence in a document, and every one of
-them has been broken by somebody in a hurry who did not read it - `fleet/service.lua`
+them has been broken by somebody in a hurry who did not read it - `legacy/fleet/service.lua`
 grew discovery, leases, policy, logging and persistence for exactly that reason.
 
 `tools/check.ps1` now strips comments from `src/domain`, `src/ports`, and `src/ui` and
@@ -300,7 +300,7 @@ and persists through `core/config`, because moving the file and changing how it 
 clock and its storage are two different changes, and doing both at once would have
 destroyed the only available evidence that a live fleet's sector bookkeeping came through
 the move unaltered - that the existing specs passed untouched. Threading a clock and a
-storage port through `fleet/coordinator.lua` and `core/console.lua` empties the list.
+storage port through `legacy/fleet/coordinator.lua` and `legacy/console.lua` empties the list.
 
 The allow list is the mechanism that keeps the debt visible. A rule with an exception
 nobody can see is a rule that has already been abandoned.
@@ -310,7 +310,7 @@ time now takes an optional `now`, so an ICOS 2 caller with a clock port passes i
 a pure function. `os.epoch` survives only as the fallback, and the allow-list entry stays.
 
 Making `now` *required* was the obvious finish and is the wrong trade. It would change
-three live call sites - `fleet/coordinator.lua`, `core/console.lua`, `fleet/operations.lua`
+three live call sites - `legacy/fleet/coordinator.lua`, `legacy/console.lua`, `legacy/fleet/operations.lua`
 - and the unmodified spec suite in one go: a refactor of the sector bookkeeping a running
 fleet depends on, in exchange for deleting one line from a check. Those callers are being
 replaced by `os/server/services/leases.lua` anyway, and the entry comes off when they go.
@@ -345,7 +345,7 @@ A `term.blit` costs a `setCursorPos` and a call into the game. The characters in
 cost a memcpy. Splitting a row into three runs to avoid rewriting eight unchanged
 characters buys back eight bytes and pays four extra calls into the game for them.
 
-`ui/buffer.lua` therefore emits one run per changed row, spanning its first changed cell
+`ui/core/buffer.lua` therefore emits one run per changed row, spanning its first changed cell
 to its last. A one-character change is a one-character run. A row where only the two ends
 moved rewrites the middle, and is still cheaper than the alternative. The property that
 makes the budget provable falls out for free: a frame emits at most one call per row,
@@ -440,7 +440,7 @@ getting it wrong first:
   moved.
 - **A repaint takes the node's whole subtree.** Children paint over their parent, so a
   parent whose background changed has to redraw what sits on it. Being cleverer would mean
-  tracking overlap, and the cell diff in `ui/buffer.lua` already makes painting an
+  tracking overlap, and the cell diff in `ui/core/buffer.lua` already makes painting an
   unchanged cell free.
 
 The failure mode if this is ever "simplified" is not a crash. It is a dashboard that still
@@ -486,7 +486,7 @@ CC gives a computer terminal four pointer events - `mouse_click`, `mouse_up`, `m
 `mouse_scroll`. It gives a monitor exactly one, `monitor_touch`, with no release, no drag,
 and no hover ever.
 
-`ui/input.lua` therefore normalises a touch into a press **and** a release at the same
+`ui/core/input.lua` therefore normalises a touch into a press **and** a release at the same
 point, and nothing above it may assume that a release follows a press after some
 interesting interval, or that a drag is possible, or that anything can be known about a
 pointer that is not currently pressing.
@@ -531,7 +531,7 @@ Two things follow, and both are the table's job rather than every screen's:
 - A click reports the **row**, not the slot. Under an offset those are different things,
   and a screen cares which device was pressed, not which widget it happened to be in.
 
-There is still no clip region in `ui/buffer.lua`. `ScrollView`, `Modal` and `Tabs` will
+There is still no clip region in `ui/core/buffer.lua`. `ScrollView`, `Modal` and `Tabs` will
 need one and should get it deliberately, with its own decision, rather than by somebody
 adding a bounds check to `write` and discovering later that half the components ignore it.
 
@@ -546,7 +546,7 @@ awake.
 is enormous for a spring. At the speed section 8 of `ui-framework.md` gives as its worked
 example - `Spring(goal, 25, 1)` - the term `speed² · dt²` comes to 1.56. Above 1 a
 semi-implicit Euler integrator gains energy every step rather than losing it, so the value
-oscillates wider and wider instead of settling. The first version of `ui/anim.lua` did
+oscillates wider and wider instead of settling. The first version of `ui/core/anim.lua` did
 exactly this and reached six figures within six frames.
 
 The consequence is worse than a visual glitch. A spring that never settles is never
@@ -624,7 +624,7 @@ three-colour cells unavoidable even when every sprite is authored carefully, so 
 them would turn an ordinary overlap into a runtime error and choosing arbitrarily would
 make the image change when iteration order changed.
 
-`ui/canvas.lua` counts colours in each 2×3 cell, keeps the two most frequent, and maps each
+`ui/draw/canvas.lua` counts colours in each 2×3 cell, keeps the two most frequent, and maps each
 discarded colour to the nearer survivor in the active palette's RGB values. Equal counts
 use first appearance in row-major order; equal distances choose the dominant colour. The
 same pixels and palette therefore always produce the same character. Without palette data,
@@ -694,8 +694,8 @@ parallel feature branches.
 
 **Status:** accepted
 
-Discovery, claim handling, and lease renewal used to live inside `apps/fleet.lua`.
-Closing one dashboard silently disabled the fleet's coordination. `fleet/service.lua`
+Discovery, claim handling, and lease renewal used to live inside `legacy/apps/fleet.lua`.
+Closing one dashboard silently disabled the fleet's coordination. `legacy/fleet/service.lua`
 now starts beside the UI and is the sole base-side receiver. Apps read persisted state
 and issue commands; their lifecycle no longer controls the fleet's lifecycle.
 
@@ -768,3 +768,43 @@ mining was always the job.
 
 **The general rule:** a role that names an activity is a role that will need a sibling.
 Roles answer "what hardware is this?", and everything else is configuration.
+
+## D037 - One architecture in the tree, and a quarantine for the other
+
+The source tree had grown two complete operating systems interleaved. `src/mine/` sat
+beside `src/domain/mine/`; `src/miner/` beside `src/os/turtle/`; `src/fleet/` beside
+`src/domain/fleet/`; one directory held both `apps/devices.lua` and `apps/devices/`. Every
+pair was ICOS 2 next to the ICOS 1 thing it replaces, and **nothing in a path said which one
+was live.**
+
+That, not flatness, was why the tree read as disorganised. The directories that looked
+wrong - `turtle`, `miner`, `mine`, `jobs`, `fleet` - were precisely the ICOS 1 half.
+
+So ICOS 1 moved wholesale into `legacy/`, and the rest was deepened into folders that name
+what they hold: `os/kernel/` for the parts of `os/` that are not one of the four operating
+systems, `ui/core/` and `ui/draw/` under the framework, `jobs/mining/` so that
+`jobs/farming/` has an obvious home, `device/` for a turtle's own hardware.
+
+**`core/` was deleted as a concept.** It was thirteen of fourteen files touching CC globals
+- a runtime, not a core - and the name attracted anything that did not obviously belong
+elsewhere, which is how a folder becomes a landfill. Its contents went where they actually
+belonged: `util` and `version` to `lib/`, `config` and `log` to `adapters/cc/` (both are CC
+I/O wearing a friendly name), the shell and net and device detection to `legacy/`.
+
+`lib/` is now checked for CC globals alongside `domain/`, `ports/` and `ui/`. That is the
+mechanism that stops it becoming the next `core/`, and it bit immediately: `util.since`
+reads `os.epoch`.
+
+**The first fix for that was dishonest and selene caught it.** `_G["os"].epoch` passes a
+grep for `os.` while being exactly the dependency the grep exists to find. A check that
+makes CC dependencies visible is not served by an indirection that hides one, so
+`lib/util.lua` is now the second entry in the allow list - which is what the allow list is
+for. Debt is declared, not disguised.
+
+`util.since` did gain an optional `now`, so a caller with a clock port gets a pure function.
+That is the same half-fix as `domain/mine/registry.lua` and for the same reason.
+
+**The general rule:** a directory name should answer "which way does this point?" - what it
+knows and what knows it. `core`, `common`, `shared` and `utils` answer nothing, so they
+accumulate. If a file needs to know two layers at once it is a composition root and belongs
+in `os/`; if it needs to know none, it belongs in `domain/`.

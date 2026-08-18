@@ -2,7 +2,7 @@
 ---
 --- Thin, because CC's implementation is the one every other tool in the world
 --- reads: `edit .fleet2` shows a table a person can understand and fix, and
---- `textutils.unserialise` is what `core/config.lua` has always used. A cleverer
+--- `textutils.unserialise` is what `adapters/cc/config.lua` has always used. A cleverer
 --- encoding would be smaller and would make the one recovery path that has ever
 --- actually mattered - somebody opening the file and deleting the bad line -
 --- impossible.

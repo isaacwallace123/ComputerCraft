@@ -26,7 +26,7 @@
 local desired = require("domain.fleet.desired")
 local persist = require("os.server.services.persist")
 local registry = require("domain.fleet.registry")
-local service = require("os.service")
+local service = require("os.kernel.service")
 
 local discovery = {}
 

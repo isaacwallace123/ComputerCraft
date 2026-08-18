@@ -48,7 +48,7 @@
 --- column than the data rows, so every heading sat two cells left of the values
 --- underneath it. One list, one set of widths, one loop for both rows.
 
-local runtime = require("ui.runtime")
+local runtime = require("ui.core.runtime")
 local theme = require("ui.theme")
 
 local T = theme.TOKENS

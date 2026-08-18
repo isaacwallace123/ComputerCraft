@@ -67,7 +67,7 @@ end)
 
 it("accepts matches on plain substrings, not Lua patterns", function()
   -- A person typing `raw_` into a text field should not have to know that `-`
-  -- means something. The conventions are the ones `turtle/ore.lua` already uses.
+  -- means something. The conventions are the ones `device/ore.lua` already uses.
   local ores = { accepts = { "_ore", "raw_" }, position = HOME }
   local state = withDepots(ores)
   local depot = state.depots[1]

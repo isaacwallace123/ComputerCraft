@@ -26,7 +26,7 @@ local fleetRegistry = require("domain.fleet.registry")
 local desired = require("domain.fleet.desired")
 local persist = require("os.server.services.persist")
 local policyRules = require("domain.fleet.policy")
-local service = require("os.service")
+local service = require("os.kernel.service")
 
 local policy = {}
 

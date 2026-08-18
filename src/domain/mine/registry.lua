@@ -22,13 +22,13 @@
 --- bookkeeping came through it unaltered.
 ---
 --- The fix is a `clock` and a `storage` port threaded in from the caller, which
---- is a change to `fleet/coordinator.lua` and `core/console.lua` as much as to
+--- is a change to `legacy/fleet/coordinator.lua` and `legacy/console.lua` as much as to
 --- this file. It belongs to the phase that does the OS split, alongside the rest
 --- of the composition roots.
 
-local config = require("core.config")
+local config = require("adapters.cc.config")
 local plan = require("domain.mine.plan")
-local util = require("core.util")
+local util = require("lib.util")
 
 local registry = {}
 
@@ -40,8 +40,8 @@ local registry = {}
 --- the half of the fix that can be made without touching live code.
 ---
 --- Every function that stamps a time now takes an optional `now`. An ICOS 2
---- caller that has a clock port passes it; `fleet/coordinator.lua` and
---- `core/console.lua`, which are ICOS 1 and are being replaced, pass nothing and
+--- caller that has a clock port passes it; `legacy/fleet/coordinator.lua` and
+--- `legacy/console.lua`, which are ICOS 1 and are being replaced, pass nothing and
 --- behave exactly as before. The allow-list entry goes when those callers do.
 ---
 --- The alternative was a required parameter, which would have changed three live

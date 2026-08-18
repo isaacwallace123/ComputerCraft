@@ -6,9 +6,9 @@
 --- exists to avoid. Multi-line content is a `Column` of `Text`, which makes the
 --- cost visible at the call site where somebody can decide whether to pay it.
 
-local runtime = require("ui.runtime")
+local runtime = require("ui.core.runtime")
 local theme = require("ui.theme")
-local util = require("ui.util")
+local util = require("ui.core.util")
 
 local T = theme.TOKENS
 

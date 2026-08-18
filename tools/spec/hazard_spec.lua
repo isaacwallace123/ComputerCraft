@@ -35,7 +35,7 @@ it("a rib blocked by lava does not end the cycle", function()
   expect.truthy(ok, "cycle ran: " .. tostring(outcome))
   expect.truthy(outcome.ok, "lava must not fail the cycle: " .. tostring(outcome.reason))
 
-  local rare = require("jobs.rare")
+  local rare = require("jobs.mining.rare")
   local job = rare.load()
   expect.truthy(job.frontier > 3, "the trunk carried on past the blocked rib")
   expect.equal(w:get(ribX, TARGET, sector.trunkZ - 1), "minecraft:lava", "lava was not mined")
@@ -51,7 +51,7 @@ it("the trunk steps over lava in its path", function()
   expect.truthy(ok, "cycle ran: " .. tostring(outcome))
   expect.truthy(outcome.ok, "cycle survived: " .. tostring(outcome.reason))
 
-  local rare = require("jobs.rare")
+  local rare = require("jobs.mining.rare")
   local job = rare.load()
   expect.truthy(job.frontier > 5, "frontier advanced past the lava, got " .. job.frontier)
   expect.equal(w:get(blockedX, TARGET, sector.trunkZ), "minecraft:lava", "lava untouched")
@@ -65,19 +65,19 @@ it("a permanently blocked trunk gives the sector up instead of retrying forever"
     w:set(blockedX, TARGET + dy, sector.trunkZ, "minecraft:lava")
   end
 
-  local rare = require("jobs.rare")
+  local rare = require("jobs.mining.rare")
   local released = false
 
   for _ = 1, 5 do
     local ok, outcome = scenario.cycle(w)
     expect.truthy(ok, "cycle ran: " .. tostring(outcome))
-    if require("mine.site").load().sector == 0 then
+    if require("legacy.mine.site").load().sector == 0 then
       released = true
       break
     end
     local job = rare.load()
     rare.restart(job)
-    require("turtle.nav").setHome()
+    require("device.nav").setHome()
   end
 
   expect.truthy(released, "the fleet gave the sector back rather than looping")
@@ -94,7 +94,7 @@ it("a vein beside lava is still followed", function()
   local ok, outcome = scenario.cycle(w)
   expect.truthy(ok, "cycle ran: " .. tostring(outcome))
   expect.truthy(outcome.ok, "cycle survived lava beside ore: " .. tostring(outcome.reason))
-  local haul = require("jobs.rare").load().haul or {}
+  local haul = require("jobs.mining.rare").load().haul or {}
   expect.truthy((haul["minecraft:deepslate_diamond_ore"] or 0) >= 1, "the diamonds were taken")
   expect.equal(w:get(oreX, TARGET, sector.trunkZ - 1), "minecraft:lava", "lava untouched")
 end)
@@ -109,7 +109,7 @@ it("a turtle that can make no progress at all eventually parks", function()
     end
   end
 
-  local rare = require("jobs.rare")
+  local rare = require("jobs.mining.rare")
   local parked = false
   for _ = 1, 6 do
     local ok, outcome = scenario.cycle(w)
@@ -120,7 +120,7 @@ it("a turtle that can make no progress at all eventually parks", function()
     end
     local job = rare.load()
     rare.restart(job)
-    require("turtle.nav").setHome()
+    require("device.nav").setHome()
   end
 
   expect.truthy(parked, "repeated no-progress cycles must stop, not loop")

@@ -4,7 +4,7 @@
 --- run mid-session is picked up without a reboot. The read is cheap and happens
 --- once per route, not once per move.
 
-local config = require("core.config")
+local config = require("adapters.cc.config")
 local locator = require("ports.locator")
 
 local adapter = {}

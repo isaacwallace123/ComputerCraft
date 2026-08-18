@@ -6,7 +6,7 @@ local it = require("support.spec").it
 
 it("nav tracks a confirmed move", function()
   scenario.new({ groundY = 64, x = 0, y = 70, z = 0 })
-  local nav = require("turtle.nav")
+  local nav = require("device.nav")
   nav.setHome()
 
   expect.truthy(nav.forward(), "forward through air")
@@ -20,7 +20,7 @@ end)
 it("nav world coordinates agree with the world for every heading", function()
   for heading = 0, 3 do
     local w = scenario.new({ groundY = 64, x = 10, y = 70, z = -20, facing = heading })
-    local nav = require("turtle.nav")
+    local nav = require("device.nav")
     nav.setOrigin(10, 70, -20, heading)
 
     expect.truthy(nav.forward(), "forward")
@@ -38,14 +38,14 @@ end)
 
 it("nav position survives a reboot", function()
   local w = scenario.new({ groundY = 64, x = 0, y = 70, z = 0 })
-  local nav = require("turtle.nav")
+  local nav = require("device.nav")
   nav.setOrigin(0, 70, 0, 0)
   nav.forward()
   nav.forward()
   nav.up()
 
   scenario.reboot(w)
-  local rebooted = require("turtle.nav")
+  local rebooted = require("device.nav")
   local x, y, z = rebooted.position()
   expect.equal(x, 0, "x after reboot")
   expect.equal(y, 1, "y after reboot")
@@ -57,7 +57,7 @@ it("nav never digs a chest or lava", function()
   local w = scenario.new({ groundY = 64, x = 0, y = 70, z = 0, facing = 0 })
   w:set(0, 70, -1, "minecraft:chest")
   w:set(0, 71, 0, "minecraft:lava")
-  local nav = require("turtle.nav")
+  local nav = require("device.nav")
   nav.setOrigin(0, 70, 0, 0)
 
   local moved, reason, kind = nav.forward()
@@ -73,7 +73,7 @@ end)
 
 it("nav goTo reaches a target and returns home", function()
   local w = scenario.new({ groundY = 64, x = 0, y = 70, z = 0 })
-  local nav = require("turtle.nav")
+  local nav = require("device.nav")
   nav.setHome()
 
   expect.truthy(nav.goTo(3, 2, -4), "goTo")

@@ -23,9 +23,9 @@
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
-local boot = require("os.boot")
-local config = require("core.config")
-local roles = require("os.roles")
+local boot = require("os.kernel.boot")
+local config = require("adapters.cc.config")
+local roles = require("os.kernel.roles")
 
 local args = { ... }
 local command = args[1]

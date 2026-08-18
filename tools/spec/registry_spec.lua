@@ -6,8 +6,8 @@ local it = require("support.spec").it
 
 local function newRegistry()
   scenario.new({ groundY = 64 })
-  local plan = require("mine.plan")
-  local registry = require("mine.registry")
+  local plan = require("domain.mine.plan")
+  local registry = require("domain.mine.registry")
   local state = registry.load()
   state.plan = plan.normalise({
     configured = true,

@@ -6,7 +6,7 @@ local it = require("support.spec").it
 
 it("labels sort the way a person reads them", function()
   scenario.new({ groundY = 64 })
-  local util = require("core.util")
+  local util = require("lib.util")
 
   local names = {
     "miner-1",
@@ -35,7 +35,7 @@ end)
 
 it("natural order handles the awkward cases", function()
   scenario.new({ groundY = 64 })
-  local util = require("core.util")
+  local util = require("lib.util")
 
   expect.truthy(util.naturalLess("a", "b"), "plain text still sorts")
   expect.falsy(util.naturalLess("b", "a"), "and the other way")
@@ -64,7 +64,7 @@ end)
 
 it("the roster lists turtles in natural order", function()
   scenario.new({ groundY = 64 })
-  local roster = require("fleet.roster")
+  local roster = require("legacy.fleet.roster")
 
   local devices = {}
   for id = 1, 12 do

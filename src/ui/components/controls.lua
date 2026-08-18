@@ -5,10 +5,10 @@
 --- intent rather than a set of properties, and anything that recesses or raises
 --- takes the surface it sits on so it can pick a shade that contrasts with it.
 
-local reactive = require("ui.reactive")
-local runtime = require("ui.runtime")
+local reactive = require("ui.core.reactive")
+local runtime = require("ui.core.runtime")
 local theme = require("ui.theme")
-local util = require("ui.util")
+local util = require("ui.core.util")
 
 local T = theme.TOKENS
 
@@ -192,7 +192,7 @@ runtime.define({
 --- page of six would take eighteen presses to cross.
 local function controlRow(scope, props, value, adjust, glyphs)
   local function onKey(_, event)
-    local KEY = require("ui.input").KEY
+    local KEY = require("ui.core.input").KEY
     if event.key == KEY.left then
       return adjust(-1)
     end

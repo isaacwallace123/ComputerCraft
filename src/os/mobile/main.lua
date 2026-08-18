@@ -38,8 +38,8 @@
 --- Nothing calls `boot`. `src/startup.lua` still starts the ICOS 1 handheld.
 
 local client = require("os.client.main")
-local service = require("os.service")
-local supervisor = require("os.supervisor")
+local service = require("os.kernel.service")
+local supervisor = require("os.kernel.supervisor")
 
 local mobile = {}
 

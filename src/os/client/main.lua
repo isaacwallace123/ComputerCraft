@@ -35,8 +35,8 @@
 --- Nothing calls `boot`. `src/startup.lua` still starts the ICOS 1 desktop.
 
 local registry = require("domain.fleet.registry")
-local service = require("os.service")
-local supervisor = require("os.supervisor")
+local service = require("os.kernel.service")
+local supervisor = require("os.kernel.supervisor")
 
 local client = {}
 

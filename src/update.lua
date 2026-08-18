@@ -9,8 +9,8 @@
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
-local ui = require("core.ui")
-local config = require("core.config")
+local ui = require("legacy.shell.ui")
+local config = require("adapters.cc.config")
 
 local CONFIG_PATH = ".update"
 local RESULT_PATH = ".update-result"
@@ -368,7 +368,7 @@ end
 -- Sound is optional: a machine with no speaker just updates quietly, and a
 -- missing module must never be able to break updating itself.
 pcall(function()
-  require("core.sound").play(ok and "ready" or "error")
+  require("legacy.sound").play(ok and "ready" or "error")
 end)
 
 if ok and rebootAfter then

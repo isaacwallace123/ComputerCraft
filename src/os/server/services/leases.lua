@@ -1,6 +1,6 @@
 --- Sector leasing: who is allowed to be in which shaft.
 ---
---- The ICOS 2 half of what `fleet/coordinator.lua` does today. The rules are all
+--- The ICOS 2 half of what `legacy/fleet/coordinator.lua` does today. The rules are all
 --- in `domain/mine/registry.lua` and are not restated here; this is the service
 --- that owns the state, answers requests about it, and expires leases nobody is
 --- renewing.
@@ -37,7 +37,7 @@
 local persist = require("os.server.services.persist")
 local plan = require("domain.mine.plan")
 local registry = require("domain.mine.registry")
-local service = require("os.service")
+local service = require("os.kernel.service")
 
 local leases = {}
 

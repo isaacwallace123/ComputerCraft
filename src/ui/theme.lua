@@ -3,7 +3,7 @@
 --- The rule this file exists to enforce: **a component names a role, never a
 --- colour.** It asks for `destructive` and the theme decides what that is.
 ---
---- The alternative is what `core/ui.lua` does today - `ui.bar` hard-codes red
+--- The alternative is what `legacy/shell/ui.lua` does today - `ui.bar` hard-codes red
 --- below 15% and yellow below 40%, which means the bar decided what a low fuel
 --- reading means, and changing that decision means finding every bar. There are
 --- only sixteen colours available, so the temptation to reach for one directly

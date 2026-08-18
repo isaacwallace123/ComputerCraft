@@ -11,7 +11,7 @@
 --- would be too strong. Between them they are the whole vocabulary of depth, and
 --- neither costs a cell of chrome.
 
-local runtime = require("ui.runtime")
+local runtime = require("ui.core.runtime")
 local theme = require("ui.theme")
 
 local T = theme.TOKENS

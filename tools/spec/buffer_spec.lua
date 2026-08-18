@@ -13,7 +13,7 @@
 local expect = require("support.expect")
 local it = require("support.spec").it
 
-local buffer = require("ui.buffer")
+local buffer = require("ui.core.buffer")
 local recorder = require("adapters.sim.screen")
 
 local WHITE, BLACK = 0, 15
@@ -78,7 +78,7 @@ it("a full-screen change emits at most one blit per row", function()
 
   for y = 1, 81 do
     -- Padded by hand: Lua caps a format spec's width at two digits, which is
-    -- the same reason `core/ui.lua` grew a `pad` helper.
+    -- the same reason `legacy/shell/ui.lua` grew a `pad` helper.
     -- A different background as well as different text, so every cell on every
     -- row genuinely differs. Repainting the same text on the same background
     -- would leave the trailing spaces identical and the runs correspondingly

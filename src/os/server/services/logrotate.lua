@@ -2,7 +2,7 @@
 ---
 --- ## The bug this exists to fix
 ---
---- `core/log.lua` trims on open. A machine that is rebooted daily is fine; a
+--- `adapters/cc/logfile.lua` trims on open. A machine that is rebooted daily is fine; a
 --- base station is not rebooted, and §2's whole premise is that a server is
 --- permanently loaded. So the one machine that runs for weeks is the one machine
 --- whose log was never trimmed, and the disk it fills is the disk holding the
@@ -21,14 +21,14 @@
 --- rotation rather than kept as `.log.2`: unbounded history is the problem this
 --- service exists to solve, and solving it by keeping everything would be funny.
 ---
---- ## It cannot use `core/log.lua`
+--- ## It cannot use `adapters/cc/logfile.lua`
 ---
 --- Which is the point. A service that logged about rotating the log would write
 --- lines to the file it is trying to shrink, and on a full disk the write it
 --- makes is the write that fails. It returns what it did and lets the caller
 --- decide whether that is worth saying.
 
-local service = require("os.service")
+local service = require("os.kernel.service")
 
 local logrotate = {}
 
@@ -37,7 +37,7 @@ logrotate.PREVIOUS = ".log.1"
 
 --- Lines kept before rotating.
 ---
---- Matched to `core/log.lua`'s own cap so the two do not fight: a service that
+--- Matched to `adapters/cc/logfile.lua`'s own cap so the two do not fight: a service that
 --- rotated at 100 while the logger trimmed at 400 would rotate on every pass and
 --- fill the disk with the churn it was hired to prevent.
 logrotate.MAX_LINES = 400

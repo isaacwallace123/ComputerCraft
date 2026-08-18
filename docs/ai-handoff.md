@@ -186,7 +186,7 @@ large AFK run.
   is always visible on turtles so a dedicated Chunky Turtle can be assigned before
   its upgrades are arranged. Setup warns if the turtle has no wireless/Ender modem;
   the host cannot serve until one is equipped. Setup saves the advertised block
-  coordinates in `.gps`; startup runs only `apps/gps_host.lua`. A Chunky Turtle may be
+  coordinates in `.gps`; startup runs only `legacy/apps/gps_host.lua`. A Chunky Turtle may be
   one host and load the shared host chunk.
 - ICOS v1.2.5 GPS setup used a greedy separator that could swallow a negative sign on
   Y or Z. Existing `.gps` values cannot be corrected automatically because their
@@ -194,10 +194,10 @@ large AFK run.
   verify the explicit X/Y/Z confirmation screen. Coordinate inputs must use
   `core.util.coordinates`, never a `%D+` separator between signed numbers.
 - The base needs a shared mine configured once, through Mine Control or `mine here`.
-  `fleet/service.lua` leases sectors at boot; Fleet is only a view and need not stay
+  `legacy/fleet/service.lua` leases sectors at boot; Fleet is only a view and need not stay
   open. Prospecting frontiers are keyed by job and target Y; do not collapse them into
   one sector-wide completion value.
-- Pocket Computers use role `controller`, run `core/handheld.lua`, and mirror the
+- Pocket Computers use role `controller`, run `legacy/shell/handheld.lua`, and mirror the
   authoritative base. They must never host the base name or answer `mine` requests.
   Setup offers this role without a modem, but fleet traffic remains offline until a
   wireless or ender modem is attached.
@@ -244,11 +244,11 @@ large AFK run.
   saplings, planks, and wooden tools, and anything counted as fuel is retained at every
   unload, so a permissive answer silently fills a turtle with canopy litter forever.
   Lava buckets and blaze rods are no longer fuel and are now delivered like any haul.
-- `core/config.lua` replaces state through a completed `.tmp` file. Its load fallback is
+- `adapters/cc/config.lua` replaces state through a completed `.tmp` file. Its load fallback is
   part of crash-safe navigation; do not revert `.nav` to in-place overwrite.
 - A standard mining turtle cannot carry pickaxe, modem, and Geo Scanner at once.
 - The updater deploys only `src/manifest.json`; documentation remains repository-side.
-- ICOS 2 phase 1 moved `mine/plan.lua` and `mine/registry.lua` to `domain/mine/`, with no
+- ICOS 2 phase 1 moved `domain/mine/plan.lua` and `domain/mine/registry.lua` to `domain/mine/`, with no
   logic changes. `src/mine/plan.lua` and `src/mine/registry.lua` are one-line aliases that
   return the moved module, and every caller in `src/` already uses the new path. The
   aliases exist so the spec suite resolved unchanged — which is the only evidence that a
@@ -259,9 +259,9 @@ large AFK run.
   boundary.** Re-requiring a module makes a fresh copy of every table in it, metatables
   included, so a value built by the old copy fails an identity test in the new one -
   silently. `^ui%.` was on the list and had to come off: an animation built through the old
-  runtime asked a freshly required `ui/reactive.lua` whether its goal was a state object,
+  runtime asked a freshly required `ui/core/reactive.lua` whether its goal was a state object,
   was told no, and quietly animated a table.
-- One 2×3 glyph can show only two colours. `ui/canvas.lua` keeps the two most frequent and
+- One 2×3 glyph can show only two colours. `ui/draw/canvas.lua` keeps the two most frequent and
   maps any others through the active theme palette; do not replace that with distances
   between CC's default colours, because ICOS redefines every palette slot. Sprite assets
   are immutable hex rows with `.` transparency — replace a reactive asset rather than
@@ -271,13 +271,13 @@ large AFK run.
   Both are correct for now: modules written before ports existed read those globals, and
   rewriting them all at once is the flag day the plan exists to avoid.
 - `domain/fleet/registry.lua` is built but **nothing writes through it yet**. The live path
-  is still `fleet/roster.lua`, which replaces a device's whole record on every heartbeat -
+  is still `legacy/fleet/roster.lua`, which replaces a device's whole record on every heartbeat -
   so a turtle reporting no position erases the last one known. That is the bug the new
   module fixes, and swapping them over is a base-side change wanting an in-world test.
 - `domain/mine/registry.lua` still reads `os.epoch` and persists through `core/config`, so
   it is not yet pure domain code. It is the one entry in the layering check's allow list.
-  Threading a clock and a storage port through `fleet/coordinator.lua` and
-  `core/console.lua` is what empties it; see D027.
+  Threading a clock and a storage port through `legacy/fleet/coordinator.lua` and
+  `legacy/console.lua` is what empties it; see D027.
 
 ## Handoff note template
 

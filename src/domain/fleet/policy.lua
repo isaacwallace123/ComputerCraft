@@ -5,7 +5,7 @@
 ---
 --- ## The rule ICOS 1 stated and did not enforce
 ---
---- `fleet/policy.lua` opens by saying that an unattended system must be active
+--- `legacy/fleet/policy.lua` opens by saying that an unattended system must be active
 --- but "must not turn an intentional recall into an automatic redeploy". It
 --- enforced that by having no rule that happened to match a recalled turtle,
 --- which is not enforcement - it is an absence that any future rule can end by

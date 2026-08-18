@@ -19,7 +19,7 @@
 --- rednet, or know that a fleet service exists - which is what lets the whole
 --- screen be rendered into a recording buffer and asserted cell by cell, with no
 --- world and no Minecraft. The composition root wires this to
---- `fleet/roster.lua`; a spec wires it to a table.
+--- `legacy/fleet/roster.lua`; a spec wires it to a table.
 ---
 --- That separation is the point of the ports layer arriving first. A dashboard
 --- that reached for `fleet.devices()` directly would be untestable for exactly
@@ -38,7 +38,7 @@
 --- desktop - is a later phase, because that one touches a running fleet.
 
 local theme = require("ui.theme")
-local util = require("ui.util")
+local util = require("ui.core.util")
 
 local T = theme.TOKENS
 

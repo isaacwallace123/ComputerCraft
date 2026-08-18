@@ -6,7 +6,7 @@
 ---
 --- ## The bug this exists to fix
 ---
---- `fleet/roster.lua` does record every heartbeat, and it does persist them. What
+--- `legacy/fleet/roster.lua` does record every heartbeat, and it does persist them. What
 --- it does is replace the whole record:
 ---
 ---     devices[key] = { snap = snapshot, lastSeen = now, pairedAt = ... }
@@ -92,7 +92,7 @@ end
 --- caller can log a device joining without diffing the whole table itself.
 ---
 --- This is the same rule as the location retention below, generalised, and it
---- was learned twice. `fleet/roster.lua` replaces the whole record and thereby
+--- was learned twice. `legacy/fleet/roster.lua` replaces the whole record and thereby
 --- erases a position; the first version of this function replaced the whole
 --- record too, and thereby erased the `desired` and `observed` fields that
 --- `domain/fleet/desired.lua` attaches to it - so an order set while a device

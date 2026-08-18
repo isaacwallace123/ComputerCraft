@@ -8,7 +8,7 @@
 local expect = require("support.expect")
 local it = require("support.spec").it
 
-local reactive = require("ui.reactive")
+local reactive = require("ui.core.reactive")
 
 ---------------------------------------------------------------------------
 -- Values and computeds

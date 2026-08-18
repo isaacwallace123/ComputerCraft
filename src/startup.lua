@@ -10,12 +10,12 @@
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
-local ui = require("core.ui")
-local boot = require("core.boot")
-local sound = require("core.sound")
-local device = require("core.device")
-local config = require("core.config")
-local display = require("core.display")
+local ui = require("legacy.shell.ui")
+local boot = require("legacy.boot")
+local sound = require("legacy.sound")
+local device = require("legacy.device")
+local config = require("adapters.cc.config")
+local display = require("legacy.shell.display")
 
 local NODE_PATH = ".node"
 
@@ -132,7 +132,7 @@ end
 
 -- Load these after updating: applications are the part most likely to have
 -- changed, and no reboot is needed just to pick up a new registry entry.
-local apps = require("core.apps")
+local apps = require("legacy.apps")
 
 if interrupted then
   systemMenu(apps, localScreen)
@@ -178,14 +178,14 @@ local homeWarning = (node.role ~= "fleet" and node.role ~= "controller") or not 
 
 local function interfaceSession()
   if caps.kind == "pocket" then
-    local handheld = require("core.handheld")
+    local handheld = require("legacy.shell.handheld")
     handheld.run(localScreen, apps.available(caps, node, "handheld"), {
       name = boot.NAME,
       homeMessage = homeMessage,
       homeWarning = homeWarning,
     })
   else
-    local desktop = require("core.desktop")
+    local desktop = require("legacy.shell.desktop")
     local desktopApps = apps.available(caps, node, "desktop")
     if monitor then
       parallel.waitForAny(function()
@@ -220,10 +220,10 @@ local function interfaceSession()
 end
 
 if node.role == "fleet" or node.role == "controller" then
-  local service = require("fleet.service")
+  local service = require("legacy.fleet.service")
   local serviceMain = node.role == "fleet" and service.runBase or service.runController
   local function superviseService()
-    local log = require("core.log")
+    local log = require("adapters.cc.logfile")
     while true do
       local ok, err = pcall(serviceMain)
       if not ok and not tostring(err):find("Terminated", 1, true) then
@@ -234,7 +234,7 @@ if node.role == "fleet" or node.role == "controller" then
   end
   parallel.waitForAny(superviseService, interfaceSession)
   if node.role == "fleet" then
-    require("core.net").unhostBase()
+    require("legacy.net").unhostBase()
   end
 else
   interfaceSession()

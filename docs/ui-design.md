@@ -29,7 +29,7 @@ says `bg-card`, `text-muted-foreground`, `border-border`. A theme is then data, 
 impossible for one screen to drift from another because there is nothing at the call site
 to drift.
 
-That is the discipline this repository most obviously lacks. `core/ui.lua` has
+That is the discipline this repository most obviously lacks. `legacy/shell/ui.lua` has
 `ui.theme.good = colors.lime`, which is a start, and then `ui.bar` hard-codes *red below
 15%, yellow below 40%*. The bar decided what a low fuel reading means. It should ask for
 `destructive` and let the theme decide what `destructive` looks like.

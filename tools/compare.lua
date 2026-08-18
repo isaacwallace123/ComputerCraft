@@ -391,7 +391,7 @@ end
 --- write and every write is a rectangle. Ours marks the node, and the frame
 --- paints that node's subtree and nothing else.
 ---
---- The ICOS side here is the real thing - `ui/runtime.lua`, the real reactive
+--- The ICOS side here is the real thing - `ui/core/runtime.lua`, the real reactive
 --- graph, the real layout solver, the real Fleet screen. The Basalt side is its
 --- renderer fed the full repaint its invalidation model produces.
 local ui = require("ui.init")

@@ -1,6 +1,6 @@
---- Log port over `core/log.lua`.
+--- Log port over `adapters/cc/logfile.lua`.
 ---
---- Thin on purpose. `core/log.lua` already writes the file `logrotate` rotates,
+--- Thin on purpose. `adapters/cc/logfile.lua` already writes the file `logrotate` rotates,
 --- already keeps the in-memory tail the ICOS 1 console draws, and already queues
 --- the `icos_log` event that console listens for so new lines appear without
 --- waiting on a refresh timer.
@@ -12,9 +12,9 @@
 --- update is a log that has everything in it.
 ---
 --- So this adapts rather than replaces, and the level names are translated
---- because the port's are lowercase and `core/log.lua`'s are not.
+--- because the port's are lowercase and `adapters/cc/logfile.lua`'s are not.
 
-local core = require("core.log")
+local core = require("adapters.cc.logfile")
 local log = require("ports.log")
 
 local adapter = {}
@@ -55,7 +55,7 @@ function adapter.new(prefix)
   --- somebody opens with `edit .log` after the fact.
   ---
   --- Normalised into the port's shape rather than passed through, because
-  --- `core/log.lua` stores a pre-formatted line and a CC colour, and a port that
+  --- `adapters/cc/logfile.lua` stores a pre-formatted line and a CC colour, and a port that
   --- handed a page a colour would be a port making a design decision.
   function impl.recent(count)
     local out = {}
@@ -64,11 +64,11 @@ function adapter.new(prefix)
         text = entry.text,
         at = entry.at,
         -- Recovered from the formatted line rather than stored beside it,
-        -- because `core/log.lua` does not keep the level and changing it to
+        -- because `adapters/cc/logfile.lua` does not keep the level and changing it to
         -- would change a file the live fleet is writing right now.
         --
         -- Normalised through `log.level`, which is the fix for a bug this
-        -- adapter had on its first day: `core/log.lua` writes the level
+        -- adapter had on its first day: `adapters/cc/logfile.lua` writes the level
         -- upper-case, so returning it raw made every page compare "WARN"
         -- against the port's "warn" - and the Logs page's warnings-only filter
         -- showed an empty screen while warnings were arriving.

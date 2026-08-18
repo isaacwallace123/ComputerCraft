@@ -32,7 +32,7 @@
 --- the reason attached and the server reports unhealthy. A base with no wireless
 --- modem cannot reach a turtle either, so unhealthy is the honest answer.
 
-local service = require("os.service")
+local service = require("os.kernel.service")
 
 local gps = {}
 

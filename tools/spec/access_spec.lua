@@ -10,7 +10,7 @@ end
 
 it("access classifies ground, canopy, liquid, and protected blocks", function()
   local w = scenario.new({ groundY = 64, x = 0, y = 70, z = 0 })
-  local access = require("turtle.access")
+  local access = require("device.access")
 
   local cases = {
     { "minecraft:grass_block", "solid" },
@@ -37,7 +37,7 @@ end)
 
 it("access refuses valuable, gravity, and wanted blocks as cap material", function()
   scenario.new({ groundY = 64 })
-  local access = require("turtle.access")
+  local access = require("device.access")
 
   local function filler(name)
     return access.isFiller({ name = name, count = 1 }, 1, anyOre)
@@ -60,7 +60,7 @@ it("access moves filler into the reserved slot and restores the selection", func
   local w = scenario.new({ groundY = 64 })
   w:give(3, "minecraft:cobblestone", 12)
   w:give(1, "minecraft:diamond", 2)
-  local access = require("turtle.access")
+  local access = require("device.access")
 
   local turtleApi = _ENV.turtle
   turtleApi.select(1)
@@ -72,7 +72,7 @@ end)
 
 it("access reports a placement only once the block is observed", function()
   local w = scenario.new({ groundY = 64, x = 0, y = 70, z = 0 })
-  local access = require("turtle.access")
+  local access = require("device.access")
 
   -- Nothing to place with.
   local placed, reason = access.capUp()
@@ -94,7 +94,7 @@ end)
 
 it("access recognises an enclosed shaft column", function()
   local w = scenario.new({ groundY = 64, x = 0, y = 64, z = 0 })
-  local access = require("turtle.access")
+  local access = require("device.access")
 
   -- Standing at ground level inside a one-block hole: walls on all four sides.
   w:set(0, 64, 0, nil)
@@ -106,7 +106,7 @@ end)
 
 it("access clears a cap that gravel keeps refilling", function()
   local w = scenario.new({ groundY = 64, x = 0, y = 60, z = 0 })
-  local access = require("turtle.access")
+  local access = require("device.access")
   w:set(0, 61, 0, "minecraft:cobblestone")
 
   expect.truthy(access.clearUp(), "cap removed")

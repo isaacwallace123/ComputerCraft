@@ -1,7 +1,7 @@
 --- Shared autonomous-mining safety policy.
 
-local fuel = require("turtle.fuel")
-local nav = require("turtle.nav")
+local fuel = require("device.fuel")
+local nav = require("device.nav")
 
 local safety = {}
 

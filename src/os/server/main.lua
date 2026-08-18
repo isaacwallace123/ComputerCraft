@@ -30,7 +30,7 @@ local persist = require("os.server.services.persist")
 local policy = require("os.server.services.policy")
 local reconcile = require("os.server.services.reconcile")
 local registry = require("domain.fleet.registry")
-local supervisor = require("os.supervisor")
+local supervisor = require("os.kernel.supervisor")
 
 local server = {}
 

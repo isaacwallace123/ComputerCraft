@@ -23,7 +23,7 @@
 --- Drop-offs are different: a person edited those, nothing will re-report them,
 --- and there are none of them per second. They are written immediately.
 
-local service = require("os.service")
+local service = require("os.kernel.service")
 
 local persist = {}
 

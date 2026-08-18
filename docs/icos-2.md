@@ -169,7 +169,7 @@ src/
     power/
     terminal/
   commands/                  one-shot operator commands, no page
-    locate.lua               (was apps/where.lua)
+    locate.lua               (was legacy/apps/where.lua)
     equip.lua
     swarm.lua
     scan.lua
@@ -202,7 +202,7 @@ return {
 }
 ```
 
-The existing capability filter in `core/apps.lua` already does most of this. This
+The existing capability filter in `legacy/apps.lua` already does most of this. This
 formalises it as a manifest the shell reads.
 
 ### Apps, commands, services
@@ -366,7 +366,7 @@ screen. `intents` is the only thing that talks to the server about changes — w
 state, and the server owns the conversation. D019's "a handheld is never a second base"
 stops being a convention and becomes a thing the structure enforces.
 
-Today's `fleet/service.lua` is one function doing discovery, leases, policy, logging, and
+Today's `legacy/fleet/service.lua` is one function doing discovery, leases, policy, logging, and
 persistence. Splitting it is the point: a bug in the auto-recovery policy currently takes
 sector leasing down with it.
 
@@ -522,8 +522,8 @@ together until the dashboard shows every device converging, then events go.
 
 ### Phase 2: the device registry
 
-`domain/fleet/registry.lua` is built and specced. It is **not wired** — `fleet/service.lua`
-still writes `fleet/roster.lua`, and swapping them is a base-side change that wants an
+`domain/fleet/registry.lua` is built and specced. It is **not wired** — `legacy/fleet/service.lua`
+still writes `legacy/fleet/roster.lua`, and swapping them is a base-side change that wants an
 in-world test.
 
 It exists because §1's second failure turned out to be sharper than written. The claim was
@@ -556,7 +556,7 @@ Three smaller decisions, all of which are specced:
 - **A malformed position is no position.** `0, 0, 0` is a real place, and a half-filled
   record is how a device ends up claiming to be there.
 
-Still to do for phase 2: `fleet/service.lua` writing through it, and a Devices view sorted
+Still to do for phase 2: `legacy/fleet/service.lua` writing through it, and a Devices view sorted
 by staleness so a missing turtle is the first thing on the screen rather than the ninth.
 
 ### Phase 3: desired state
@@ -610,7 +610,7 @@ Two smaller decisions worth knowing:
 
 ### Phase 5: leases, and the server's single inbox
 
-`os/server/services/leases.lua` is the ICOS 2 half of what `fleet/coordinator.lua` does
+`os/server/services/leases.lua` is the ICOS 2 half of what `legacy/fleet/coordinator.lua` does
 today, and it is the clearest illustration of §4's rule. Sector leasing used to live inside
 the Fleet page, so closing the page stopped two turtles being kept out of the same shaft
 (D018) — a UI decision silently became a mining collision.
@@ -639,7 +639,7 @@ one server is ever running, because `startup.lua` picks one.
 
 ### Phase 5: policy, GPS, logrotate — the server is complete
 
-**Policy** is the one that changed shape most. `fleet/policy.lua` opens by saying an
+**Policy** is the one that changed shape most. `legacy/fleet/policy.lua` opens by saying an
 unattended system "must not turn an intentional recall into an automatic redeploy", and
 enforces it by having no rule that happens to match a recalled turtle. That is not
 enforcement; it is an absence any future rule can end by accident.
@@ -672,7 +672,7 @@ With no modem or no saved position it raises rather than parking quietly. The te
 alternative — sleep forever, report "running" — makes the health page show green while
 nothing in the world can get a fix, which is the worst of the three states.
 
-**Logrotate** fixes a bug rather than porting one. `core/log.lua` trims on open, so the one
+**Logrotate** fixes a bug rather than porting one. `adapters/cc/logfile.lua` trims on open, so the one
 machine that is never rebooted is the one machine whose log is never trimmed — and §2's
 premise is that a server is permanently loaded. It rotates rather than truncates: when
 something breaks at 3am and is noticed at 9am, the interesting lines are the first ones
@@ -721,13 +721,13 @@ worth reading. The first failure is a **warning** and the rest are errors, becau
 that fails once and restarts is ordinary — a radio going out of range does it — and a machine
 that shouted about every one would train somebody to skip the shouting.
 
-The CC adapter wraps `core/log.lua` rather than replacing it. Reimplementing would give
+The CC adapter wraps `adapters/cc/logfile.lua` rather than replacing it. Reimplementing would give
 ICOS 2 a *second* log — a second file, a second tail, and an ICOS 1 console that goes quiet
 the moment a machine is upgraded. During a rolling update both operating systems are running
 somewhere in the fleet, and a log with everything in it is exactly what a person needs then.
 
 **A real bug, caught by a spec on the adapter's first day.** The port declares its levels
-lowercase; `core/log.lua` writes them upper-case; the adapter recovered the level from the
+lowercase; `adapters/cc/logfile.lua` writes them upper-case; the adapter recovered the level from the
 formatted line and returned it raw. So the Logs page compared `"WARN"` against `"warn"`,
 found no warnings, and its warnings-only filter showed an **empty screen while warnings were
 arriving** — the worst possible failure for a diagnostic page, because it looks like good
@@ -864,7 +864,7 @@ names or ask a turtle, and a turtle down a shaft cannot answer. So `domain/turtl
 is data, and both ends of the radio read the same file. `module` is a *string*, resolved by
 the turtle when it starts work — which is what lets a server with no `turtle` global at all
 list, validate and assign jobs it could not itself run. A base that had to `require`
-`jobs/quarry.lua` to know a quarry exists is a base that crashes on `turtle.dig` being nil.
+`jobs/mining/quarry.lua` to know a quarry exists is a base that crashes on `turtle.dig` being nil.
 
 **Nothing declared what a job needs.** A farming turtle wants a hoe; a quarry wants a
 pickaxe and a lot of fuel; a fuel hunt wants neither — and notably **not a modem**, because
@@ -889,7 +889,7 @@ base assigns from the same list, and the turtle resolves `module` when it starts
 
 ### Phase 5: booting it, without changing what a machine does on power-up
 
-`os/boot.lua` is the one file in ICOS 2 allowed to know both that CC exists and that there
+`os/kernel/boot.lua` is the one file in ICOS 2 allowed to know both that CC exists and that there
 are four operating systems. Everything below it knows one or the other and never both,
 which is what makes the tree testable: `domain/` knows neither, `ports/` and `os/` know the
 shape without the implementation, `adapters/cc/` knows CC without knowing what anybody does
@@ -965,7 +965,7 @@ can disappear.
 
 ### Phase 5: the turtle's composition root, and the `waitForAny` bug
 
-`apps/miner.lua` runs four coroutines under `parallel.waitForAny`, which returns when
+`legacy/apps/miner.lua` runs four coroutines under `parallel.waitForAny`, which returns when
 **any** of them finishes. So a heartbeat loop that throws on a missing modem takes the
 mining job down with it, and a turtle halfway down a shaft stops — not because mining
 failed, but because *talking about* mining failed. D004 says job correctness may never
@@ -982,7 +982,7 @@ Nothing in that file knows what the turtle is *for*. `context.runJob` is whateve
 selected, and a farming turtle registers exactly the same three services with a different
 function behind one of them.
 
-It runs the ICOS 1 job code unchanged. `miner/runtime.lua` is what actually drives a
+It runs the ICOS 1 job code unchanged. `legacy/miner/runtime.lua` is what actually drives a
 turtle, it is proven, and the fleet is running it — rewriting it in the same change that
 rewrites supervision and orders would put a fleet in a hole with two untested halves. So
 `os/turtle/control.lua` writes the `ctx.control` flags the existing runtime already reads,
@@ -1035,7 +1035,7 @@ latency problem.
 
 ### Phase 5: roles, the server, and the first wired service
 
-`os/roles.lua`, `os/server/main.lua` and `os/server/services/discovery.lua` join the
+`os/kernel/roles.lua`, `os/server/main.lua` and `os/server/services/discovery.lua` join the
 supervisor. **Nothing calls `boot`** — `src/startup.lua` still runs the ICOS 1 paths, and
 switching it over is the one change in this branch that alters what an existing machine
 does on power-up.
@@ -1069,11 +1069,11 @@ Two things found while wiring it, both worth keeping:
 
 ### Phase 5: the supervisor
 
-`os/supervisor.lua` and `os/service.lua` are built and specced. The four composition roots
+`os/kernel/supervisor.lua` and `os/kernel/service.lua` are built and specced. The four composition roots
 are not.
 
 The supervisor exists because of one sentence of CC semantics: **`parallel.waitForAny`
-returns when *any* coroutine finishes.** So today an error escaping `fleet/service.lua`
+returns when *any* coroutine finishes.** So today an error escaping `legacy/fleet/service.lua`
 stops discovery, lease handling, policy, logging and persistence together — and on a server
 it would take GPS with it, which breaks navigation for the whole fleet. This resumes each
 service itself, so one dying is one dying.

@@ -184,7 +184,7 @@ a commit. A turtle that gets as far as mining writes six of them within a minute
 ### Seeing the ICOS 2 UI framework
 
 The framework is built but deliberately not wired into the desktop — the running fleet
-still uses `core/ui.lua`, and putting a framework screen on the desktop is a change that
+still uses `legacy/shell/ui.lua`, and putting a framework screen on the desktop is a change that
 touches live machines. To look at it, run it by hand on a linked computer:
 
 ```text

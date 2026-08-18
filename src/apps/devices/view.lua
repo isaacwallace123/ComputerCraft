@@ -25,13 +25,13 @@
 --- No file, no radio, no `fleet.roster`. State objects and callbacks in, a node
 --- tree out — which is why the whole page is rendered into a recording buffer
 --- and asserted cell by cell in the spec suite, with no world and no Minecraft.
---- The composition root that wires it to `fleet/roster.lua` and the desktop is
+--- The composition root that wires it to `legacy/fleet/roster.lua` and the desktop is
 --- `app.lua`, and that is the file that touches a running fleet.
 
 local catalogue = require("domain.turtle.jobs")
 local fleetView = require("apps.fleet.view")
 local theme = require("ui.theme")
-local util = require("ui.util")
+local util = require("ui.core.util")
 
 local T = theme.TOKENS
 

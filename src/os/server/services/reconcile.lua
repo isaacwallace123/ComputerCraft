@@ -40,7 +40,7 @@
 
 local desired = require("domain.fleet.desired")
 local registry = require("domain.fleet.registry")
-local service = require("os.service")
+local service = require("os.kernel.service")
 
 local reconcile = {}
 
@@ -56,7 +56,7 @@ reconcile.EVERY = 6
 
 --- The ICOS 1 command for a goal, or nil where there is no equivalent.
 ---
---- Taken from `miner/network.lua`'s existing handler, which is the authority on
+--- Taken from `legacy/miner/network.lua`'s existing handler, which is the authority on
 --- what an unupgraded turtle understands. `park` has no command: the old
 --- protocol cannot say "stop when convenient", and inventing one for a build
 --- that will not understand it would be a message into the void.

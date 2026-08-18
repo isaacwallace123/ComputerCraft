@@ -24,7 +24,7 @@ These rules are more important than any one mining pattern:
 
 ## The shared mine
 
-Prospecting jobs do not choose where to dig. `mine/plan.lua` divides the world once into
+Prospecting jobs do not choose where to dig. `domain/mine/plan.lua` divides the world once into
 a grid of square sectors centred on the base, enumerated ring by ring outward, skipping
 the centre cell where the base sits. Every number below is derived from the plan by pure
 arithmetic on both the base and the turtle, so only the plan is ever transmitted.
@@ -45,7 +45,7 @@ extends the shaft vertically if it needs to go higher or lower. Frontiers and ex
 are keyed by job and target Y, so completing Rare never skips Resources ground at a
 different depth.
 
-`mine/registry.lua` runs on the base and owns leases and frontiers. `mine/site.lua` runs
+`domain/mine/registry.lua` runs on the base and owns leases and frontiers. `legacy/mine/site.lua` runs
 on the turtle, caches the plan, and asks for a sector at each redeploy. A turtle that
 gets no answer within three seconds keeps the sector it already held, or falls back to
 one derived from its computer ID. Its per-job fallback advances only after a sector is
@@ -64,7 +64,7 @@ safe, and it was never sufficient on its own: four sectors meant four unmarked
 hundred-block drops in ground people walk across, and a small number of death traps is
 not a safe worksite. Hole count and hole danger are separate problems.
 
-`turtle/access.lua` closes the second one. A sector shaft is open only while a turtle is
+`device/access.lua` closes the second one. A sector shaft is open only while a turtle is
 inside it:
 
 1. Descending, the turtle finds the real top of the ground in the shaft column, steps
@@ -117,7 +117,7 @@ the way.
 
 ### Sector physical state
 
-`mine/registry.lua` records what the fleet knows about each sector's head: its Y, its
+`domain/mine/registry.lua` records what the fleet knows about each sector's head: its Y, its
 offset along the trunk, and whether it was last seen `sealed`, `open`, `blocked`, or
 `unknown`. This is deliberately separate from leases and frontiers, which are progress.
 
@@ -229,7 +229,7 @@ so they correctly omit `standing` and keep reporting `progress`.
 
 ### Quarry
 
-`jobs/quarry.lua` excavates an absolute X/Z rectangle from `topY` through `bottomY`.
+`jobs/mining/quarry.lua` excavates an absolute X/Z rectangle from `topY` through `bottomY`.
 Workers need a world origin and heading from the Where tool. The coordinator converts
 the rectangle to a serpentine flat cell sequence and gives each available turtle a
 balanced contiguous range. Every pass occupies one layer and clears the block below,
@@ -289,7 +289,7 @@ back to normal mining.
 
 ### Hollow
 
-`jobs/hollow.lua` travels to a configurable rectangle and sweeps it serpentine at the
+`jobs/mining/hollow.lua` travels to a configurable rectangle and sweeps it serpentine at the
 middle Y, default -30. Entering each cell clears the middle block; `digUp` and `digDown`
 clear the other two. A failed vertical dig does not advance the cell checkpoint.
 
@@ -298,7 +298,7 @@ cell, while changed settings or redeploying a completed room starts a fresh swee
 
 ## Fuel accounting
 
-`turtle/fuel.lua` separates three concepts:
+`device/fuel.lua` separates three concepts:
 
 - tank fuel from `turtle.getFuelLevel()`
 - known inventory potential from `turtle/fuel/catalog.lua`
@@ -347,7 +347,7 @@ the junk policy throws away — so `inv.dropJunk` takes the reserved slot and sk
 and unloading keeps it aboard for the next cycle. A retained cap slot is not counted as
 an undelivered load, so it cannot be mistaken for `depot full`.
 
-`turtle/depot.lua` owns unloading. The chest below the home block is still the
+`device/depot.lua` owns unloading. The chest below the home block is still the
 convention and is always emptied into first, because dropping downward is
 orientation-independent. When it fills, the containers in front of and above the home
 block are used before the job reports `depot full`, which is what lets an unattended run
@@ -368,6 +368,6 @@ than parking as healthy.
 5. Check recall and fuel before every movement that can increase return cost.
 6. Save progress after confirmed work, never before it.
 7. Return home and unload on success, recall, fuel reserve, and recoverable stops.
-8. Register the job in `apps/miner.lua` and `apps/devices.lua`.
+8. Register the job in `legacy/apps/miner.lua` and `legacy/apps/devices.lua`.
 9. Document the mode here and regenerate `src/manifest.json`.
 10. Test a tiny area with one turtle before attempting a fleet-scale run.

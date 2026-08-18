@@ -6,7 +6,7 @@ local it = require("support.spec").it
 
 it("only coal and charcoal count as fuel", function()
   scenario.new({ groundY = 64 })
-  local fuel = require("turtle.fuel")
+  local fuel = require("device.fuel")
 
   local function burns(name)
     return fuel.isFuel({ name = name, count = 1 }, 1)
@@ -32,7 +32,7 @@ end)
 
 it("an unknown accepted fuel counts as zero until it has been burned", function()
   local w = scenario.new({ groundY = 64, fuel = 0 })
-  local fuel = require("turtle.fuel")
+  local fuel = require("device.fuel")
 
   w:give(1, "minecraft:coal", 3)
   expect.equal(fuel.inventoryPotential(), 240, "vanilla coal is counted exactly")
@@ -47,7 +47,7 @@ end)
 
 it("canopy litter is dropped rather than hauled home", function()
   scenario.new({ groundY = 64 })
-  local ore = require("turtle.ore")
+  local ore = require("device.ore")
   local isJunk = ore.junkMatcher({})
 
   expect.truthy(isJunk("minecraft:stick"), "sticks")

@@ -20,7 +20,7 @@
 ---
 --- ## The bug this file exists to fix
 ---
---- `apps/miner.lua` runs four coroutines under `parallel.waitForAny`, which
+--- `legacy/apps/miner.lua` runs four coroutines under `parallel.waitForAny`, which
 --- returns when **any** of them finishes. So a heartbeat loop that throws on a
 --- missing modem takes the job down with it, and a turtle halfway down a shaft
 --- stops - not because the work failed, but because *talking about* the work
@@ -33,7 +33,7 @@
 ---
 --- ## It runs the ICOS 1 job code unchanged
 ---
---- `miner/runtime.lua` is what drives a turtle today, it is proven, and the
+--- `legacy/miner/runtime.lua` is what drives a turtle today, it is proven, and the
 --- fleet is running it right now. Rewriting it in the same change that rewrites
 --- supervision and orders would put a fleet in a hole with two untested halves.
 --- So the job service calls it, `control.lua` writes the flags it already reads,
@@ -43,7 +43,7 @@
 ---
 --- ## It does not run yet
 ---
---- Nothing calls `boot`. `src/startup.lua` still starts `apps/miner.lua`, and
+--- Nothing calls `boot`. `src/startup.lua` still starts `legacy/apps/miner.lua`, and
 --- switching it over is the change that alters what a turtle does on power-up -
 --- the one thing in this branch that reaches a running fleet. It waits for an
 --- in-world test rather than riding along with the rest.
@@ -51,8 +51,8 @@
 local agent = require("os.turtle.agent")
 local control = require("os.turtle.control")
 local jobs = require("domain.turtle.jobs")
-local service = require("os.service")
-local supervisor = require("os.supervisor")
+local service = require("os.kernel.service")
+local supervisor = require("os.kernel.supervisor")
 
 local turtleOs = {}
 
@@ -238,7 +238,7 @@ end
 ---
 --- `options.snapshot`, `options.runJob` and `options.runControls` are the seams
 --- where ICOS 1 is plugged in - the entrypoint passes `ctx:snapshot()` and the
---- two `miner/runtime.lua` loops, and a spec passes three functions and no
+--- two `legacy/miner/runtime.lua` loops, and a spec passes three functions and no
 --- turtle. That is the only reason they are parameters rather than requires.
 function turtleOs.boot(ports, options)
   options = options or {}
@@ -262,7 +262,7 @@ function turtleOs.boot(ports, options)
     -- direction, because every mode is idempotent.
     state = options.state or agent.load(ports),
 
-    -- ICOS 1's node record and control flags, untouched. `miner/runtime.lua`
+    -- ICOS 1's node record and control flags, untouched. `legacy/miner/runtime.lua`
     -- reads both and neither knows this file exists.
     node = options.node or {},
     flags = options.flags or {},

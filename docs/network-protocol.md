@@ -3,7 +3,7 @@
 ## Transport
 
 All fleet traffic uses Rednet protocol `ccfleet`. The base hosts hostname `base`.
-`core/net.lua` prefers a wireless modem and falls back to wired for bench testing.
+`legacy/net.lua` prefers a wireless modem and falls back to wired for bench testing.
 Messages are best-effort and must never be required for a turtle to finish or return.
 Base registration is idempotent across modem reconnection. A genuine duplicate `base`
 hostname is logged and retried rather than crashing startup.
@@ -55,7 +55,7 @@ New snapshot fields should be optional on readers because old turtles may not re
 them until updated.
 
 Miners now also listen to each other's `status` broadcasts, not just the base. The
-`world` field is what makes that useful: `turtle/peers.lua` uses it to tell which
+`world` field is what makes that useful: `device/peers.lua` uses it to tell which
 computer is standing in the block ahead, and therefore who has right of way.
 
 ### `mine`

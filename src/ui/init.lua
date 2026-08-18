@@ -18,20 +18,20 @@ require("ui.components.graphics")
 require("ui.components.page")
 require("ui.components.table")
 
-local runtime = require("ui.runtime")
+local runtime = require("ui.core.runtime")
 
 local ui = {
-  anim = require("ui.anim"),
-  buffer = require("ui.buffer"),
-  canvas = require("ui.canvas"),
-  input = require("ui.input"),
-  layout = require("ui.layout"),
-  reactive = require("ui.reactive"),
+  anim = require("ui.core.anim"),
+  buffer = require("ui.core.buffer"),
+  canvas = require("ui.draw.canvas"),
+  input = require("ui.core.input"),
+  layout = require("ui.core.layout"),
+  reactive = require("ui.core.reactive"),
   runtime = runtime,
-  sprite = require("ui.sprite"),
+  sprite = require("ui.draw.sprite"),
   host = require("ui.host"),
   theme = require("ui.theme"),
-  util = require("ui.util"),
+  util = require("ui.core.util"),
 }
 
 ui.tokens = ui.theme.TOKENS

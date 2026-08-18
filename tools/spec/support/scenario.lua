@@ -40,7 +40,7 @@ end
 --- A minimal prospecting job table pointed at one sector of a real mine plan.
 function scenario.mine(created, options)
   options = options or {}
-  local plan = require("mine.plan")
+  local plan = require("domain.mine.plan")
   local normalised = plan.normalise({
     configured = true,
     centreX = options.centreX or 0,
@@ -62,10 +62,10 @@ end
 --- `jobs.rare` loader, so migration behaviour is exercised rather than bypassed.
 function scenario.prospecting(created, options)
   options = options or {}
-  local config = require("core.config")
-  local nav = require("turtle.nav")
-  local plan = require("mine.plan")
-  local rare = require("jobs.rare")
+  local config = require("adapters.cc.config")
+  local nav = require("device.nav")
+  local plan = require("domain.mine.plan")
+  local rare = require("jobs.mining.rare")
 
   local normalised, sector = scenario.mine(created, options)
   local targetY = options.targetY or (created.groundY - 8)
@@ -105,7 +105,7 @@ function scenario.prospecting(created, options)
 
   -- `workKey` is what `site.claim` would have written. Without it the turtle's
   -- own progress reports do not match its cached claim and are silently ignored.
-  config.save(require("mine.site").PATH, {
+  config.save(require("legacy.mine.site").PATH, {
     plan = normalised,
     sector = sector.index,
     frontier = 0,
@@ -142,7 +142,7 @@ function scenario.cycle(created, options)
   local reboots = 0
 
   while true do
-    local rare = require("jobs.rare")
+    local rare = require("jobs.mining.rare")
     local job = rare.load()
     local ctx = options.ctx or scenario.context()
     local outcome = {}

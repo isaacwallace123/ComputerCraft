@@ -8,7 +8,7 @@
 ---
 --- ## The flags belong to ICOS 1 and that is on purpose
 ---
---- `miner/runtime.lua` reads `ctx.control` and it is the code that actually
+--- `legacy/miner/runtime.lua` reads `ctx.control` and it is the code that actually
 --- drives a turtle down a shaft. It is proven, the fleet is running it, and
 --- rewriting it in the same change that rewrites how orders arrive would mean a
 --- fleet in a hole with two untested halves. So this writes the flags the

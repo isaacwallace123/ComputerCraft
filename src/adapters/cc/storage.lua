@@ -32,7 +32,7 @@ function adapter.new()
   --- under a `.tmp` name first, and only then moved over the live file.
   ---
   --- A reboot can still land in the delete/move window, which is why a reader
-  --- that finds no file must also look for `path .. ".tmp"`; `core/config.lua`
+  --- that finds no file must also look for `path .. ".tmp"`; `adapters/cc/config.lua`
   --- does exactly that and this port keeps the same file naming so the two
   --- cannot drift apart while both exist.
   function impl.write(path, text)

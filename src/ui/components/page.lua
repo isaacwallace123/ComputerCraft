@@ -20,7 +20,7 @@
 --- does the dividing - which costs one row instead of one row plus the visual
 --- weight.
 
-local runtime = require("ui.runtime")
+local runtime = require("ui.core.runtime")
 local theme = require("ui.theme")
 
 local T = theme.TOKENS

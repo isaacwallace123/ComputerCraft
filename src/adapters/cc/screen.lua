@@ -35,7 +35,7 @@ function adapter.new(target)
   ---
   --- A monitor is a different shape to a computer, `monitor.setTextScale`
   --- changes it at runtime, and a `term_resize` event arrives after the fact.
-  --- The old `core/ui.lua` made the same choice for the same reason; caching
+  --- The old `legacy/shell/ui.lua` made the same choice for the same reason; caching
   --- here would put a stale width inside the one component that decides how
   --- many characters get written to a real screen.
   function impl.size()

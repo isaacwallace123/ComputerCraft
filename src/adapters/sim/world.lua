@@ -930,7 +930,7 @@ function world:ports()
     --- either way a CC service loop hands control back between messages. This
     --- simulated one used to advance a counter and return, which is fine for a
     --- spec that calls it directly and a hang for one that runs a service under
-    --- `os/supervisor.lua` - the loop spins, `coroutine.resume` never returns,
+    --- `os/kernel/supervisor.lua` - the loop spins, `coroutine.resume` never returns,
     --- and there is nothing a supervisor can do about it from the outside.
     ---
     --- Guarded by `isyieldable` so a spec calling this on the main coroutine,
@@ -971,8 +971,8 @@ end
 --- copy of every table inside it, including its metatables - so a value created
 --- by the old copy fails an identity test in the new one, and does so silently.
 ---
---- `^ui%.` was on this list and had to come off. `ui/reactive.lua` identifies a
---- state object by its metatable; `ui/anim.lua` requires reactive lazily; and a
+--- `^ui%.` was on this list and had to come off. `ui/core/reactive.lua` identifies a
+--- state object by its metatable; `ui/core/anim.lua` requires reactive lazily; and a
 --- spec file holds its own reference from load time. After a world spec dropped
 --- the cache, an animation built through the old runtime asked the *new*
 --- reactive whether its goal was a state object, was told no, and quietly

@@ -45,7 +45,7 @@ log.METHODS = {
 --- The level names, lowercase, matching the method names exactly.
 ---
 --- Stated because it was got wrong once: the CC adapter recovered the level from
---- a formatted line where `core/log.lua` writes it upper-case, and returned that
+--- a formatted line where `adapters/cc/logfile.lua` writes it upper-case, and returned that
 --- - so the Logs page compared "WARN" against "warn", found no warnings, and its
 --- warnings-only filter showed an empty screen. A port that names its values is
 --- a port whose adapters can be checked against something.

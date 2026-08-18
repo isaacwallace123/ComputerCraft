@@ -34,7 +34,7 @@ apps → miner / fleet / jobs → turtle / mine → core
   leaving aliases behind; the turtle-side cache and claim client (`site.lua`) is still
   here. It sits beside `turtle/` because both sides import it.
 - `turtle/` contains hardware primitives and should not know about a particular job.
-  `turtle/access.lua` is the surface-access primitive: block classification, cap
+  `device/access.lua` is the surface-access primitive: block classification, cap
   material selection, and verified placement. It knows what a safe cap is, never when
   to move one — that decision belongs to the job running the route.
 - `jobs/` contains mining behavior and accepts callbacks rather than drawing UI or
@@ -62,8 +62,8 @@ ui/       the framework: cell buffer and diff, 2×3 canvas and sprites, reactive
 ```
 
 `domain/mine/` holds `plan.lua` and `registry.lua`, moved from `mine/` without logic
-changes; `mine/plan.lua` and `mine/registry.lua` remain as aliases until the specs are
-rewritten. `mine/site.lua` has not moved, because it is the turtle-side cache and talks to
+changes; `domain/mine/plan.lua` and `domain/mine/registry.lua` remain as aliases until the specs are
+rewritten. `legacy/mine/site.lua` has not moved, because it is the turtle-side cache and talks to
 the network.
 
 `apps/fleet/view.lua` and `apps/devices/view.lua` are the first screens written on the
@@ -100,7 +100,7 @@ output surface. Every app declares `requiresInput`; unknown apps default to requ
 input, so a new control page cannot leak onto a monitor accidentally.
 
 The `gps` role is a deliberately smaller appliance path. On a stationary computer or
-turtle with a wireless/Ender modem, startup runs only `apps/gps_host.lua` with the
+turtle with a wireless/Ender modem, startup runs only `legacy/apps/gps_host.lua` with the
 coordinates saved in `.gps`. It does not start a desktop, fleet service, miner, or
 Rednet hostname. A held key during boot still reaches update and role recovery tools.
 
@@ -153,8 +153,8 @@ deployment, update, and job-selection commands.
 
 ## Fleet model
 
-`fleet/service.lua` is the only base-side Rednet receiver. It starts at boot, hosts the
-base name, persists every turtle snapshot through `fleet/roster.lua`, renews leases,
+`legacy/fleet/service.lua` is the only base-side Rednet receiver. It starts at boot, hosts the
+base name, persists every turtle snapshot through `legacy/fleet/roster.lua`, renews leases,
 answers mine claims, refreshes status, and applies conservative automation. Fleet and
 Devices are views over that state, so neither app must remain open. Touching a Fleet
 row opens Devices focused on that computer ID.
@@ -164,12 +164,12 @@ the turtle's own requirement, retries setup preflight and depot-full unloading, 
 logs heartbeat transitions. It never auto-restarts an intentional recall, completed
 job, unknown error, or stuck route. Rolling updates are available but opt-in.
 
-`fleet/coordinator.lua` performs multi-turtle assignments. The coordinated quarry
+`legacy/fleet/coordinator.lua` performs multi-turtle assignments. The coordinated quarry
 currently selects connected parked miners, divides the world rectangle into balanced
 non-overlapping cell ranges, and sends one atomic assignment to each worker.
 
-The service answers shared-mine `mine` requests inline through `fleet/coordinator.lua`,
-which leases prospecting sectors and records their frontiers in `mine/registry.lua`.
+The service answers shared-mine `mine` requests inline through `legacy/fleet/coordinator.lua`,
+which leases prospecting sectors and records their frontiers in `domain/mine/registry.lua`.
 Handling is synchronous and short because a turtle waits about three seconds before
 falling back to its cached plan.
 

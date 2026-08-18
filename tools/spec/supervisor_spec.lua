@@ -8,8 +8,8 @@
 local expect = require("support.expect")
 local it = require("support.spec").it
 
-local service = require("os.service")
-local supervisor = require("os.supervisor")
+local service = require("os.kernel.service")
+local supervisor = require("os.kernel.supervisor")
 
 --- A clock the test drives by hand.
 local function fakeClock()

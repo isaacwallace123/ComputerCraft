@@ -55,10 +55,10 @@ it("the cap is reused rather than a second hole opened", function()
   local w, sector = newMiner()
   expect.truthy(scenario.cycle(w), "first cycle")
 
-  local rare = require("jobs.rare")
+  local rare = require("jobs.mining.rare")
   local job = rare.load()
   rare.restart(job)
-  require("turtle.nav").setHome()
+  require("device.nav").setHome()
 
   expect.truthy(scenario.cycle(w), "second cycle")
   expect.truthy(headSealed(w, sector, GROUND), "still capped after a second trip")
@@ -139,7 +139,7 @@ it("a head under water is relocated along the trunk instead of parking", functio
   expect.truthy(ok, "cycle ran: " .. tostring(outcome))
   expect.truthy(outcome.ok, "cycle succeeded: " .. tostring(outcome.reason))
 
-  local rare = require("jobs.rare")
+  local rare = require("jobs.mining.rare")
   local job = rare.load()
   expect.truthy(math.abs(job.shaftOffset) >= 2, "head moved clear of the pond")
 

@@ -7,14 +7,14 @@
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
-local ui = require("core.ui")
-local net = require("core.net")
-local boot = require("core.boot")
-local sound = require("core.sound")
-local device = require("core.device")
-local config = require("core.config")
-local util = require("core.util")
-local version = require("core.version")
+local ui = require("legacy.shell.ui")
+local net = require("legacy.net")
+local boot = require("legacy.boot")
+local sound = require("legacy.sound")
+local device = require("legacy.device")
+local config = require("adapters.cc.config")
+local util = require("lib.util")
+local version = require("lib.version")
 
 local NODE_PATH = ".node"
 local GPS_PATH = ".gps"

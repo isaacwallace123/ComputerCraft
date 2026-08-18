@@ -14,16 +14,16 @@ must stop requiring deleted modules before they are removed from the manifest.
 | --- | --- | --- |
 | `.node` | install/startup/miner context | role, label, selected job, parked state and reason, auto-update |
 | `.gps` | install/GPS host | absolute X/Y/Z advertised by a device with the `gps` role |
-| `.nav` | `turtle/nav.lua` | relative position/facing, movement statistics, world origin and heading |
-| `.fleet` | `fleet/roster.lua` | paired device snapshots and last-seen times |
-| `.fleet-policy` | `fleet/policy.lua` | unattended recovery, refresh, sync, and update policy |
+| `.nav` | `device/nav.lua` | relative position/facing, movement statistics, world origin and heading |
+| `.fleet` | `legacy/fleet/roster.lua` | paired device snapshots and last-seen times |
+| `.fleet-policy` | `legacy/fleet/policy.lua` | unattended recovery, refresh, sync, and update policy |
 | `.fleet-log` | controller service | recent authoritative base log mirrored to a Pocket controller |
 | `.fleet-responses` | controller service | short-lived request-correlated operation replies |
-| `.mine` | `mine/registry.lua` | base mine plan, leases, and per-profile/depth frontiers |
-| `.site` | `mine/site.lua` | turtle's cached mine plan and most recent sector claim |
+| `.mine` | `domain/mine/registry.lua` | base mine plan, leases, and per-profile/depth frontiers |
+| `.site` | `legacy/mine/site.lua` | turtle's cached mine plan and most recent sector claim |
 | `.update` | bootstrap/updater | GitHub user, repo, branch, source path, optional token |
 | `.update-result` | updater/runtime | last update success or failure details |
-| `.log` | `core/log.lua` | capped persistent base log |
+| `.log` | `adapters/cc/logfile.lua` | capped persistent base log |
 | `.quarry` | quarry job | world box, worker partition, layer/cell progress, delivery count |
 | `.expedition` | rare job | legacy-compatible rare prospecting settings and progress |
 | `.fuel-hunt` | fuel job | coal prospecting settings and progress |
@@ -33,7 +33,7 @@ must stop requiring deleted modules before they are removed from the manifest.
 
 ## Configuration behavior
 
-`core/config.lua` copies defaults and then overlays saved top-level fields. It is a
+`adapters/cc/config.lua` copies defaults and then overlays saved top-level fields. It is a
 shallow merge. Nested tables are replaced, not recursively merged. Prefer flat saved
 fields for values that need forward-compatible defaults.
 

@@ -61,7 +61,7 @@ it("a position is kept out of the snapshot so it can outlive one", function()
 end)
 
 it("a heartbeat with no position does not erase the one already known", function()
-  -- The bug this module exists for. `fleet/roster.lua` replaces the whole
+  -- The bug this module exists for. `legacy/fleet/roster.lua` replaces the whole
   -- record, so a turtle that reboots underground without its origin reports
   -- `world = nil` and the base overwrites the last position it knew with
   -- nothing. The information arrived, and the next message destroyed it.
