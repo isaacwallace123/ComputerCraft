@@ -119,6 +119,25 @@ apply. Mine Control actions on the handheld execute at the base, so mine plans, 
 leases, and coordinated quarry assignments remain authoritative rather than becoming
 a second local copy.
 
+## Running ICOS 2 in a test world
+
+`startup.lua` still boots ICOS 1, and will until the switch is tested in a world. To run an
+ICOS 2 machine by hand:
+
+    icos2 status      build the machine, print which services start, stop
+    icos2             boot the role in .node and run it until Ctrl-T
+    icos2 server      force a role, for a machine that has not been set up
+
+Nothing is written that ICOS 1 reads, so a reboot puts the machine back exactly as it was.
+`.mine` is shared with ICOS 1 deliberately - the shape is identical, so leases and surveyed
+shaft heads survive in both directions. `.fleet2`, `.desired` and `.policy2` are new names
+precisely so that a rollback never reads them.
+
+Start with `status`. The failures worth finding first are all in the wiring - no wireless
+modem, no saved position, a role with no operating system - and they are discovered when
+the ports are built and the services registered, which is what `status` does and what
+reading a config file would not.
+
 ## Testing in a local world
 
 The fastest loop by a wide margin: point a singleplayer computer's filesystem straight at

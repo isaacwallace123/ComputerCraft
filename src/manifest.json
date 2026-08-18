@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T08:09:29-04:00",
+    "generated":  "2026-08-18T08:24:57-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -7,6 +7,7 @@
                   "adapters/cc/input.lua",
                   "adapters/cc/locator.lua",
                   "adapters/cc/screen.lua",
+                  "adapters/cc/serialise.lua",
                   "adapters/cc/storage.lua",
                   "adapters/cc/transport.lua",
                   "adapters/sim/input.lua",
@@ -55,6 +56,7 @@
                   "fleet/policy.lua",
                   "fleet/roster.lua",
                   "fleet/service.lua",
+                  "icos2.lua",
                   "install.lua",
                   "jobs/common/safety.lua",
                   "jobs/fuel_hunt.lua",
@@ -72,6 +74,7 @@
                   "miner/context.lua",
                   "miner/network.lua",
                   "miner/runtime.lua",
+                  "os/boot.lua",
                   "os/client/main.lua",
                   "os/miner/agent.lua",
                   "os/miner/control.lua",
@@ -95,6 +98,7 @@
                   "ports/input.lua",
                   "ports/locator.lua",
                   "ports/screen.lua",
+                  "ports/serialise.lua",
                   "ports/storage.lua",
                   "ports/transport.lua",
                   "startup.lua",

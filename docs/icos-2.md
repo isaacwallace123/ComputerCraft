@@ -694,6 +694,43 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 5: booting it, without changing what a machine does on power-up
+
+`os/boot.lua` is the one file in ICOS 2 allowed to know both that CC exists and that there
+are four operating systems. Everything below it knows one or the other and never both,
+which is what makes the tree testable: `domain/` knows neither, `ports/` and `os/` know the
+shape without the implementation, `adapters/cc/` knows CC without knowing what anybody does
+with it.
+
+**The event loop is here, not in the supervisor.** `Supervisor:step(event)` resumes services
+and returns; a supervisor that pulled events could not be driven by a spec. So the
+`os.pullEventRaw` loop lives in the file already allowed to name CC globals, and the
+supervisor stays a pure state machine over coroutines. `pullEventRaw` rather than
+`pullEvent`, so terminate reaches the services and they are stopped in order rather than
+having the loop pulled out from under them.
+
+The loop stops on three things: terminate, the miner's `halt` flag — checked here because
+stopping is the one thing a service cannot do to itself, since a coroutine that returns is
+a fault — and **every service having given up**. That last check is `running() == 0` rather
+than `healthy()`, and the reason is worth stating: both of a client's services are
+non-critical, correctly, so a client that has lost both its server and its monitor reports
+*healthy* while doing nothing at all. Only the running count catches it.
+
+`serialise` finally became a real port. Every service had been using `ports.serialise` since
+phase 4 and it had no definition and no adapter — the composition roots could not have been
+wired without it. `decode` never raises, because a caller reading a file it did not write
+(which is every caller: a previous version, a previous build, a crash mid-write) must be
+able to ask "is this a table?" without a `pcall`. `encode` does raise, because a value that
+cannot be serialised is a bug in the caller, and a silent failure there is a file that
+quietly stops updating and is discovered weeks later.
+
+`src/icos2.lua` runs a machine by hand. `startup.lua` still boots ICOS 1 — switching it over
+alters what a live fleet does when the chunk loads and is the last change to make. Until
+then, `icos2` in a test world makes the machine an ICOS 2 machine until Ctrl-T, writing
+nothing ICOS 1 reads, so a reboot puts it back. `icos2 status` builds the machine, steps it
+once and prints its health: the interesting failures are all in the wiring, and a status
+command that read a file would report a healthy machine that cannot start.
+
 ### Phase 5: the client and the mobile
 
 `os/client/main.lua` is the other half of the `fleet` split. A client has a screen and a
