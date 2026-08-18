@@ -313,16 +313,31 @@ Built (**bold**) and planned:
 **Data** — **`Text`**, **`Heading`**, **`Muted`**, **`Table`**, **`Meter`**, **`Badge`**,
 `List`, `Sparkline`, `Gauge`, `KeyValue`.
 
-**Input** — **`Button`**, **`Stepper`**, `Toggle`, `TextField`, `Select`, `Menu`. Buttons
-take clicks, touches, focus and keyboard activation; `Stepper` is a labelled number with
-minus and plus, which is the whole of the fleet's configuration UI. The rest wait for a
-screen that needs them. `TextField` is the one with real work behind it — a cursor, a
-selection and an edit model — and nothing in the fleet UI has asked for it yet.
+**Input** — **`Button`**, **`Stepper`**, **`Select`**, **`Toggle`**, `TextField`, `Menu`.
+Buttons take clicks, touches, focus and keyboard activation. The other three are one family
+and look like it: a label that takes the slack, a value in `accent`, and small ghost
+controls on the right. Between them they cover every setting the fleet has — numbers, a job
+from a fixed list, and the five policy booleans.
 
-A `Stepper` is **one tab stop**, not three: the row is focusable and its two buttons are
-deliberately not. A person with a mouse presses the buttons; a person on a turtle tabs to
-the row and uses left and right. Making the buttons focusable would put three stops on
-every setting, so a page of six fields would take eighteen presses to cross.
+`TextField` is the one with real work behind it — a cursor, a selection and an edit model —
+and nothing has asked for it yet. `Menu` likewise.
+
+Three rules the family shares, each of them a decision:
+
+- **One tab stop, not three.** The row is focusable and its two arrows deliberately are
+  not. A person with a mouse presses them; a person on a turtle tabs to the row and uses
+  left and right. Otherwise a page of six settings would take eighteen presses to cross.
+- **`Select` cycles rather than dropping down.** A dropdown needs somewhere to drop: on 51
+  columns it covers the thing being configured, and on a monitor it is a floating panel a
+  touch can miss with no hover to hint that it opened. Four or five options is the working
+  limit; past that the list wants a page of its own.
+- **`Toggle` says "on" or "off".** Not a two-cell switch whose states differ by which end
+  is lit — that does not read across a room, and on a non-advanced terminal both ends are
+  the same grey. The word carries it and the colour reinforces it, which is §2's rule about
+  never encoding meaning in colour alone.
+
+All three report intent through `OnChange` and never write their own value, because in the
+fleet a setting change is a message to a parked turtle that may refuse it.
 
 **Feedback** — `Toast`, `Spinner`, `Skeleton`, `Empty`, `Banner`.
 

@@ -63,6 +63,13 @@ local function field(scope, label, value, tone)
   })
 end
 
+--- The jobs a turtle can be switched to, in the order the picker cycles.
+---
+--- Copied from `src/apps/devices.lua`'s `JOB_ORDER` rather than derived, because
+--- which jobs exist is a fleet fact and this is a view. When the two diverge the
+--- turtle is the authority: it refuses a job it does not have.
+devices.JOBS = { "quarry", "rare", "fuel", "hollow", "resources" }
+
 --- The default configuration fields, when a snapshot does not carry its own.
 ---
 --- Real turtles advertise `settingFields` in their heartbeat, because which
@@ -103,8 +110,8 @@ end
 --- display-only monitor mounts the same page with none of them and there is no
 --- code path that could put a deploy button on a wall. D020's `requiresInput`
 --- boundary, expressed as an absent argument rather than as a branch. The
---- settings editor follows the same rule: no `onSetting`, no editor and no
---- button to reach it.
+--- settings editor follows the same rule: without `onSetting` or `onJob` there is
+--- no editor and no button to reach one.
 function devices.build(scope, options)
   local roster = options.devices
   local selected = options.selected
@@ -282,6 +289,32 @@ function devices.build(scope, options)
         end),
       }),
       scope:Spacer({ Height = 1 }),
+
+      -- The job picker, which in `src/apps/devices.lua` is a separate view
+      -- reached by a separate action that cycles on each press. It is a setting
+      -- like any other, so here it is one, at the top of the list where it
+      -- belongs: every field below it only means anything in the context of the
+      -- job that reads them.
+      scope:Select({
+        Label = "job",
+        Options = options.jobs or devices.JOBS,
+        ValueWidth = 10,
+        Value = about(function(device)
+          return device.job
+        end, nil),
+        Disabled = scope:Computed(function(use)
+          local device = use(current)
+          return device == nil or not devices.configurable(device)
+        end),
+        OnChange = options.onJob and function(job)
+          local device = current:get()
+          if device then
+            options.onJob(device, job)
+          end
+        end or nil,
+      }),
+      scope:Spacer({ Height = 1 }),
+
       scope:Column({ Gap = 0, Children = fieldRows }),
     },
   })
@@ -331,7 +364,7 @@ function devices.build(scope, options)
 
   -- The panel switch. Only offered when the screen supplied a way to persist a
   -- change; a display-only surface gets neither the button nor the editor.
-  if options.onSetting then
+  if options.onSetting or options.onJob then
     actions[#actions + 1] = scope:Button({
       Text = scope:Computed(function(use)
         return use(editing) and "Detail" or "Settings"

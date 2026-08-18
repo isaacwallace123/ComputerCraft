@@ -57,7 +57,11 @@ local function roster(tick)
     devices[index] = {
       id = index,
       label = ("miner-%d"):format(index),
-      phase = index == 4 and "no cap block"
+      settings = { targetY = -59, veinBudget = 64, veinRadius = 8, scanEvery = 100 },
+      -- Every fifth turtle is parked, because configuration requires a parked
+      -- turtle and a settings editor nothing can reach demonstrates nothing.
+      phase = (index == 4 and "no cap block")
+        or (index % 5 == 0 and "parked")
         or PHASES[((index + (moving and tick or 0)) % #PHASES) + 1],
       job = index % 2 == 0 and "rare" or "resources",
       fuel = math.max(400, 90000 - index * 5200 - (moving and tick * 137 or 0)),
@@ -104,6 +108,32 @@ pages[2] = {
       onDeploy = function() end,
       onRecall = function() end,
       onStop = function() end,
+      -- Applied optimistically into the fake roster, which is what the real
+      -- screen does once a turtle acknowledges. Enough to make the editor
+      -- respond on hardware rather than look inert.
+      onSetting = function(device, key, value)
+        local list, copy = state.devices:get(), {}
+        for index, entry in ipairs(list) do
+          copy[index] = entry
+          if entry.id == device.id then
+            local changed = {}
+            for name, held in pairs(entry) do
+              changed[name] = held
+            end
+            local settings = {}
+            for name, held in pairs(entry.settings or {}) do
+              settings[name] = held
+            end
+            settings[key] = value
+            changed.settings = settings
+            copy[index] = changed
+          end
+        end
+        -- A new list, not a mutated one: `Value:set` compares by identity, so
+        -- editing the table in place would change nothing anybody could see.
+        state.devices:set(copy)
+      end,
+      onJob = function() end,
     })
   end,
 }

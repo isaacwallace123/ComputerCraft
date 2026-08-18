@@ -731,7 +731,7 @@ local function editable(phase)
   local devicesView = require("apps.devices.view")
   local screen = recorder.new(51, 19)
   local scope = ui.scoped()
-  local state = { writes = {} }
+  local state = { writes = {}, jobs = {} }
   local root = ui.mount({
     scope = scope,
     screen = screen.port,
@@ -755,6 +755,9 @@ local function editable(phase)
         onSelect = function() end,
         onSetting = function(device, key, value)
           state.writes[#state.writes + 1] = { id = device.id, key = key, value = value }
+        end,
+        onJob = function(device, job)
+          state.jobs[#state.jobs + 1] = { id = device.id, job = job }
         end,
       })
     end,
@@ -817,8 +820,10 @@ it("stepping a setting reports the intent and does not write it", function()
   root:handle("key", KEY.enter, false)
   root:render()
 
-  -- Tab to the first stepper and press right. One tab stop per setting, not
-  -- three: the minus and plus buttons are deliberately not focusable.
+  -- Two tabs: the job picker is the first stop in the editor, and the steppers
+  -- follow it. One tab stop per setting, not three - the arrows beside each are
+  -- deliberately not focusable.
+  root:handle("key", KEY.tab, false)
   root:handle("key", KEY.tab, false)
   root:handle("key", KEY.right, false)
 
@@ -857,8 +862,10 @@ it("a working turtle cannot be reconfigured", function()
   end
 
   root:handle("key", KEY.tab, false)
+  root:handle("key", KEY.tab, false)
   root:handle("key", KEY.right, false)
   expect.equal(#state.writes, 0, "and nothing was changed")
+  expect.equal(#state.jobs, 0, "including the job")
   root:destroy()
 end)
 
@@ -899,7 +906,104 @@ it("a composite reads a state prop through peek, not as a truth value", function
   root:render()
 
   root:handle("key", KEY.tab, false)
+  root:handle("key", KEY.tab, false)
   root:handle("key", KEY.right, false)
   expect.equal(#state.writes, 1, "a Computed reading false does not disable the control")
+  root:destroy()
+end)
+
+it("the job picker cycles through the fleet's jobs and wraps", function()
+  -- `src/apps/devices.lua` changes a job by cycling `JOB_ORDER` on each press,
+  -- and a `Select` is that shape rather than a dropdown: a dropdown needs
+  -- somewhere to drop, and on a monitor it is a floating panel a touch can miss
+  -- with no hover to hint it opened.
+  local devicesView = require("apps.devices.view")
+  local root, screen, state = editable("parked")
+  local ring = root:focusRing()
+  root:focus(ring[#ring])
+  root:handle("key", KEY.enter, false)
+  root:render()
+
+  -- The seeded device is on "rare", the second of five.
+  root:handle("key", KEY.tab, false)
+  root:handle("key", KEY.right, false)
+  expect.equal(state.jobs[1].job, devicesView.JOBS[3], "forward one")
+
+  root:handle("key", KEY.left, false)
+  root:handle("key", KEY.left, false)
+  expect.equal(state.jobs[3].job, devicesView.JOBS[1], "and back two")
+
+  -- The picker reports intent and never writes, so the record still says "rare"
+  -- and every press is computed from it. Going left from the first option wraps
+  -- to the last rather than sticking.
+  root:handle("key", KEY.left, false)
+  expect.equal(state.jobs[4].job, devicesView.JOBS[1], "still computed from the unchanged record")
+  root:destroy()
+end)
+
+it("a toggle flips from either arrow, because it has no direction", function()
+  local screen = recorder.new(30, 5)
+  local scope = ui.scoped()
+  local seen = {}
+  local root = ui.mount({
+    scope = scope,
+    screen = screen.port,
+    build = function(s)
+      local on = s:Value(false)
+      return s:Column({
+        Children = {
+          s:Toggle({
+            Label = "auto recovery",
+            Value = on,
+            OnChange = function(value)
+              seen[#seen + 1] = value
+              on:set(value)
+            end,
+          }),
+        },
+      })
+    end,
+  })
+  root:render()
+
+  root:handle("key", KEY.tab, false)
+  root:handle("key", KEY.right, false)
+  expect.equal(seen[1], true, "right turns it on")
+  root:handle("key", KEY.left, false)
+  expect.equal(seen[2], false, "and left turns it off again, rather than doing nothing")
+
+  root:render()
+  expect.contains(screen.rowText(1), "off", "the word carries the state, not only the colour")
+  root:destroy()
+end)
+
+it("a select with no options does nothing rather than erroring", function()
+  local screen = recorder.new(30, 5)
+  local scope = ui.scoped()
+  local changes = 0
+  local root = ui.mount({
+    scope = scope,
+    screen = screen.port,
+    build = function(s)
+      return s:Column({
+        Children = {
+          s:Select({
+            Label = "job",
+            Options = {},
+            Value = nil,
+            OnChange = function()
+              changes = changes + 1
+            end,
+          }),
+        },
+      })
+    end,
+  })
+  root:render()
+
+  root:handle("key", KEY.tab, false)
+  root:handle("key", KEY.right, false)
+  expect.equal(changes, 0, "nothing to cycle to")
+  expect.contains(screen.rowText(1), "none", "and it says so")
   root:destroy()
 end)

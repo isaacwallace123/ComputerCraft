@@ -174,6 +174,62 @@ runtime.define({
 -- Stepper
 ---------------------------------------------------------------------------
 
+--- The shape the three settings controls share.
+---
+--- `Stepper`, `Select` and `Toggle` are one family and look like it: a label
+--- that takes the slack, a value in `accent`, and small ghost controls on the
+--- right. Written once so that a settings page reads as one thing rather than as
+--- three components that happen to be adjacent - which is the entire argument
+--- for a design system over a widget collection.
+---
+--- **One tab stop, two ways to use it.** The row is focusable and the buttons
+--- are deliberately not. A person with a mouse presses them; a person on a
+--- turtle tabs to the row and uses left and right. Focus still lands on the row
+--- when a button is clicked, because `Focusable` bubbles: the button answers
+--- falsy and the row above it answers true.
+---
+--- Making the buttons focusable would put three stops on every setting, so a
+--- page of six would take eighteen presses to cross.
+local function controlRow(scope, props, value, adjust, glyphs)
+  local function onKey(_, event)
+    local KEY = require("ui.input").KEY
+    if event.key == KEY.left then
+      return adjust(-1)
+    end
+    if event.key == KEY.right then
+      return adjust(1)
+    end
+    return false
+  end
+
+  local function arrow(text, direction)
+    return scope:Button({
+      Text = text,
+      Size = "sm",
+      Variant = "ghost",
+      Focusable = false,
+      Disabled = props.Disabled,
+      OnClick = function()
+        return adjust(direction)
+      end,
+    })
+  end
+
+  return scope:Row(runtime.layoutProps(props, {
+    Height = 1,
+    Gap = 1,
+    Focusable = true,
+    Disabled = props.Disabled,
+    OnKey = onKey,
+    Children = {
+      scope:Muted({ Text = props.Label or "", Grow = 1 }),
+      value,
+      arrow(glyphs[1], -1),
+      arrow(glyphs[2], 1),
+    },
+  }))
+end
+
 --- A labelled number with minus and plus.
 ---
 --- The whole of the fleet's configuration UI is this: vein budget, scan
@@ -182,16 +238,6 @@ runtime.define({
 --- positions - which is the "does this fit on a pocket computer" arithmetic
 --- section 1 of docs/ui-framework.md says the framework exists to delete. There
 --- is none of it here; the label grows and the rest is fixed.
----
---- ## One tab stop, two ways to use it
----
---- The row is focusable and the two buttons are deliberately not. A person with
---- a mouse presses the buttons; a person on a turtle tabs to the row and uses
---- left and right. Making the buttons focusable would put three stops on every
---- setting, so a page of six fields would take eighteen presses to cross.
----
---- Clicking a button still focuses the stepper, because `Focusable` bubbles: the
---- button answers falsy and the row above it answers true.
 ---
 --- `Value` is read for display and `OnChange` is the intent. The stepper never
 --- writes the value itself, because in the real app changing a setting sends a
@@ -213,6 +259,7 @@ runtime.compose("Stepper", function(scope, props)
     if reactive.peek(props.Disabled) then
       return false
     end
+
     local current = tonumber(reactive.peek(props.Value)) or 0
     local wanted = current + direction * step
     if props.Min and wanted < props.Min then
@@ -230,58 +277,139 @@ runtime.compose("Stepper", function(scope, props)
     return true
   end
 
-  -- Structural properties belong to the caller, so they are forwarded onto the
-  -- row this composite builds rather than being silently dropped.
-  return scope:Row(runtime.layoutProps(props, {
-    Height = 1,
-    Gap = 1,
-    -- Focusability follows the same rule: `Disabled` may be a state, so the
-    -- node takes it as one and lets the binding keep it current. The ring is
-    -- rebuilt on every keypress precisely so this can change underneath it.
-    Focusable = true,
-    Disabled = props.Disabled,
-    OnKey = function(_, event)
-      local KEY = require("ui.input").KEY
-      if event.key == KEY.left then
-        return adjust(-1)
-      end
-      if event.key == KEY.right then
-        return adjust(1)
-      end
+  local value = scope:Text({
+    Width = props.ValueWidth or 6,
+    TextAlign = "right",
+    Text = scope:Computed(function(use)
+      return tostring(use(props.Value) or 0)
+    end),
+    Color = scope:Computed(function(use)
+      return use(props.Disabled) and T.mutedFg or T.accent
+    end),
+  })
+
+  return controlRow(scope, props, value, adjust, { "-", "+" })
+end)
+
+---------------------------------------------------------------------------
+-- Select
+---------------------------------------------------------------------------
+
+--- One of a fixed list, cycled rather than dropped down.
+---
+--- `src/apps/devices.lua` changes a turtle's job by cycling through `JOB_ORDER`
+--- on each press, and that is the right shape here rather than a shortcut it
+--- took. A dropdown needs somewhere to drop: on a 51-column screen it covers the
+--- thing being configured, and on a monitor it is a floating panel a touch can
+--- miss entirely, with no hover to hint that it opened. Cycling is
+--- discoverable, needs no space, and works identically on all three surfaces.
+---
+--- The cost is that a long list is tedious. Four or five options is the working
+--- limit; past that the list wants a page of its own.
+runtime.compose("Select", function(scope, props)
+  props = props or {}
+
+  local function adjust(direction)
+    if reactive.peek(props.Disabled) then
       return false
-    end,
-    Children = {
-      scope:Muted({ Text = props.Label or "", Grow = 1 }),
-      scope:Text({
-        Text = scope:Computed(function(use)
-          return tostring(use(props.Value) or 0)
-        end),
-        Width = props.ValueWidth or 6,
-        TextAlign = "right",
-        Color = scope:Computed(function(use)
-          return use(props.Disabled) and T.mutedFg or T.accent
-        end),
-      }),
-      scope:Button({
-        Text = "-",
-        Size = "sm",
-        Variant = "ghost",
-        Focusable = false,
-        Disabled = props.Disabled,
-        OnClick = function()
-          return adjust(-1)
-        end,
-      }),
-      scope:Button({
-        Text = "+",
-        Size = "sm",
-        Variant = "ghost",
-        Focusable = false,
-        Disabled = props.Disabled,
-        OnClick = function()
-          return adjust(1)
-        end,
-      }),
-    },
-  }))
+    end
+    local list = reactive.peek(props.Options) or {}
+    if #list == 0 then
+      return false
+    end
+
+    local current = reactive.peek(props.Value)
+    local index = 1
+    for position, option in ipairs(list) do
+      if option == current then
+        index = position
+        break
+      end
+    end
+
+    -- Wraps, like the focus ring and for the same reason: a person cycling a
+    -- four-item list should not have to know which end they are at, and a
+    -- monitor touch has only the two buttons to work with.
+    local wanted = list[(index - 1 + direction) % #list + 1]
+    if wanted == current then
+      return false
+    end
+    if props.OnChange then
+      props.OnChange(wanted)
+    end
+    return true
+  end
+
+  local value = scope:Text({
+    Width = props.ValueWidth or 10,
+    TextAlign = "right",
+    Text = scope:Computed(function(use)
+      local current = use(props.Value)
+      if current == nil then
+        return props.Empty or "none"
+      end
+      return tostring(current)
+    end),
+    Color = scope:Computed(function(use)
+      return use(props.Disabled) and T.mutedFg or T.accent
+    end),
+  })
+
+  return controlRow(scope, props, value, adjust, { "<", ">" })
+end)
+
+---------------------------------------------------------------------------
+-- Toggle
+---------------------------------------------------------------------------
+
+--- A boolean, shown as a word on a coloured chip.
+---
+--- The five fleet policy flags are these: auto-recovery enabled, resume after
+--- refuel, retry the depot, retry setup preflight, update parked turtles. Every
+--- one of them changes what a fleet does unattended, so the state has to be
+--- readable across a room - which rules out the usual switch drawn from two
+--- cells, where on and off differ by which end is lit and neither reads at
+--- distance.
+---
+--- So it says "on" or "off". `accent` when on, recessed when off, and the word
+--- carries it on a non-advanced terminal where both are grey - see
+--- docs/ui-design.md on never encoding meaning in colour alone.
+---
+--- Left and right both flip it rather than one meaning on and the other off. A
+--- toggle has no direction, and mapping the two arrows onto two states would
+--- make repeated presses do nothing half the time.
+runtime.compose("Toggle", function(scope, props)
+  props = props or {}
+
+  local function adjust()
+    if reactive.peek(props.Disabled) then
+      return false
+    end
+    if props.OnChange then
+      props.OnChange(not reactive.peek(props.Value))
+    end
+    return true
+  end
+
+  local value = scope:Text({
+    Width = 5,
+    TextAlign = "center",
+    Text = scope:Computed(function(use)
+      return use(props.Value) and "on" or "off"
+    end),
+    Color = scope:Computed(function(use)
+      if use(props.Disabled) then
+        return T.mutedFg
+      end
+      return use(props.Value) and T.accentFg or T.mutedFg
+    end),
+    Background = scope:Computed(function(use)
+      if use(props.Disabled) then
+        return T.muted
+      end
+      return use(props.Value) and T.accent or T.muted
+    end),
+  })
+
+  return controlRow(scope, props, value, adjust, { "<", ">" })
 end)
