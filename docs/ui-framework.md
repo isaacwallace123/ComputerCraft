@@ -460,6 +460,60 @@ Three results are worth reading beyond the pass mark:
 - **The dashboard update is 11 calls for 171 characters** — one per changed row, spanning
   first change to last. The naive per-cell renderer would have emitted somewhere near 171.
 
+### Against Basalt 2
+
+[Basalt](https://github.com/Pyroxenium/Basalt2) is the established UI framework for
+CC: Tweaked and the obvious thing to be measured against. `.\tools\compare.ps1` runs one
+identical dashboard workload through both renderer designs and counts what each sends to
+the terminal. Basalt's side is a faithful reimplementation of its published
+`src/render.lua`; it is the **renderer only**, not the framework.
+
+|  | ICOS blits | Basalt 2 blits | ICOS chars | Basalt 2 chars |
+| --- | ---: | ---: | ---: | ---: |
+| Idle, nothing changed | 0 | 0 | 0 | 0 |
+| **One label changes** | **1** | **81** | **1** | **13,284** |
+| Dashboard update, only changed cells written | 11 | 21 | 171 | 208 |
+| **Page repaints itself, same result** | **0** | **81** | **0** | **13,284** |
+| Full repaint, everything differs | 81 | 81 | 13,284 | 13,284 |
+
+**The two designs tie at both extremes and diverge in the middle, which is where a
+dashboard lives.** Nothing-changed is free in both, because both skip the work when no
+element reports a change. Everything-changed costs 81 calls in both, because that is the
+floor — you cannot repaint 81 rows in fewer than 81 blits. The ceiling and the floor are
+the same. All of the difference is in the ordinary case.
+
+The cause is one design choice: **Basalt's buffer records where it was written to; ours
+records what changed.** `Render:addDirtyRect` is called on every write, unconditionally,
+and there is no front buffer to compare against — so a row repainted with the text it
+already had is a row that gets sent. We keep the previously-presented row and compare, so
+it is not.
+
+That compounds with a second choice. `BaseElement:updateRender` walks up the parent chain
+and sets `_renderUpdate` on the **root frame**, so changing one property redraws the entire
+visible tree. Every one of those redraws is a write, every write is a rectangle, and no
+rectangle knows it is identical to what is already on screen. Hence row two: one changed
+label, 81 calls, 13,284 characters — to put one character on a monitor.
+
+The sharpest part is that Basalt 2 *has* the information to avoid this. Its property system
+knows which property changed and carries a per-property `canTriggerRender` flag. It then
+discards that precision at the last step by invalidating the root instead of the node.
+**That is the mistake to not repeat in phase 2**, and it is easy to repeat, because
+invalidating upwards is the simplest thing that works.
+
+Two smaller notes on the rectangle approach, recorded because someone will eventually
+propose replacing our row spans with it:
+
+- Rectangles lose to row spans even when the caller is careful. Row three of the table is
+  the case where only genuinely-changed cells are written: 21 rectangles, one per write,
+  because rectangles on different rows never overlap and so never merge. Our row spans
+  coalesce those same writes into 11.
+- The merge is single-pass and grows to the bounding box: a rectangle that merges is not
+  re-tested against the ones before it, so overlapping rectangles can survive into the
+  emit and blit the same cells twice; and two small changes that each overlap a third
+  rectangle become one rectangle covering everything between them.
+
+See §16 for what this does and does not mean, and D028 for why a changed row is one span.
+
 ---
 
 ## 13. The showcase: Blackjack
@@ -492,7 +546,7 @@ Not on Server, and not on a turtle.
 | # | Phase | Delivers | |
 | --- | --- | --- | --- |
 | 1 | `ports/screen`, `ui/buffer`, diff + blit, bench | Flicker-free painting, measured | **done** |
-| 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app (Devices) on it | |
+| 2 | `ui/reactive` + `ui/layout` + `ui/runtime` + core components | Rebuild one existing app (Devices) on it | **next** |
 | 3 | `ui/input`, focus, gestures | Full interaction parity with today | |
 | 4 | `Spring` / `Tween` + transitions | Motion, frame loop gated on activity | |
 | 5 | `ui/canvas` + sprites + theming | Imagery and real palettes | |
@@ -509,6 +563,14 @@ Phase 2 rebuilding **Devices specifically** is deliberate: it is the densest exi
 screen, with a list, a detail view, a settings editor, and scrolling. If it does not come
 out simpler than the current version, the framework is not earning its place and the plan
 should be revisited before phase 3.
+
+**Phase 2 has one hard constraint, and it is the whole reason this framework exists.**
+A `:set()` must mark the **node** paint-dirty or layout-dirty, never the root. Invalidating
+upwards to the frame is the simplest thing that works, it is what Basalt 2 does, and §12
+measures what it costs: one changed label becomes 81 blits instead of one. `Value`,
+`Computed`, and `Observer` already know which property changed; the binding must carry that
+down to a region, and `tools/compare.ps1` must still show the gap afterwards. If phase 2
+lands and the comparison has closed, phase 2 is wrong.
 
 ---
 
@@ -534,6 +596,76 @@ should be revisited before phase 3.
 - **This is a large rewrite of everything visible**, running in parallel with the OS
   split. They should not land together — UI phases 1–3 can proceed while the OS work is
   in its own phases, but one of them goes to the live fleet at a time.
+- **Reinventing Basalt badly.** A worse version of an existing framework is worse than
+  using the existing framework. §16 is the standing answer to "why not just use Basalt",
+  and if the answers in it stop being true, this plan should stop too.
+
+---
+
+## 16. Why not just use Basalt
+
+[Basalt 2](https://github.com/Pyroxenium/Basalt2) exists, is MIT-licensed, is actively
+developed, and is far more finished than anything here. Writing a second framework needs a
+better reason than not having read the first one. This section is that reason, and the
+place to check it is still valid.
+
+### What Basalt is better at, and we should not chase
+
+- **Breadth.** Around sixty elements — Accordion, Breadcrumb, ComboBox, ContextMenu,
+  Dialog, TabControl, Tree, three chart types. §7 lists about twenty-five and that is the
+  whole of it; §15 already calls a component library a bottomless pit. Basalt has spent
+  years filling it and will keep winning that race, which is the correct outcome.
+- **Polish around the edges.** XML layouts, JSON theme files, a plugin system, a bundler
+  producing a single-file release, `flow` and `grid` layouts.
+- **Maturity.** Two major versions, real users, real bug reports. This has one phase.
+
+### What we are better at, and must stay better at
+
+Three things, all of which are load-bearing for a fleet dashboard specifically and none of
+which are about widget count.
+
+**1. Precision, measured.** One changed label costs us one blit and one character, and
+costs the dirty-rectangle design 81 blits and 13,284 characters (§12). Not because their
+renderer is careless — it is a reasonable design — but because it records writes and we
+record changes, and because invalidation there goes to the root frame rather than the node.
+This is the whole technical argument and it is a number, not a preference.
+
+**2. It is testable, and that is what keeps the number true.** Neither Basalt version has
+a test suite. Ours renders through `ports/screen`, so a recording adapter with a cell grid
+and a call log is a complete substitute for a monitor: `tools/spec/buffer_spec.lua` asserts
+both what is on the screen and how many calls put it there. A performance property nothing
+checks is a performance property that decays. This one fails the build.
+
+**3. It runs where this fleet runs.** A display-only monitor with no keyboard, where the
+`requiresInput` boundary (D020) decides what may even appear; a 39×13 standard turtle
+screen; a 26×20 pocket computer; and a server that is reconciling ten turtles while it
+draws. Basalt 2 imposes no advanced-computer requirement — that was a Basalt 1 restriction
+and it is gone — but no general framework has a concept of a surface that must refuse to
+show a command. Ours has to, because the alternative is a recall button on a wall.
+
+### What to steal, deliberately
+
+- **Generated LuaLS annotations.** Basalt generates `.lua` type annotations and its docs
+  from source comments (`tools/generate-annotations.lua`, `tools/BasaltDoc/`). This
+  repository already runs the language server in `check.ps1` and already writes annotated
+  headers; generating a component annotation file from the component definitions would make
+  every property autocomplete in the editor for free. Worth doing at phase 2, when there
+  are components to generate from.
+- **Per-property render hints.** Basalt's property definitions carry `canTriggerRender`.
+  §7 already splits paint-dirty from layout-dirty by property, so this is confirmation that
+  the axis is right — but mark the **node**, not the root. That single difference is most
+  of the 81× above.
+- **Runtime argument checking at construction.** Their `libraries/expect.lua` validates
+  types where an element is built. Lua's failure mode is a nil three frames later in a
+  place unrelated to the mistake; checking at construction is the same reasoning as
+  `ports/contract.lua` and costs nothing per frame.
+
+### The honest summary
+
+Basalt is the better choice for a program that wants a lot of widgets soon. This is the
+better choice for a wall-mounted dashboard that redraws on every heartbeat, on a machine
+that is also running a mining fleet, and that has to keep proving it is still fast. If
+that stops being the trade, use Basalt.
 
 ---
 

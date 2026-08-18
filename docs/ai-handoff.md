@@ -79,6 +79,7 @@ different tradeoff:
 | a new port, or a CC implementation of one | `src/ports/`, `src/adapters/cc/` |
 | cell rendering, the diff, blit batching | `src/ui/buffer.lua`, `tools/spec/buffer_spec.lua` |
 | renderer performance numbers | `tools/bench.lua`, `tools/bench.ps1`, `docs/ui-framework.md` section 12 |
+| how we compare to Basalt | `tools/compare.lua`, `tools/compare.ps1`, `docs/ui-framework.md` sections 12 and 16 |
 | sector leases and frontiers | `src/domain/mine/registry.lua`, `src/fleet/coordinator.lua` |
 | turtle sector claiming | `src/mine/site.lua` |
 | movement/protected blocks | `src/turtle/nav.lua` |
@@ -119,6 +120,12 @@ screen, a dashboard update, and a full repaint. Run it after any change to `src/
 put the numbers in `docs/ui-framework.md` section 12. Hold changes to the **blit counts**,
 which are properties of the algorithm; the times come from a desktop interpreter, not from
 Cobalt, and are a floor rather than a prediction.
+
+`tools\compare.ps1` runs the same workload through the dirty-rectangle design Basalt 2
+uses, which is the standing answer to "why not just use Basalt". If a change to `src/ui/`
+narrows that gap, it has probably broken the property the framework exists for. D029
+records why row spans beat rectangles here; section 16 records what Basalt is better at
+and what is worth taking from it.
 
 `tools\check.ps1` also enforces the layering rule: nothing under `src/domain`, `src/ports`,
 or `src/ui` may reference a CC global. D027 records the single allowed exception and why

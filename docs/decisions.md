@@ -341,6 +341,43 @@ Measured numbers are in [`ui-framework.md`](ui-framework.md) section 12. Hold fu
 changes to the blit counts, which are properties of the algorithm, rather than to the
 times, which were taken on a desktop interpreter rather than on Cobalt.
 
+## D029 — Row spans, not dirty rectangles
+
+**Status:** accepted
+
+The usual way to do this is dirty rectangles: record a rectangle for each region that was
+written, merge the overlapping ones, and blit each surviving rectangle. It is what
+[Basalt 2](https://github.com/Pyroxenium/Basalt2) does, it is the obvious improvement to
+propose over one-span-per-row, and it is slower here. `tools/compare.ps1` runs the same
+dashboard workload through both and counts the calls.
+
+Two reasons, and the second is the one that is easy to miss.
+
+**Rectangles record writes; a row span records changes.** A rectangle is added because a
+write happened. Whether the cells afterwards differ from what is on screen is never asked,
+because there is no front buffer to ask. So a page that repaints itself with the same
+content pays in full - 81 calls and 13,284 characters on a large monitor, against nothing
+at all for the row diff. That is not a rectangle-versus-span difference so much as a
+missing comparison, but the two travel together: keeping a front buffer to diff against is
+what makes the row representation worth having, and vice versa.
+
+**Rectangles lose even when the caller is careful.** In the case where only genuinely
+changed cells are written - ten turtles reporting fuel and phase - rectangles produce 21
+calls and row spans produce 11. Rectangles on different rows never overlap, so they never
+merge, so one write is one call. A row span coalesces every change on a row into one,
+which is the shape a table actually updates in.
+
+Merging also has a sharp edge worth knowing about before reimplementing it. Growing two
+overlapping rectangles to their bounding box pulls in everything between them, so two
+small changes at opposite ends of a region become one large repaint; and a single-pass
+merge that stops at the first overlap never re-tests the rectangle it just grew, so
+overlapping rectangles survive into the emit and blit the same cells twice.
+
+None of this makes rectangles a bad design in general. They win when changes are genuinely
+two-dimensional and sparse - a dragged window, a sprite moving across a canvas. If the 2x3
+canvas layer ever makes that the dominant pattern, revisit it there, for that layer, with
+a measurement. Do not revisit it for the dashboard.
+
 ## D014 — Version changes happen at merge
 
 **Status:** accepted
