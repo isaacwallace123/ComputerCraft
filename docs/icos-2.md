@@ -694,6 +694,45 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 5: the client and the mobile
+
+`os/client/main.lua` is the other half of the `fleet` split. A client has a screen and a
+copy of what the server knows; it coordinates nothing, leases nothing and decides nothing —
+which is the whole reason the role was split, because one machine was drawing the fleet
+*and* being the fleet, so closing a page stopped the coordination behind it (D018).
+
+**Its copy is always out of date, and that is the honest shape** rather than a compromise:
+the server's copy is a few seconds behind the turtles too. What the mirror carries is the
+*age* of every record, so a stale row can say so. A client that silently showed
+twenty-minute-old positions as current would hide exactly the fact §6 exists to surface.
+
+The mirror is a request-reply, not a subscription — a subscription means the server keeping
+a list of who is listening, and a list of listeners on machines that reboot goes stale and
+gets written to forever. It replaces rather than merges, because "this turtle no longer
+exists" is a fact a dashboard must not quietly discard. And it is **not** persisted: a
+mirror that survived a reboot would show a fleet as it was whenever the machine was last
+on, which on a monitor in a corner could be days.
+
+`os/mobile/main.lua` is deliberately thin, because a Pocket Computer is structurally a
+client. Three things are actually different:
+
+- **It goes out of range routinely.** A monitor either reaches the server or has a broken
+  modem; a handheld in somebody's inventory is out of range every time they walk into a
+  cave, and coming back is the normal case. So the sync interval backs off while it is
+  failing — its own backoff, not the supervisor's, because that one is for a service that
+  is *broken* and counts towards giving up. A handheld that reported unhealthy for walking
+  into a cave would be reporting the world rather than itself.
+- **Its screen is 26x20**, which is a different layout rather than a smaller one. The page
+  decides; the composition root does not know.
+- **It is the machine somebody is holding when something has gone wrong**, so mirror
+  staleness matters more here than anywhere: showing a twenty-minute-old position as
+  current sends a person to the wrong place.
+
+What is *not* different, and was tempting: it gets no authority for being the thing you are
+holding. A pocket computer that could lease sectors would be a coordinator that walks out
+of range, and D018 is precisely the lesson that coordination must not live somewhere that
+can disappear.
+
 ### Phase 5: the miner's composition root, and the `waitForAny` bug
 
 `apps/miner.lua` runs four coroutines under `parallel.waitForAny`, which returns when

@@ -41,6 +41,17 @@ discovery.PROTOCOL = "icos"
 discovery.HELLO = "hello"
 discovery.STATUS = "status"
 
+--- A client asking for a copy of the registry.
+---
+--- Answered here rather than by a service of its own, because this service
+--- already owns both the registry and the radio, and "tell me what you know"
+--- is not a different job from "here is what I know".
+---
+--- A request-reply rather than a subscription. A subscription means the server
+--- keeping a list of who is listening, and a list of listeners on machines that
+--- reboot is a list that goes stale and gets written to forever.
+discovery.MIRROR = "mirror"
+
 --- Record one heartbeat and work out the reply.
 ---
 --- Returns the reply table, or nil when the message is not ours. Nil rather than
@@ -50,6 +61,14 @@ function discovery.handle(context, sender, message)
   if type(message) ~= "table" then
     return nil
   end
+  if message.kind == discovery.MIRROR then
+    -- The whole registry, not a diff. Ten devices is a small table and a diff
+    -- would need the client and the server to agree about what the client
+    -- already has - which is a second piece of state to get wrong, on the side
+    -- of the system that is allowed to be wrong about everything else.
+    return { kind = discovery.MIRROR, fleet = context.state.fleet, now = context.clock.now() }
+  end
+
   if message.kind ~= discovery.HELLO and message.kind ~= discovery.STATUS then
     return nil
   end

@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-18T08:05:58-04:00",
+    "generated":  "2026-08-18T08:09:29-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -72,9 +72,11 @@
                   "miner/context.lua",
                   "miner/network.lua",
                   "miner/runtime.lua",
+                  "os/client/main.lua",
                   "os/miner/agent.lua",
                   "os/miner/control.lua",
                   "os/miner/main.lua",
+                  "os/mobile/main.lua",
                   "os/roles.lua",
                   "os/server/main.lua",
                   "os/server/services/discovery.lua",
