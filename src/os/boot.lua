@@ -43,6 +43,7 @@ local boot = {}
 function boot.ports()
   local built = {
     clock = require("adapters.cc.clock").new(),
+    log = require("adapters.cc.log").new(),
     storage = require("adapters.cc.storage").new(),
     serialise = require("adapters.cc.serialise").new(),
     transport = require("adapters.cc.transport").new(),
@@ -84,6 +85,32 @@ function boot.machine(node, options)
   end
 
   local ports = options.ports or boot.ports()
+
+  -- The one place that decides what is worth writing down.
+  --
+  -- Every service returns what it did rather than logging it, because a service
+  -- that wrote to a log would be deciding how a machine reports things - and on
+  -- a Pocket Computer that log is somewhere else. This is the other end of that
+  -- rule: the composition root has the facts and knows what kind of machine it
+  -- is, so it is what records them.
+  --
+  -- Only failures, and only through the supervisor's own hook. A boot that
+  -- logged every service starting would put seven lines in the file every time
+  -- a base station reloads a chunk, and the log's whole value is that the lines
+  -- in it are worth reading.
+  options.onError = options.onError
+    or (
+      ports.log
+      and function(id, reason, failures)
+        -- The first failure is warned about and the rest are errors. A service
+        -- that fails once and restarts is ordinary - a radio going out of range
+        -- does it - and a machine that shouted about every one would train
+        -- somebody to skip the shouting.
+        local write = failures and failures > 1 and ports.log.error or ports.log.warn
+        write(("%s: %s"):format(tostring(id), tostring(reason)))
+      end
+    )
+
   local machine = require(moduleName).boot(ports, options)
   machine.role = role
   return machine

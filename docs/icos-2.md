@@ -704,6 +704,44 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 6: closing the log loop
+
+Every service in `os/` returns what it did rather than writing it down, and every one of
+them says so in a comment: a service that wrote to a log would be deciding how a machine
+reports things, and on a Pocket Computer that log is somewhere else. That was right, and it
+left a hole — **nothing in ICOS 2 could log**, so `logrotate` was rotating a file nobody
+wrote.
+
+`ports/log.lua` is the other end. The composition root takes what its services returned and
+records it, which puts the one decision — *what is worth writing down* — in the file that
+already knows what kind of machine it is. Only failures, and only through the supervisor's
+`onError` hook: a boot that logged every service starting would put seven lines in the file
+every time a base station reloads a chunk, and the log's whole value is that its lines are
+worth reading. The first failure is a **warning** and the rest are errors, because a service
+that fails once and restarts is ordinary — a radio going out of range does it — and a machine
+that shouted about every one would train somebody to skip the shouting.
+
+The CC adapter wraps `core/log.lua` rather than replacing it. Reimplementing would give
+ICOS 2 a *second* log — a second file, a second tail, and an ICOS 1 console that goes quiet
+the moment a machine is upgraded. During a rolling update both operating systems are running
+somewhere in the fleet, and a log with everything in it is exactly what a person needs then.
+
+**A real bug, caught by a spec on the adapter's first day.** The port declares its levels
+lowercase; `core/log.lua` writes them upper-case; the adapter recovered the level from the
+formatted line and returned it raw. So the Logs page compared `"WARN"` against `"warn"`,
+found no warnings, and its warnings-only filter showed an **empty screen while warnings were
+arriving** — the worst possible failure for a diagnostic page, because it looks like good
+news. `log.level` now owns the vocabulary and everything else asks it.
+
+The Logs page itself breaks one house rule deliberately: **newest last.** Every other list
+puts the interesting thing first — Devices by staleness, Services by failure — but a log is
+a *sequence*, and reading a sequence backwards means reading every consequence before its
+cause. It reads the in-memory tail rather than the file, so a machine whose disk is full
+still has a log on screen, which is precisely when somebody is looking at one.
+
+It reaches the turtle's launcher too, and that is where it matters most: `edit .log` on a
+machine with thirteen rows whose program is still running is not a thing anybody does at 2am.
+
 ### Phase 6: the Services page, and what surface filtering buys
 
 The supervisor's comments have referred to "the Services page" since it was written. It

@@ -167,6 +167,7 @@ function server.boot(ports, options)
     locator = ports.locator,
     beacon = ports.beacon,
     serialise = ports.serialise,
+    log = ports.log,
     state = state,
     paths = server.PATHS,
     handlers = server.handlers(),

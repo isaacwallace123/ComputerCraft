@@ -255,6 +255,7 @@ function turtleOs.boot(ports, options)
     locator = ports.locator,
     body = ports.body,
     serialise = ports.serialise,
+    log = ports.log,
 
     -- What this turtle has already carried out, read from disk. A missing file
     -- means generation zero, so the next order looks new - which is the safe

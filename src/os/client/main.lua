@@ -156,6 +156,7 @@ function client.boot(ports, options)
     screen = ports.screen,
     input = ports.input,
     serialise = ports.serialise,
+    log = ports.log,
 
     -- Empty rather than loaded from disk, deliberately. A client's copy is a
     -- mirror, and a mirror that survives a reboot would show a fleet as it was
