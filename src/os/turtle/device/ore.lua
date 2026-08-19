@@ -86,6 +86,96 @@ local function isFuel(name)
   return catalog.accepts(name)
 end
 
+--- ITEM names worth carrying home when the rule is "ores and metals only".
+---
+--- The opposite policy to `JUNK`, and used by the profiles that go a hundred
+--- blocks down for diamonds. A denylist is right when most of what a turtle digs
+--- is worth keeping; at Y -59 almost nothing is. A trip spent cutting trunk and
+--- ribs fills up with cobble, deepslate, dirt, clay, moss, and whatever tree it
+--- came through, and every one of those slots is a slot that ore cannot go in.
+---
+--- Matching is deliberately generous about form - `_ore`, `raw_`, `ingot`,
+--- `nugget`, `gem`, `crystal`, `shard`, `dust` - because that is how modded ores
+--- are named, and a pack this size adds far more of them than can be listed.
+ore.KEEP = {
+  "_ore",
+  "raw_",
+  "ingot",
+  "nugget",
+  "_gem",
+  "gem_",
+  "crystal",
+  "shard",
+  "_dust",
+  "dust_",
+  "diamond",
+  "emerald",
+  "lapis",
+  "redstone",
+  "quartz",
+  "amethyst",
+  "netherite",
+  "debris",
+  "obsidian",
+  "echo",
+  "gold",
+  "iron",
+  "copper",
+  "tin",
+  "lead",
+  "silver",
+  "nickel",
+  "platinum",
+  "uranium",
+  "zinc",
+  "osmium",
+  "aluminum",
+  "aluminium",
+  "certus",
+  "fluix",
+  "apatite",
+  "ruby",
+  "sapphire",
+  "topaz",
+  "peridot",
+  "sulfur",
+  "niter",
+  "saltpeter",
+  "totem",
+  "disc",
+  "heart_of_the_sea",
+  "nautilus",
+}
+
+--- Build a predicate over ITEM names for a "keep only what is valuable" haul.
+---
+--- Fuel and anything the job explicitly wants are always kept; everything else
+--- has to look like ore, metal, or a gem to earn a slot. This is the reverse of
+--- D012's default, and deliberately so: that rule protects unknown modded drops
+--- from being binned, which is right for a general-purpose dig and wrong for a
+--- turtle whose entire trip is about diamonds.
+function ore.strictMatcher(keep)
+  keep = keep or {}
+
+  return function(name)
+    name = tostring(name)
+    if catalog.accepts(name) then
+      return false
+    end
+    for _, wanted in ipairs(keep) do
+      if name:find(wanted, 1, true) then
+        return false
+      end
+    end
+    for _, valuable in ipairs(ore.KEEP) do
+      if name:find(valuable, 1, true) then
+        return false
+      end
+    end
+    return true
+  end
+end
+
 --- Build a predicate over ITEM names: true means "throw this away".
 --- Anything in `keep` is removed from the junk list, so asking to keep andesite
 --- does the right thing without editing the list itself.

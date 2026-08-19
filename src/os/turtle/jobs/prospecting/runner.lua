@@ -39,6 +39,12 @@ local runner = {}
 local STALL_SECTOR = 2
 local STALL_PARK = 4
 
+--- How many times a phase re-plans around fleet traffic before giving up, and
+--- roughly how long it waits between attempts. Generous: another turtle in the
+--- way clears in seconds, and the alternative is a round trip home.
+local PEER_ATTEMPTS = 6
+local PEER_BACKOFF = 2
+
 function runner.run(jobType, job, ctx)
   -- No sector means no shaft coordinates, and the unset ones are 0,0 - which is
   -- a real place in the world and emphatically not where this turtle should fly.
@@ -622,6 +628,32 @@ function runner.run(jobType, job, ctx)
     return true, nil, nil, true -- sector exhausted
   end
 
+  --- Run one phase, holding position through fleet traffic rather than going
+  --- home to report it.
+  ---
+  --- `nav` already waits for a peer and steps aside to re-plan, but once those
+  --- are exhausted the phase failed and the trip ended - so meeting a colleague
+  --- in a corridor cost a full commute home and back, for both of them, and the
+  --- busier the fleet the more it happened. A turtle that cannot get past right
+  --- now can almost always get past in a few seconds. Standing still is far
+  --- cheaper than flying home.
+  ---
+  --- Bounded, because a peer that never moves is a stuck turtle, and waiting on
+  --- it forever would quietly take this one out of service too.
+  local function persist(phase)
+    for attempt = 1, PEER_ATTEMPTS do
+      local ok, err, kind, extra = phase()
+      if ok or kind ~= "peer" then
+        return ok, err, kind, extra
+      end
+      if attempt < PEER_ATTEMPTS then
+        ctx.report("waiting", ("fleet traffic - holding %d/%d"):format(attempt, PEER_ATTEMPTS))
+        sleep(PEER_BACKOFF + math.random() * PEER_BACKOFF)
+      end
+    end
+    return false, "fleet traffic did not clear", "peer"
+  end
+
   --- The trip proper. Whatever this returns, the caller walks home.
   local function journey()
     control:adoptLegacy()
@@ -632,28 +664,28 @@ function runner.run(jobType, job, ctx)
     end
 
     if job.phase == "travel" then
-      local ok, err, kind = travel()
+      local ok, err, kind = persist(travel)
       if not ok then
         return false, err, kind
       end
     end
 
     if job.phase == "descend" then
-      local ok, err, kind = descend()
+      local ok, err, kind = persist(descend)
       if not ok then
         return false, err, kind
       end
     end
 
     if job.phase == "transit" then
-      local ok, err, kind = transit()
+      local ok, err, kind = persist(transit)
       if not ok then
         return false, err, kind
       end
     end
 
     if job.phase == "mining" then
-      return mine()
+      return persist(mine)
     end
 
     return true

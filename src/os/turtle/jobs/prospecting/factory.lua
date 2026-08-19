@@ -239,6 +239,15 @@ function factory.create(definition)
     for _, pattern in ipairs(job.extraPatterns or {}) do
       keep[#keep + 1] = pattern
     end
+
+    -- A trip to Y -59 is entirely about ore, and everything else it cuts through
+    -- on the way - cobble, deepslate, dirt, clay, moss, whatever tree stood over
+    -- the shaft - is a slot that ore cannot go in. Profiles that go deep keep
+    -- only what looks valuable; the general-purpose ones keep the conservative
+    -- "unknown is worth hauling" default from D012.
+    if definition.strictHaul then
+      return ore.strictMatcher(keep)
+    end
     return ore.junkMatcher(keep)
   end
 
