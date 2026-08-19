@@ -27,6 +27,7 @@ param(
   [Parameter(Mandatory)][int]$Id,
   [string]$Role,
   [string]$Label,
+  [string]$Branch,
   [string]$Instance = "C:\Users\isaac\curseforge\minecraft\Instances\Valhelsia 6"
 )
 
@@ -86,6 +87,31 @@ if ($Role) {
   Set-Content -Path $node -Value ($lines -join "`n") -Encoding utf8 -NoNewline
 
   Write-Host "Set role=$Role$(if ($Label) { ", label=$Label" })" -ForegroundColor Green
+}
+
+if ($Branch) {
+  # Which branch this machine pulls from when somebody runs `update`.
+  #
+  # Worth setting explicitly, because getting it wrong is silent and total: a
+  # machine pointed at a branch that does not have the code you are testing
+  # downloads sixty files, reports success, and reboots into something else
+  # entirely. That is not a hypothetical - it happened to this world's server,
+  # which was pointed at master and pulled ICOS 1 over a working ICOS 2 copy.
+  $update = Join-Path $root ".update"
+  $existing = if (Test-Path $update) { Get-Content $update -Raw } else { "" }
+
+  $lines = @("{")
+  $lines += "  branch = `"$Branch`","
+  foreach ($line in ($existing -split "`r?`n")) {
+    $t = $line.Trim()
+    if ($t -and $t -ne "{" -and $t -ne "}" -and $t -notmatch '^\s*branch\s*=') {
+      $lines += "  $t"
+    }
+  }
+  $lines += "}"
+  Set-Content -Path $update -Value ($lines -join "`n") -Encoding utf8 -NoNewline
+
+  Write-Host "Set branch=$Branch" -ForegroundColor Green
 }
 
 Write-Host ""

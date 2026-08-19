@@ -8,9 +8,17 @@
 ---
 --- Setup runs on a machine that has no role yet, which means no composition
 --- root, no supervisor, and nothing to mount a page onto. It is also the one
---- thing that has to work when everything else is broken. So it is a plain
---- CraftOS program that prints and reads, exactly as `update.lua` is, and the
---- Setup *app* is an entry that runs this.
+--- thing that has to work when everything else is broken.
+---
+--- That is why it cannot use `ui/`. It is *not* why it used to look like a
+--- different program: it printed lines and read strings, and the first thing
+--- anybody ever sees of this system was the plainest screen in it.
+---
+--- `os/kernel/prompt.lua` fixes that without crossing the line. It is the
+--- buffer - the one part of the renderer with no dependencies of its own - plus
+--- a highlighted row and an event loop. Arrows, numbers, a mouse, and a
+--- selection you can see. No components, no reactive graph, nothing that can
+--- fail on a machine whose files were replaced ten seconds ago.
 ---
 --- ## Every decision is somewhere else
 ---
@@ -25,71 +33,45 @@ package.path = "/?.lua;/?/init.lua;" .. package.path
 
 local config = require("adapters.cc.config")
 local locator = require("adapters.cc.locator")
+local console = require("os.kernel.console")
 local machine = require("adapters.cc.machine")
+local prompt = require("os.kernel.prompt")
 local node = require("os.kernel.node")
 
 local ports = { locator = locator.new() }
 local caps = machine.capabilities(ports)
 local saved = config.load(node.PATH, node.empty())
 
-local function heading(text)
-  term.clear()
-  term.setCursorPos(1, 1)
-  print(text)
-  print(("-"):rep(math.min(38, select(1, term.getSize()))))
-  print("")
-end
+local screen = console.new(require("adapters.cc.screen").new(term))
+local T = console.TOKENS
 
---- Ask for one of a list. Returns the index, or nil if cancelled.
-local function choose(title, entries)
-  while true do
-    heading(title)
-    for index, entry in ipairs(entries) do
-      print(("%d  %s"):format(index, entry.label))
-      if entry.detail then
-        print("   " .. entry.detail)
-      end
-    end
-    print("")
-    write("Choice [1-" .. #entries .. ", or blank to cancel]: ")
-
-    local answer = read()
-    if answer == nil or answer:match("^%s*$") then
-      return nil
-    end
-    local picked = tonumber(answer:match("%d+"))
-    if picked and entries[picked] then
-      return picked
-    end
-    printError("Enter a number from the list.")
-    sleep(1)
-  end
-end
-
-local function ask(prompt, suggestion)
-  write(prompt)
-  if suggestion then
-    write(" [" .. tostring(suggestion) .. "]")
-  end
-  write(": ")
-  local answer = read()
-  if answer == nil or answer:match("^%s*$") then
-    return suggestion
-  end
-  return answer
+local function choose(title, entries, options)
+  options = options or {}
+  options.title = title
+  return prompt.choose(screen, entries, options)
 end
 
 ---------------------------------------------------------------------------
 -- What this machine is
 ---------------------------------------------------------------------------
 
-heading("ICOS setup")
+screen:clear()
+screen:header("ICOS setup", "new machine")
+
+-- What it found, before what it is for. Somebody setting up a machine that has
+-- no modem needs to see that here rather than discover it two screens later
+-- when the role they wanted is not offered.
+local row = 3
 for _, line in ipairs(machine.describe(caps)) do
-  print(line)
+  screen:line(row, line, T.mutedFg)
+  row = row + 1
 end
-print("")
-print("Press enter to choose what this machine is for.")
-read()
+
+local _, screenHeight = screen:size()
+screen:line(row + 1, "Press any key to choose what this machine is for.", T.foreground)
+screen:line(screenHeight, " Q at any point cancels and changes nothing", T.mutedFg)
+screen:present()
+os.pullEvent("key")
 
 local choices = node.choices(caps)
 if #choices == 0 then
@@ -102,26 +84,21 @@ end
 
 local picked = choose("What is this machine for?", choices)
 if picked == nil then
-  print("Cancelled. Nothing was changed.")
+  prompt.tell(screen, "Cancelled", { "Nothing was changed." }, T.mutedFg)
   return
 end
 
 local role = choices[picked]
 
-heading(role.label)
-print(role.detail or "")
-print("")
-
 -- The caveat comes *after* the choice, deliberately. `roles.OFFERED` splits
 -- `detail` from `warn` for this reason: a menu of caveats is a menu nobody
 -- reads, and the thing somebody needs to know about the role they picked is
 -- worth a line to itself.
-if role.warn then
-  printError("Note: " .. role.warn)
-  print("")
-end
-
-local label = ask("Name this machine", saved.label or node.suggestLabel(role.key, caps.id))
+local label = prompt.text(screen, "Name this machine", {
+  title = role.label,
+  note = role.warn and ("Note: " .. role.warn) or role.detail,
+  default = saved.label or node.suggestLabel(role.key, caps.id),
+})
 
 ---------------------------------------------------------------------------
 -- What it should be doing
@@ -136,7 +113,7 @@ if #available > 0 then
     entries[index] = { label = entry.label, detail = entry.summary }
   end
 
-  local chosen = choose("Which job?", entries)
+  local chosen = choose("Which job?", entries, { status = role.label })
   job = chosen and available[chosen].id or nil
 end
 
@@ -144,31 +121,27 @@ end
 -- Where it is
 ---------------------------------------------------------------------------
 
-heading("Position")
-
+-- Not optional for a server, and not optional for a turtle that will join the
+-- shared mine either. Rather than duplicate the prompts, setup says so and hands
+-- over - `commands/locate` is the one place that writes `.location`, and two
+-- places that wrote it would be two formats waiting to disagree.
 if caps.located then
   local existing = ports.locator.saved()
-  print(("This machine is at %d, %d, %d."):format(existing.x, existing.y, existing.z))
-  print("")
-  print("Run `locate` again if you move it.")
-  print("")
+  prompt.tell(screen, "Position", {
+    ("This machine is at %d, %d, %d."):format(existing.x, existing.y, existing.z),
+    "",
+    "Run `locate` again if you move it.",
+  }, T.good)
 else
-  -- Not optional for a server, and not optional for a turtle that will join the
-  -- shared mine either. Rather than duplicate the prompts, setup says so and
-  -- hands over - `locate` is the one place that writes `.location`, and two
-  -- places that wrote it would be two formats waiting to disagree.
-  print("This machine does not know where it is yet.")
-  print("")
-  if role.key == "server" then
-    printError("A server hosts GPS and must know its own position")
-    printError("before it can start.")
-  else
-    print("Shared-mine jobs need a world position before")
-    print("they will deploy.")
-  end
-  print("")
-  print("Run `locate` after this finishes.")
-  print("")
+  prompt.tell(screen, "Position", {
+    "This machine does not know where it is yet.",
+    "",
+    role.key == "server" and "A server hosts GPS and must know its own"
+      or "Shared-mine jobs need a world position before",
+    role.key == "server" and "position before it can start." or "they will deploy.",
+    "",
+    "Run `locate` after this finishes.",
+  }, T.warn)
 end
 
 ---------------------------------------------------------------------------
@@ -188,20 +161,29 @@ local record, why = node.apply(saved, {
 })
 
 if record == nil then
-  printError(tostring(why))
+  prompt.tell(screen, "Setup failed", { tostring(why) }, T.destructive)
   return
 end
 
 config.save(node.PATH, record)
 os.setComputerLabel(record.label)
 
-heading("Ready")
-print(("%s is set up as a %s."):format(record.label, record.role))
+local lines = {
+  ("%s is set up as a %s."):format(record.label, record.role),
+}
 if record.job then
-  print(("It will run the %s job."):format(record.job))
+  lines[#lines + 1] = ("It will run the %s job."):format(record.job)
 end
-print("")
+lines[#lines + 1] = ""
 if not caps.located then
-  print("Next:  locate")
+  lines[#lines + 1] = "Next:  locate"
 end
-print("Then:  reboot")
+lines[#lines + 1] = "Then:  reboot"
+
+prompt.tell(screen, "Ready", lines, T.good)
+
+-- Leave the terminal usable. The buffer owns the screen while setup is running
+-- and a shell prompt drawn on top of the last frame is unreadable.
+term.clear()
+term.setCursorPos(1, 1)
+print(record.label .. " is ready. Reboot to start it.")

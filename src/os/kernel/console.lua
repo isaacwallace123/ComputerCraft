@@ -35,12 +35,27 @@ local Console = {}
 Console.__index = Console
 
 --- Attach to a screen port.
-function console.new(screen)
+---
+--- Applies the theme's palette, which `ui/host.lua` does for a mounted page and
+--- nothing did for a boot-time one. Without it every token here resolves to
+--- whatever CC's defaults happen to be at that index - `accent` comes out as
+--- light grey rather than blue - so the splash, the updater and setup would be
+--- the three screens in the system that did not match the system.
+---
+--- Skipped on a terminal that cannot show colour, because `setPalette` on a
+--- basic computer is a call that does nothing and the check is cheaper than the
+--- call.
+function console.new(screen, palette)
   local width, height = screen.size()
   local self = setmetatable({}, Console)
   self.frame = buffer.new(screen, width, height)
   self.width = width
   self.height = height
+
+  if screen.isColour and screen.isColour() then
+    theme.apply(screen, palette or theme.dark)
+  end
+
   return self
 end
 
@@ -84,6 +99,17 @@ function Console:line(row, text, tone)
     tone or T.foreground,
     T.background
   )
+  return self
+end
+
+--- A full-width band, for a row that is selected or highlighted.
+---
+--- The whole width rather than the text's width, because a selection that only
+--- covers the label looks like a mistake - the eye reads the highlight as the
+--- row, and a row that stops halfway reads as a row that is half broken.
+function Console:band(row, text, tone, background)
+  local body = format.pad(" " .. tostring(text or ""), self.width)
+  self.frame:write(1, row, body, tone or T.foreground, background or T.muted)
   return self
 end
 
