@@ -45,9 +45,24 @@ local saved = config.load(node.PATH, node.empty())
 local screen = console.new(require("adapters.cc.screen").new(term))
 local T = console.TOKENS
 
+--- How many questions there are, so each screen can say where it is.
+---
+--- A person part-way through setup wants to know whether this is nearly over,
+--- and "step 2 of 5" answers that in four characters. Counted rather than
+--- hard-coded per screen, so adding a question does not leave five screens
+--- claiming there are four.
+local STEPS = 5
+local step = 0
+
+local function stepped()
+  step = step + 1
+  return ("step %d of %d"):format(step, STEPS)
+end
+
 local function choose(title, entries, options)
   options = options or {}
   options.title = title
+  options.step = options.step or stepped()
   return prompt.choose(screen, entries, options)
 end
 
@@ -96,6 +111,7 @@ local role = choices[picked]
 -- worth a line to itself.
 local label = prompt.text(screen, "Name this machine", {
   title = role.label,
+  step = stepped(),
   note = role.warn and ("Note: " .. role.warn) or role.detail,
   default = saved.label or node.suggestLabel(role.key, caps.id),
 })
@@ -113,8 +129,12 @@ if #available > 0 then
     entries[index] = { label = entry.label, detail = entry.summary }
   end
 
-  local chosen = choose("Which job?", entries, { status = role.label })
+  local chosen = choose("Which job?", entries)
   job = chosen and available[chosen].id or nil
+else
+  -- No job to ask about, but the count still has to add up or the next screen
+  -- claims to be step 3 of 5 with two left.
+  stepped()
 end
 
 ---------------------------------------------------------------------------
@@ -131,7 +151,7 @@ if caps.located then
     ("This machine is at %d, %d, %d."):format(existing.x, existing.y, existing.z),
     "",
     "Run `locate` again if you move it.",
-  }, T.good)
+  }, T.good, stepped())
 else
   prompt.tell(screen, "Position", {
     "This machine does not know where it is yet.",
@@ -141,7 +161,7 @@ else
     role.key == "server" and "position before it can start." or "they will deploy.",
     "",
     "Run `locate` after this finishes.",
-  }, T.warn)
+  }, T.warn, stepped())
 end
 
 ---------------------------------------------------------------------------
@@ -180,7 +200,7 @@ if not caps.located then
 end
 lines[#lines + 1] = "Then:  reboot"
 
-prompt.tell(screen, "Ready", lines, T.good)
+prompt.tell(screen, "Ready", lines, T.good, "done")
 
 -- Leave the terminal usable. The buffer owns the screen while setup is running
 -- and a shell prompt drawn on top of the last frame is unreadable.

@@ -92,39 +92,41 @@ function prompt.choose(screen, entries, options)
     return nil
   end
 
-  local top = options.note and 5 or 4
+  local top = options.note and 6 or 5
 
   local function draw()
     local rows, spacing = prompt.layout(entries, top)
 
-    screen:clear()
-    screen:header(options.title or "Choose", options.status)
+    screen:chrome(
+      options.title or "Choose",
+      options.step,
+      options.footer or "up/down or click   enter choose   Q cancel"
+    )
+
     if options.note then
-      screen:line(3, options.note, T.warn)
+      screen:panelLine(3, " " .. options.note, T.warn)
     end
 
     for index, entry in ipairs(entries) do
       local row = rows[index]
       local chosen = index == selected
-      local label = ("%d  %s"):format(index, entry.label)
+      local label = ("  %d  %s"):format(index, entry.label)
 
       if chosen then
-        -- The selection is a band across the whole width, in `accent` with the
-        -- text in `accentFg`. Two tokens rather than one: a highlight that only
-        -- changed the background leaves the text at whatever contrast it had,
-        -- and on a monochrome terminal that is invisible.
-        screen:band(row, label, T.accentFg, T.accent)
+        -- A band across the whole width, in `accent` with the text in
+        -- `accentFg`. Two tokens rather than one: a highlight that only changed
+        -- the background leaves the text at whatever contrast it had, and on a
+        -- monochrome terminal that is invisible.
+        screen:band(row, label:sub(2), T.accentFg, T.accent)
       else
-        screen:line(row, " " .. label, T.foreground)
+        screen:panelLine(row, label, T.foreground)
       end
 
       if spacing > 1 and entry.detail then
-        screen:line(row + 1, "     " .. entry.detail, chosen and T.foreground or T.mutedFg)
+        screen:panelLine(row + 1, "     " .. entry.detail, chosen and T.foreground or T.mutedFg)
       end
     end
 
-    local _, height = screen:size()
-    screen:line(height, " up/down or click, enter to choose, Q to cancel", T.mutedFg)
     screen:present()
     return rows, spacing
   end
@@ -181,19 +183,24 @@ end
 function prompt.text(screen, label, options)
   options = options or {}
 
-  screen:clear()
-  screen:header(options.title or "ICOS setup", options.status)
+  screen:chrome(options.title or "ICOS setup", options.step, "enter accepts the default")
   if options.note then
-    screen:line(3, options.note, T.mutedFg)
+    screen:panelLine(3, " " .. options.note, T.mutedFg)
   end
-  screen:line(5, label, T.foreground)
+  screen:panelLine(5, " " .. label, T.foreground)
   if options.hint then
-    screen:line(6, options.hint, T.mutedFg)
+    screen:panelLine(6, " " .. options.hint, T.mutedFg)
   end
+
+  -- The field itself, drawn as a band so it reads as somewhere to type rather
+  -- than as another line of prose. `read` writes on top of it.
+  local _, height = screen:size()
+  local field = math.min(7, height - 2)
+  screen:band(field, "", T.foreground, T.background)
   screen:present()
 
-  local _, height = screen:size()
-  term.setCursorPos(2, math.min(8, height))
+  term.setCursorPos(2, field)
+  term.setBackgroundColour(2 ^ T.background)
   term.setTextColour(2 ^ T.foreground)
   if options.default then
     write("[" .. options.default .. "] ")
@@ -207,14 +214,11 @@ function prompt.text(screen, label, options)
 end
 
 --- Say something and wait for any key.
-function prompt.tell(screen, title, lines, tone)
-  screen:clear()
-  screen:header(title)
+function prompt.tell(screen, title, lines, tone, step)
+  screen:chrome(title, step, "press any key")
   for index, line in ipairs(lines) do
-    screen:line(2 + index, line, tone or T.foreground)
+    screen:panelLine(2 + index, " " .. line, tone or T.foreground)
   end
-  local _, height = screen:size()
-  screen:line(height, " press any key", T.mutedFg)
   screen:present()
 
   while true do

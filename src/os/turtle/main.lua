@@ -290,6 +290,19 @@ function turtleOs.boot(ports, options)
     serialise = ports.serialise,
     beacon = ports.beacon,
     locator = ports.locator,
+
+    -- The turtle's own screen.
+    --
+    -- Missing until the first in-world boot, and the symptom was the worst kind:
+    -- the turtle looked hung on the splash. It was not - every service was
+    -- running - but `controls` builds the launcher, the launcher mounts a page
+    -- on `context.screen`, and a nil screen threw before anything drew. So the
+    -- splash stayed on the display and a working machine looked dead.
+    --
+    -- A machine that is fine and looks broken is worse than one that is broken
+    -- and says so, because the first thing somebody does is reboot it.
+    screen = ports.screen,
+    input = ports.input,
     saveLocation = ports.saveLocation,
     log = ports.log,
 

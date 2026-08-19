@@ -102,6 +102,75 @@ function Console:line(row, text, tone)
   return self
 end
 
+---------------------------------------------------------------------------
+-- Chrome
+---------------------------------------------------------------------------
+
+--- The full treatment: a title bar, a panel, and a footer.
+---
+--- `header` above is the *quiet* anatomy - a line of text and a rule - and the
+--- updater keeps it, because an updater is something you glance at while it
+--- works and a coloured frame around a progress bar is decoration on a machine
+--- that is busy.
+---
+--- Setup is the opposite. It is the first thing anybody sees of this system, it
+--- is a sequence of decisions rather than a status, and a screen that looks like
+--- a shell prompt with the words changed does not read as a program you are
+--- being walked through. So it gets a bar, a body it sits inside, and a footer
+--- that always says what the keys do.
+---
+--- Three bands rather than one border, deliberately. A drawn box costs two
+--- columns and two rows of a 26x20 Pocket Computer for an outline, and CC has no
+--- line-drawing glyphs that survive a monochrome terminal - whereas a filled
+--- band is one colour and reads at any size.
+function Console:chrome(title, status, footer)
+  -- Body first, so the bars paint over its edges rather than the other way
+  -- round and there is no seam to get the order wrong about.
+  self.frame:fill(1, 1, self.width, self.height, " ", T.foreground, T.card)
+
+  self.frame:write(
+    1,
+    1,
+    format.pad(" " .. tostring(title or ""), self.width),
+    T.primaryFg,
+    T.primary
+  )
+  if status then
+    self.frame:write(
+      math.max(2, self.width - #status - 1),
+      1,
+      tostring(status),
+      T.primaryFg,
+      T.primary
+    )
+  end
+
+  self.frame:write(
+    1,
+    self.height,
+    format.pad(" " .. tostring(footer or ""), self.width),
+    T.foreground,
+    T.muted
+  )
+  return self
+end
+
+--- One line inside the panel.
+---
+--- Separate from `line` because the panel has a background and `line` writes on
+--- `background`. Two functions rather than a parameter, so a caller cannot draw
+--- half a screen on the wrong ground and get a stripe.
+function Console:panelLine(row, text, tone)
+  self.frame:write(
+    2,
+    row,
+    format.pad(tostring(text or ""), self.width - 2),
+    tone or T.foreground,
+    T.card
+  )
+  return self
+end
+
 --- A full-width band, for a row that is selected or highlighted.
 ---
 --- The whole width rather than the text's width, because a selection that only
