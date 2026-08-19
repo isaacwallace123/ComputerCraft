@@ -410,5 +410,5 @@ if outcome == "stopped" then
 elseif outcome == "halted" then
   print("Stopped on request.")
 else
-  print("ICOS 2 stopped.")
+  print("ICOS stopped.")
 end
