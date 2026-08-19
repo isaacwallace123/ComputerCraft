@@ -38,10 +38,11 @@
 --- which turns "have I done this?" into a question with an answer.
 
 local desired = require("domain.fleet.desired")
+local wire = require("domain.protocol.message")
 
 local agent = {}
 
-agent.PROTOCOL = "icos"
+agent.PROTOCOL = wire.NAME
 
 --- Where the applied generation lives.
 ---
@@ -104,7 +105,14 @@ end
 --- composition root's job, and it is the only place that knows what a control
 --- flag is.
 function agent.receive(state, message)
-  if type(message) ~= "table" then
+  -- The device's half of the version gate the server applies in
+  -- `discovery.dispatch`. It refuses the same two things and nothing else: a
+  -- message from a build ahead of this one is accepted, because the turtle is
+  -- the machine most likely to be *behind* - the updater upgrades the base
+  -- before the fleet finishes, and a turtle that ignored a newer recall would
+  -- ignore a safety control for the length of the rollout.
+  message = wire.accept(message)
+  if message == nil then
     return nil
   end
 

@@ -150,12 +150,26 @@ function world.new(options)
   self.epoch = 1700000000000
   self.ops = 0
   self.crashAfter = nil
+
+  -- Disk size, in bytes, or nil for the unbounded table this used to be.
+  -- `options.diskLimit` at construction, `world:fillDisk()` mid-spec for the
+  -- case that actually happens: a machine that ran for weeks and filled up while
+  -- working, rather than one that started full.
+  self.diskLimit = options.diskLimit
+
+  -- Monitors on the wall, each sized in characters at text scale 0.5.
+  -- Empty by default, so every existing spec sees the machine it always saw.
+  self.monitors = options.monitors or {}
   self.digs = 0
   self.moves = 0
   self.placements = 0
   self.chests = {}
   self.events = {}
   self.messages = {}
+  -- What this machine has announced itself as, keyed by protocol. Nothing in
+  -- the simulated world resolves a name; the point is that a spec can ask
+  -- whether the code under test made itself findable at all.
+  self.hosted = {}
   return self
 end
 
@@ -579,17 +593,64 @@ function world:install()
       end
 
       local buffer = mode == "a" and (self_.files[path] or "") or ""
+
+      -- The disk, and why a simulated one has a size at all.
+      --
+      -- This filesystem was an unbounded table, so **no spec in this repository
+      -- could reproduce a full disk** - and a full disk is what took a live base
+      -- station down: `Out of space` thrown out of a log write, through the app
+      -- that made it. Worse, the ICOS 2 code written to survive that condition
+      -- (`logrotate` refusing to clear a log it could not copy first) was
+      -- guarding against a `false` that its storage port could never return.
+      --
+      -- `world.fill(bytes)` sets the cap. Writing past it throws exactly what CC
+      -- throws, so the code under test meets the real failure rather than a
+      -- polite one.
+      -- Thrown from `write`, not from `close`, because that is where CC throws
+      -- it: the traceback that started all this named the `writeLine` line, not
+      -- the close. A simulated failure that surfaces one call later than the
+      -- real one is a simulated failure that tests the wrong handler.
+      local function elsewhere()
+        local total = 0
+        for name, content in pairs(self_.files) do
+          if name ~= path then
+            total = total + #content
+          end
+        end
+        return total
+      end
+
+      local function guard(text)
+        if self_.diskLimit and elsewhere() + #text > self_.diskLimit then
+          error("Out of space", 0)
+        end
+        return text
+      end
+
       return {
         write = function(text)
-          buffer = buffer .. tostring(text)
+          buffer = guard(buffer .. tostring(text))
         end,
         writeLine = function(text)
-          buffer = buffer .. tostring(text) .. "\n"
+          buffer = guard(buffer .. tostring(text) .. "\n")
         end,
         close = function()
           self_.files[path] = buffer
         end,
       }
+    end,
+    getFreeSpace = function()
+      if not self_.diskLimit then
+        return 1000000
+      end
+      local total = 0
+      for _, content in pairs(self_.files) do
+        total = total + #content
+      end
+      return math.max(0, self_.diskLimit - total)
+    end,
+    getCapacity = function()
+      return self_.diskLimit or 1000000
     end,
   }
 
@@ -626,6 +687,43 @@ function world:install()
     pullEvent = function()
       return "terminate"
     end,
+
+    --- The real event queue, drained in order.
+    ---
+    --- `pullEvent` above still answers `terminate` unconditionally, which is what
+    --- the turtle specs have always relied on to end a control loop. This is the
+    --- one anything event-driven uses, and it drains what was queued and then
+    --- ends - so a spec that runs out of scripted input stops rather than hangs.
+    pullEventRaw = function()
+      local event = table.remove(self_.events, 1)
+      if event == nil then
+        return "terminate"
+      end
+      return table.unpack(event)
+    end,
+
+    --- A timer, queued behind whatever is already waiting.
+    ---
+    --- Behind, deliberately. A timeout means "nothing else arrived", so every
+    --- event already in hand must be delivered before the clock runs out - a
+    --- timer that jumped the queue would make a port with a timeout drop input
+    --- that was sitting right there.
+    startTimer = function(seconds)
+      self_.timerId = (self_.timerId or 0) + 1
+      self_.clock = self_.clock + (seconds or 0)
+      self_.events[#self_.events + 1] = { "timer", self_.timerId }
+      return self_.timerId
+    end,
+
+    cancelTimer = function(id)
+      for index = #self_.events, 1, -1 do
+        local event = self_.events[index]
+        if event[1] == "timer" and event[2] == id then
+          table.remove(self_.events, index)
+        end
+      end
+    end,
+
     sleep = function() end,
   }
 
@@ -687,21 +785,81 @@ function world:install()
   _G.textutils.serialize = _G.textutils.serialise
   _G.textutils.unserialize = _G.textutils.unserialise
 
+  -- Monitors, modelled by the one property that matters.
+  --
+  -- A monitor's character size is a function of its block size *and* its text
+  -- scale, and the two are inversely related: halving the scale doubles the
+  -- characters. That relationship is the whole of what `adapters/cc/display.lua`
+  -- depends on when it picks the largest readable scale that still fits a
+  -- layout, so it is what is modelled here. The exact pixel arithmetic CC uses
+  -- is deliberately not reproduced - a simulator that guessed at it would be
+  -- asserting a number this repository has no way to verify.
+  --
+  -- `options.monitors` gives each one its size in characters **at scale 0.5**,
+  -- which is the scale `display` measures every wall at before comparing them.
+  local function monitorFor(entry)
+    local scale = 0.5
+    local wrapped
+    wrapped = {
+      setTextScale = function(value)
+        scale = value
+      end,
+      getTextScale = function()
+        return scale
+      end,
+      getSize = function()
+        return math.floor(entry.width * 0.5 / scale), math.floor(entry.height * 0.5 / scale)
+      end,
+      isColor = function()
+        return entry.colour ~= false
+      end,
+      isColour = function()
+        return entry.colour ~= false
+      end,
+      setCursorPos = function() end,
+      setBackgroundColor = function() end,
+      setTextColor = function() end,
+      setCursorBlink = function() end,
+      setPaletteColor = function() end,
+      clear = function() end,
+      blit = function(text)
+        entry.written = (entry.written or 0) + #tostring(text)
+      end,
+    }
+    return wrapped
+  end
+
+  local wrapped = {}
+  for _, entry in ipairs(self_.monitors) do
+    wrapped[entry.name] = monitorFor(entry)
+  end
+
   _G.peripheral = {
     getNames = function()
-      return {}
+      local names = {}
+      for _, entry in ipairs(self_.monitors) do
+        names[#names + 1] = entry.name
+      end
+      return names
     end,
-    hasType = function()
-      return false
+    hasType = function(name, kind)
+      return wrapped[name] ~= nil and kind == "monitor"
     end,
-    wrap = function()
-      return nil
+    isPresent = function(name)
+      return wrapped[name] ~= nil
     end,
-    find = function()
-      return nil
+    wrap = function(name)
+      return wrapped[name]
     end,
-    getType = function()
-      return nil
+    find = function(kind)
+      if kind ~= "monitor" then
+        return nil
+      end
+      local first = self_.monitors[1]
+      return first and wrapped[first.name] or nil
+    end,
+    getType = function(name)
+      return wrapped[name] ~= nil and "monitor" or nil
     end,
   }
 
@@ -951,6 +1109,20 @@ function world:ports()
     id = function()
       return self_.id
     end,
+    --- Recorded rather than acted on. Nothing in the simulated world addresses
+    --- anything by name, so what a spec wants to know is whether the machine
+    --- announced itself at all - which is a fact about the code under test, not
+    --- about the radio.
+    host = function(name, protocol)
+      self_.hosted[protocol or ""] = name
+      return true
+    end,
+    --- Always open. A simulated world has no peripherals to attach and the
+    --- interesting failure - a machine with no modem - is reached by handing a
+    --- spec a null transport, not by pretending this one broke.
+    open = function()
+      return true
+    end,
   })
 
   return {
@@ -993,6 +1165,36 @@ local FORGOTTEN = {
   "^domain%.",
   "^ports%.",
 }
+
+--- Queue an event, as though the game had raised it.
+---
+--- Returns the world so a spec can chain a sequence of them and read as the
+--- sentence it is testing.
+function world:push(...)
+  self.events[#self.events + 1] = { ... }
+  return self
+end
+
+--- Cap the disk at whatever is already on it, plus `spare` bytes.
+---
+--- The disk-full condition as it really arrives: a machine that has been running
+--- for weeks and writes one line too many, rather than one that booted with no
+--- room. `spare` of zero means the very next write fails.
+---
+--- Named `fillDisk` rather than `fill`, which is taken - `world:fill` places a
+--- box of blocks, and the first version of this quietly replaced it. Every
+--- terrain fill in the suite then set a disk limit instead of building a hill,
+--- and six unrelated specs failed with `Out of space`. Worth the extra word.
+---
+--- Returns the world so a spec reads as one sentence.
+function world:fillDisk(spare)
+  local used = 0
+  for _, content in pairs(self.files) do
+    used = used + #content
+  end
+  self.diskLimit = used + math.max(0, math.floor(tonumber(spare) or 0))
+  return self
+end
 
 --- Wipe every loaded ICOS module. With the filesystem living in the world, this
 --- is precisely what a reboot does: code fresh, state persisted.

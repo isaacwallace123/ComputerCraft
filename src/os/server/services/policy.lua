@@ -101,7 +101,16 @@ function policy.pass(context, now)
       local blocked = decision.rule == "update" and updatedOne
 
       if not blocked then
-        local _, changed = desired.want(record, decision.mode, { reason = decision.reason }, now)
+        -- `job` and `settings` are carried through even though no rule sets
+        -- them today. They were silently dropped here, so the first rule that
+        -- wanted to change a job would have set a goal with the job missing -
+        -- which `desired.want` accepts happily and which reads, on the Devices
+        -- page, as a plain redeploy onto whatever the turtle was already doing.
+        local _, changed = desired.want(record, decision.mode, {
+          reason = decision.reason,
+          job = decision.job,
+          settings = decision.settings,
+        }, now)
         policyRules.wait(context.attempts, id, decision.rule, now)
         updatedOne = updatedOne or decision.rule == "update"
 

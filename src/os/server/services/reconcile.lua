@@ -41,10 +41,11 @@
 local desired = require("domain.fleet.desired")
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
+local wire = require("domain.protocol.message")
 
 local reconcile = {}
 
-reconcile.PROTOCOL = "icos"
+reconcile.PROTOCOL = wire.NAME
 
 --- How often one device may be nudged.
 ---
@@ -55,6 +56,11 @@ reconcile.PROTOCOL = "icos"
 reconcile.EVERY = 6
 
 --- The ICOS 1 command for a goal, or nil where there is no equivalent.
+---
+--- Also what `os/server/services/bridge.lua` sends to a device that is actually
+--- on ICOS 1 — handed to it by the composition root rather than required, so
+--- this stays the single authority on the translation without the two files
+--- requiring each other.
 ---
 --- Taken from `legacy/miner/network.lua`'s existing handler, which is the authority on
 --- what an unupgraded turtle understands. `park` has no command: the old
@@ -97,8 +103,15 @@ function reconcile.due(context, now)
       local health = registry.health(record, now)
       local last = record.nudgedAt
       local elapsed = last == nil and math.huge or (now - last) / 1000
-      if health ~= "offline" and elapsed >= (context.nudgeEvery or reconcile.EVERY) then
-        rows[#rows + 1] = { id = record.id, record = record, goal = goal }
+      -- A device on ICOS 1 is not listening to this protocol, so a nudge from
+      -- here is a message into the void. `bridge` answers those on the protocol
+      -- they do talk, off their own heartbeat, and marks its own throttle - so
+      -- including them here would double-count the order rather than deliver it
+      -- twice.
+      if health ~= "offline" and record.legacy ~= true then
+        if elapsed >= (context.nudgeEvery or reconcile.EVERY) then
+          rows[#rows + 1] = { id = record.id, record = record, goal = goal }
+        end
       end
     end
   end
@@ -117,16 +130,31 @@ end
 function reconcile.nudge(context, row, now)
   row.record.nudgedAt = now
 
-  context.transport.send(row.id, {
-    kind = "desired",
-    desired = row.goal,
-    now = now,
-  }, reconcile.PROTOCOL)
+  -- Stamped, unlike a reply from `discovery`, because this send does not go
+  -- through `discovery.dispatch` - a nudge is the server speaking first, and
+  -- there is no inbound message for it to be a reply to.
+  context.transport.send(
+    row.id,
+    wire.stamp({
+      kind = "desired",
+      desired = row.goal,
+      now = now,
+    }),
+    reconcile.PROTOCOL
+  )
 
   if context.events ~= false then
     local command = reconcile.legacy(row.goal)
     if command then
-      context.transport.send(row.id, { kind = "command", command = command }, reconcile.PROTOCOL)
+      -- The old envelope gets the new field too. A pre-versioning device does
+      -- not read `v` and is unharmed by it, and stamping here means a device
+      -- that reads it can tell a dual-run command from an ICOS 1 one without
+      -- the server having to remember which of its two paths a message took.
+      context.transport.send(
+        row.id,
+        wire.stamp({ kind = "command", command = command }),
+        reconcile.PROTOCOL
+      )
     end
   end
   return true

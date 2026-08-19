@@ -50,11 +50,36 @@ function boot.ports()
     locator = require("adapters.cc.locator").new(),
     beacon = require("adapters.cc.beacon").new(),
     screen = require("adapters.cc.screen").new(term),
-    input = require("adapters.cc.input").new(),
+
+    -- Filtered, not the raw queue. A base station runs two screens and the
+    -- supervisor hands every event to every service, so an unfiltered terminal
+    -- port would have the wall's touches driving the keyboard desktop as well.
+    input = require("adapters.cc.input").terminal(),
   }
   if turtle then
     built.body = require("adapters.cc.body").new()
   end
+
+  -- The wall, if there is one.
+  --
+  -- Discovered here rather than by whoever draws, because picking a monitor
+  -- means comparing physical walls and setting a text scale - a decision about
+  -- hardware, which is what this file is for. A machine with no monitor gets
+  -- nil and simply draws on its own terminal, which is most machines.
+  --
+  -- Its input port is scoped to that monitor's name so a base with two walls
+  -- cannot act on a tap meant for the other one, and so the dashboard surface
+  -- never receives a keystroke at all (D020).
+  local wall, wallName, size = require("adapters.cc.display").attach({
+    naturalLess = require("lib.util").naturalLess,
+  })
+  if wall then
+    built.wall = wall
+    built.wallName = wallName
+    built.wallSize = size
+    built.wallInput = require("adapters.cc.input").monitor(wallName)
+  end
+
   return built
 end
 
@@ -68,6 +93,37 @@ boot.ROOTS = {
   [roles.CLIENT] = "os.client.main",
   [roles.TURTLE] = "os.turtle.main",
   [roles.MOBILE] = "os.mobile.main",
+}
+
+--- Extra options a role needs wired before its composition root is built.
+---
+--- A table for the same reason `ROOTS` is one: a branch here would be this file
+--- growing an opinion about mining, which its own header forbids. A role either
+--- has an entry or it does not.
+---
+--- Only the turtle has one, and only until `legacy/` is gone. `os/turtle/main.lua`
+--- declares `runJob` and `runControls` as seams and defaults them to a stub and
+--- a launcher, which means a turtle booted without this heartbeats, obeys
+--- recall, and never mines. `os/turtle/engine.lua` is what fills them, and it is
+--- the turtle's entire remaining dependency on ICOS 1.
+--- `when` is the seam whose absence means "this machine has no engine". It is
+--- declared so the wiring can be *skipped* without being *run*, which is the
+--- whole reason this is not just a function: building the turtle's engine
+--- constructs an ICOS 1 context, which reads `turtle` and `peripheral` and
+--- paints a screen. A caller that brought its own - every spec does - must not
+--- pay for one, and calling it to find out would be finding out too late.
+---
+--- One key rather than the whole list it fills, because `node` and `flags` have
+--- their own harmless defaults in `os/turtle/main.lua` and a caller omitting
+--- those is saying nothing about whether it wants an engine. `runJob` is the
+--- one that means it.
+boot.WIRING = {
+  [roles.TURTLE] = {
+    when = "runJob",
+    build = function()
+      return require("os.turtle.engine").new()
+    end,
+  },
 }
 
 --- Build the machine this computer is, without starting the loop.
@@ -85,6 +141,52 @@ function boot.machine(node, options)
   end
 
   local ports = options.ports or boot.ports()
+
+  -- Open the radio, once, here - and here rather than inside `boot.ports`.
+  --
+  -- The transport adapter deliberately does not open a modem on construction,
+  -- so that a missing one is discovered as a setup problem with a message
+  -- rather than as messages quietly going nowhere. Nothing then called `open`
+  -- either, which produced exactly the outcome that rule exists to prevent: a
+  -- server whose every send returned false and whose every receive timed out,
+  -- reporting itself perfectly healthy.
+  --
+  -- Putting it in `boot.ports` would have fixed that on hardware and left the
+  -- spec suite exercising a different path, because every spec injects its
+  -- ports and would have skipped the call. Opening the radio is part of
+  -- building a *machine*, not part of building the CC bundle, and doing it
+  -- where both paths meet is what makes the tested behaviour the real one.
+  --
+  -- Not asserted. A machine with no modem must still boot - a turtle with no
+  -- radio keeps mining, which is D004 stated as hardware - so the outcome is
+  -- recorded for `icos2 status` to print instead. The services that genuinely
+  -- cannot work without a radio say so themselves by failing to start.
+  local opened, why = ports.transport.open()
+  ports.radio = { open = opened == true, reason = why }
+
+  -- What this computer actually is, asked once and handed down.
+  --
+  -- `adapters/cc/machine.lua` was written for `roles.check` and `roles.offered`
+  -- and **nothing had ever called it** - every caller was a spec passing a
+  -- literal, so the layer that answers "can this machine be what it claims"
+  -- existed and never ran. This is the call it was waiting for.
+  --
+  -- Built here rather than in `boot.ports` because it is a fact about the
+  -- machine rather than a port, and because it needs the locator port to answer
+  -- whether the machine knows where it is. A caller that brought its own - every
+  -- spec does - keeps it.
+  options.machine = options.machine or require("adapters.cc.machine").capabilities(ports)
+
+  -- Can this machine be what its `.node` says it is?
+  --
+  -- Asked here and *recorded* rather than enforced, which is the deliberate half.
+  -- `roles.check` produces a sentence somebody can act on - "a server needs a
+  -- wireless or ender modem" - and refusing to boot on it would leave a base
+  -- station that cannot be used to fix the base station. So the machine starts,
+  -- the services that genuinely cannot work say so themselves by failing, and
+  -- `icos2 status` prints the sentence.
+  local ok, note = roles.check(role, options.machine)
+  ports.role = { ok = ok, note = note, plan = roles.plan(node, options.machine) }
 
   -- The one place that decides what is worth writing down.
   --
@@ -111,6 +213,18 @@ function boot.machine(node, options)
       end
     )
 
+  -- Merged rather than replaced, so a caller that brought its own seams keeps
+  -- them. The wiring is a default, not an override: a spec that wants a turtle
+  -- with no arms says so and is believed.
+  local wiring = boot.WIRING[role]
+  if wiring and options.wire ~= false and options[wiring.when] == nil then
+    for key, value in pairs(wiring.build()) do
+      if options[key] == nil then
+        options[key] = value
+      end
+    end
+  end
+
   local machine = require(moduleName).boot(ports, options)
   machine.role = role
   return machine
@@ -136,8 +250,10 @@ function boot.run(machine, pull)
     local event = pull()
 
     if event[1] == "terminate" then
-      machine.supervisor:step(event)
-      machine.supervisor:stop()
+      -- `shutdown` rather than step-then-stop, so the errors `terminate` raises
+      -- inside each parked service are not reported as five separate faults.
+      -- Somebody pressing Ctrl-T has not broken anything.
+      machine.supervisor:shutdown(event)
       return "terminated"
     end
 

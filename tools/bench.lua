@@ -24,8 +24,8 @@ package.path = table.concat({
   package.path,
 }, ";")
 
-local buffer = require("ui.buffer")
-local canvas = require("ui.canvas")
+local buffer = require("ui.render.buffer")
+local canvas = require("ui.render.canvas")
 local recorder = require("adapters.sim.screen")
 local theme = require("ui.theme")
 

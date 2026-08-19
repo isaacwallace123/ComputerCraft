@@ -57,8 +57,21 @@ function config.save(path, tbl)
   if not handle then
     error("could not write " .. temporary, 0)
   end
-  handle.write(textutils.serialise(tbl))
-  handle.close()
+
+  -- Raising is deliberate and stays: unlike a log line, a config that did not
+  -- save is something the caller has to know about - `.nav` silently failing to
+  -- write is a turtle that believes it is somewhere it is not.
+  --
+  -- What is guarded is the *handle*. A full disk throws out of `handle.write`,
+  -- and letting that escape before `close` leaked one of a small pool on every
+  -- attempt, so a disk-full machine ran out of file handles as well. Close
+  -- first, then raise with a sentence that names the real problem rather than
+  -- the bare `Out of space` the filesystem gives.
+  local wrote, reason = pcall(handle.write, textutils.serialise(tbl))
+  pcall(handle.close)
+  if not wrote then
+    error("could not write " .. temporary .. ": " .. tostring(reason), 0)
+  end
 
   if fs.exists(path) then
     fs.delete(path)

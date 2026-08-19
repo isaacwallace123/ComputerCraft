@@ -368,7 +368,7 @@ end
 -- Sound is optional: a machine with no speaker just updates quietly, and a
 -- missing module must never be able to break updating itself.
 pcall(function()
-  require("legacy.sound").play(ok and "ready" or "error")
+  require("adapters.cc.sound").play(ok and "ready" or "error")
 end)
 
 if ok and rebootAfter then

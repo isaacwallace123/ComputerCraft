@@ -77,9 +77,19 @@ end
 --- to load four.
 function shell.apps()
   return {
+    -- Fleet first. It is the page meant to be left open, so it is the one a
+    -- client shows on boot; Devices is what somebody switches to when the Fleet
+    -- page has told them something is wrong.
+    require("apps.fleet.app"),
     require("apps.devices.app"),
+    -- The turtle's own page. First in the list on a launcher, because
+    -- `available` filters by surface and it is the only one of these a turtle
+    -- shows - somebody standing in front of a turtle wants what it is doing,
+    -- not the fleet it is part of.
+    require("apps.job.app"),
     require("apps.services.app"),
     require("apps.logs.app"),
+    require("apps.console.app"),
   }
 end
 

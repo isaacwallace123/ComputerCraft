@@ -2,6 +2,7 @@
 
 local config = require("adapters.cc.config")
 local fuel = require("os.turtle.device.fuel")
+local machine = require("adapters.cc.machine")
 local nav = require("os.turtle.device.nav")
 local net = require("legacy.net")
 local peers = require("os.turtle.device.peers")
@@ -182,6 +183,12 @@ function Context:snapshot()
     sector = jobStatus.sector,
     workKey = jobStatus.workKey,
     peers = peers.count(),
+    -- Whether this turtle carries a chunk-loading upgrade. Reported so the base
+    -- can offer it the `general` job without anybody walking to it and looking:
+    -- a chunk loader is a peripheral, so unlike a pickaxe it can be observed
+    -- rather than assumed. Optional on readers - an older build omits it, and
+    -- `nil` reads as "not one", which is the safe direction.
+    chunky = machine.capabilities().chunkLoaded,
     -- Whether this turtle knows where it is in the world. Every shared-mine job
     -- refuses to deploy without it, so a fleet-wide order silently skips any
     -- turtle that has never been given its position. Reported so the base can

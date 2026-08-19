@@ -12,7 +12,7 @@ package.path = "/?.lua;/?/init.lua;" .. package.path
 
 local ui = require("legacy.shell.ui")
 local boot = require("legacy.boot")
-local sound = require("legacy.sound")
+local sound = require("adapters.cc.sound")
 local device = require("legacy.device")
 local config = require("adapters.cc.config")
 local display = require("legacy.shell.display")

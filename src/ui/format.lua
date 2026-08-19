@@ -1,7 +1,7 @@
 --- Text that has to fit an exact cell width.
 ---
 --- Called `ui/core/util.lua` until the folder it lived in was found to be the
---- same mistake D037 was written about. "Util" named nothing, which is how a
+--- same mistake D039 was written about. "Util" named nothing, which is how a
 --- file becomes a place to put things - and this one is specific: padding,
 --- truncation, and the two number formats a fleet dashboard actually shows.
 ---

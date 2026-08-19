@@ -17,8 +17,14 @@ function roster.save(devices)
   config.save(roster.PATH, devices)
 end
 
+--- Seconds since this device last reported.
+---
+--- `util.since` no longer defaults its second argument - a defaulted clock is
+--- a second clock nobody declared, and that is the bug that put two turtles in
+--- one shaft. ICOS 1 has no clock port, so the CC clock is named here, which is
+--- the same arrangement `legacy/mine/registry.lua` makes for the mine.
 function roster.age(node)
-  return util.since(node.lastSeen)
+  return util.since(node.lastSeen, os.epoch("utc"))
 end
 
 function roster.online(node)

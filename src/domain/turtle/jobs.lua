@@ -18,6 +18,13 @@
 ---
 --- ## An entry is a description, not an implementation
 ---
+--- **These paths were wrong for the whole of D039 and nothing noticed**, because
+--- nothing resolved them: the catalogue said `jobs.quarry` while the file had
+--- moved to `os/turtle/jobs/mining/quarry.lua`, and the only check on the field
+--- asserted it was a string - which a wrong path satisfies perfectly. A string
+--- that names a module is not tested by looking at it; it is tested by requiring
+--- it, which `os_spec` now does for every entry.
+---
 --- `module` is a string, resolved by the turtle when it starts the job. The
 --- catalogue never requires it, which is what lets a server - a computer with no
 --- `turtle` global at all - list, validate and assign jobs it could not itself
@@ -56,6 +63,13 @@ jobs.NEEDS = {
   place = true, -- can place blocks; declared, not observable
   fuel = true, -- consumes fuel meaningfully, so an unfuelled start is a fault
   modem = true, -- coordinates with the base, rather than merely benefiting
+
+  -- Holds its chunk loaded. Observable, unlike `dig` and `place`: the upgrade
+  -- is a peripheral, so asking whether it is there costs a lookup rather than a
+  -- broken block. It is the one capability that changes what the *fleet* can do
+  -- rather than what one turtle can do - a turtle without it still works, it
+  -- just stops the moment nobody is watching.
+  chunky = true,
 }
 
 --- The catalogue.
@@ -67,7 +81,7 @@ jobs.CATALOGUE = {
   {
     id = "quarry",
     label = "Coordinated area quarry",
-    module = "jobs.quarry",
+    module = "os.turtle.jobs.mining.quarry",
     summary = "Clears an absolute area in disjoint cells assigned by the base.",
     needs = { "dig", "fuel", "modem" },
     default = true,
@@ -75,14 +89,14 @@ jobs.CATALOGUE = {
   {
     id = "rare",
     label = "Rare ore prospecting",
-    module = "jobs.rare",
+    module = "os.turtle.jobs.mining.rare",
     summary = "Seeks deep valuable veins and returns when the hold is full.",
     needs = { "dig", "fuel", "modem" },
   },
   {
     id = "fuel",
     label = "Coal and fuel hunting",
-    module = "jobs.fuel_hunt",
+    module = "os.turtle.jobs.mining.fuel_hunt",
     summary = "Targets coal veins and keeps the fuel aboard for future cycles.",
     -- No modem. A fuel hunt is the job a turtle does *because* something has
     -- gone wrong, and requiring the base for it would mean a fleet that cannot
@@ -92,16 +106,27 @@ jobs.CATALOGUE = {
   {
     id = "hollow",
     label = "Hollow out a volume",
-    module = "jobs.hollow",
+    module = "os.turtle.jobs.mining.hollow",
     summary = "Empties a bounded space without prospecting.",
     needs = { "dig", "fuel" },
   },
   {
     id = "resources",
     label = "Bulk resource gathering",
-    module = "jobs.resources",
+    module = "os.turtle.jobs.mining.resources",
     summary = "Collects a named block until the hold is full.",
     needs = { "dig", "fuel", "modem" },
+  },
+  {
+    id = "general",
+    label = "Chunk loader",
+    module = "os.turtle.jobs.support.general",
+    summary = "Holds one chunk loaded so the miners working it keep running.",
+    -- No `dig`. A general travels over terrain rather than through it, and a
+    -- turtle with no tool is exactly the turtle to spend on this - it is the
+    -- cheapest thing in the fleet that can hold a chunk, and giving it a pickaxe
+    -- would only tempt somebody to send it mining.
+    needs = { "chunky", "fuel", "modem" },
   },
 }
 
@@ -210,6 +235,8 @@ function jobs.explain(need)
     return "needs fuel before it can start"
   elseif need == "modem" then
     return "needs a wireless modem to coordinate with the base"
+  elseif need == "chunky" then
+    return "needs a chunk-loading upgrade equipped"
   end
   return "needs " .. tostring(need)
 end

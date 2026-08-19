@@ -27,6 +27,17 @@ types/
 .hollow
 .swarm
 .fuel_hunt
+.general
+# ICOS 2 writes its own state beside ICOS 1's rather than sharing it, so that a
+# rollback is just a rollback. Every one of them belongs here for the same
+# reason the list above does.
+.fleet2
+.coverage
+.desired
+.depots
+.policy2
+.update-result
+.log.1
 # Every config write lands as `<name>.tmp` first; a crash can leave one behind.
 *.tmp
 *.bak-*

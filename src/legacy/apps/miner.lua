@@ -25,6 +25,16 @@ local jobs = {
 
 local ctx = Context.new(jobs)
 
+-- The mine link. `os/turtle/site.lua` is shared with ICOS 2 and no longer knows
+-- which protocol it is on, so the entrypoint that does knows says so. ICOS 1
+-- wraps the body in its own `mine` envelope on `ccfleet`; the body itself is
+-- unchanged, which is why one module can serve both.
+require("os.turtle.site").attach({
+  broadcast = function(body)
+    return net.broadcast("mine", body)
+  end,
+})
+
 net.open()
 log.info("miner agent starting v" .. version .. " (" .. ctx.node.job .. ")")
 

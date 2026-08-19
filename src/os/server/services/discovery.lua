@@ -27,6 +27,7 @@ local desired = require("domain.fleet.desired")
 local persist = require("os.server.services.persist")
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
+local wire = require("domain.protocol.message")
 
 local discovery = {}
 
@@ -34,8 +35,11 @@ local discovery = {}
 ---
 --- Kept as a constant rather than inlined so the miner and the server cannot
 --- drift apart by a typo, which is a failure mode with no error message: both
---- sides work perfectly and never hear each other.
-discovery.PROTOCOL = "icos"
+--- sides work perfectly and never hear each other. It was then inlined in six
+--- other files anyway, which is how that failure was going to arrive; the
+--- literal now lives once, in `domain/protocol/message.lua`, and this is an
+--- alias so existing callers read the same as they did.
+discovery.PROTOCOL = wire.NAME
 
 --- Message kinds this service answers.
 discovery.HELLO = "hello"
@@ -95,6 +99,14 @@ function discovery.handle(context, sender, message)
   local snapshot = message.snapshot
 
   local record = registry.observe(context.state.fleet, sender, snapshot, now)
+
+  -- Which build this device is running, kept beside the rest of what is known
+  -- about it. During a rolling update "which devices are still on the old
+  -- build" is the question being asked every few minutes, and reading it off
+  -- the heartbeat is the only way to answer it that does not require the
+  -- device to be reachable at the moment somebody asks.
+  record.build = wire.buildOf(message) or record.build
+  record.protocol = wire.versionOf(message)
 
   -- What the device has applied, which is what decides whether it has caught up.
   -- Absent on a device running an older build: it reports generation 0 and is
@@ -193,16 +205,38 @@ end
 function discovery.dispatch(context, sender, message)
   local replies = {}
 
-  local reply = discovery.handle(context, sender, message)
+  -- The one version gate on the server, here rather than in each handler. A
+  -- handler that had to check would be a handler that could forget, and the
+  -- answer does not vary by handler: whether a message is comprehensible is a
+  -- property of the message.
+  --
+  -- `era` is deliberately not used to refuse anything. `NEWER` means a device
+  -- updated ahead of this base, which the updater makes the normal case rather
+  -- than the exception, and the compatibility rule in
+  -- `domain/protocol/message.lua` is what makes reading it safe.
+  local body = wire.accept(message)
+  if body == nil then
+    return replies
+  end
+
+  local reply = discovery.handle(context, sender, body)
   if reply then
     replies[#replies + 1] = reply
   end
 
   for _, handler in ipairs(context.handlers or {}) do
-    local extra = handler(context, sender, message)
+    local extra = handler(context, sender, body)
     if extra then
       replies[#replies + 1] = extra
     end
+  end
+
+  -- Stamped once, on the way out, rather than at each `return` inside a handler.
+  -- Six handlers returning a table literal is six chances to forget a field
+  -- whose absence means "pre-versioning build" - a wrong answer that looks like
+  -- a right one.
+  for _, out in ipairs(replies) do
+    wire.stamp(out)
   end
 
   return replies

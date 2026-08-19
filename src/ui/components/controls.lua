@@ -5,6 +5,7 @@
 --- intent rather than a set of properties, and anything that recesses or raises
 --- takes the surface it sits on so it can pick a shade that contrasts with it.
 
+local inputModel = require("ui.input")
 local reactive = require("ui.state.reactive")
 local runtime = require("ui.runtime")
 local theme = require("ui.theme")
@@ -84,6 +85,127 @@ runtime.define({
     -- size**, so tabbing through a form cannot re-solve the layout.
     if node.Focused and not node.Disabled then
       frame:write(x, y, " ", T.accentFg, T.accent)
+    end
+  end,
+})
+
+---------------------------------------------------------------------------
+-- Field
+---------------------------------------------------------------------------
+
+--- One line of typed text.
+---
+--- The framework went without one for a long time and that was defensible while
+--- every screen was a dashboard. It stopped being defensible the moment ICOS 2
+--- needed a console, a setup flow, and a coordinate prompt: **every remaining
+--- interactive app is blocked on being able to type**, and without this each
+--- would have grown its own `read()` loop over the top of a running page.
+---
+--- ## It holds no text, and that is why it works
+---
+--- `Value` is the current string, bound like any other property, and `OnChange`
+--- is called with what it should become. The caller owns the state.
+---
+--- That is not a stylistic choice - it is forced, and the reason is worth
+--- knowing. `runtime.define` resolves *every* property that is a state object
+--- before paint, so a field handed a `Value` state would see the string and
+--- never the object, and could not write back to it. Rather than carve an
+--- exception into the binding graph for one component, the data flows the way
+--- it already does everywhere else: down as a value, back as a call.
+---
+--- ## No cursor movement, and that is a decision
+---
+--- Left, right, home and end are not bound. A monitor has no keyboard at all
+--- (D032: a touch is a whole tap, and hover does not exist), and the surfaces
+--- that do have one are typing a coordinate or a one-word command, not editing
+--- prose. Backspace and Enter are the whole interaction, which keeps this
+--- usable on a turtle - and adding arrows later costs nothing, because the
+--- caller's state does not change shape.
+---
+--- Enter reaches `OnSubmit`, never `OnClick`. The runtime fires `OnClick` on the
+--- focused node for enter **and space**, so a field that submitted through it
+--- would be a field that cannot type a space.
+runtime.define({
+  kind = "Field",
+  defaults = {
+    Focusable = true,
+
+    --- Typing. Every printable character arrives here, one at a time.
+    OnChar = function(node, event)
+      if node.Disabled or type(node.OnChange) ~= "function" then
+        return false
+      end
+      local text = tostring(node.Value or "")
+      local limit = tonumber(node.MaxLength)
+      if limit and #text >= limit then
+        return true
+      end
+      node.OnChange(text .. tostring(event.char or ""))
+      return true
+    end,
+
+    --- Backspace and enter. Everything else is left alone so that a screen can
+    --- still bind its own keys while a field has focus.
+    OnKey = function(node, event)
+      if node.Disabled then
+        return false
+      end
+      local text = tostring(node.Value or "")
+
+      if event.key == inputModel.KEY.backspace then
+        if type(node.OnChange) == "function" and #text > 0 then
+          node.OnChange(text:sub(1, #text - 1))
+        end
+        return true
+      end
+
+      if event.key == inputModel.KEY.enter then
+        if type(node.OnSubmit) == "function" then
+          node.OnSubmit(text)
+        end
+        return true
+      end
+
+      return false
+    end,
+  },
+  layout = { Size = true },
+
+  measure = function(node)
+    -- Fields grow. A width in cells would be a guess about a screen this does
+    -- not know the size of, so the floor is small and the row decides.
+    return tonumber(node.Width) or 8, 1
+  end,
+
+  paint = function(node, frame, surface)
+    local x, y, width = node._x, node._y, node._w
+    if width <= 0 or (node._h or 0) <= 0 then
+      return
+    end
+
+    local text = tostring(node.Value or "")
+    local background = surface == T.muted and T.border or T.muted
+    local colour = node.Disabled and T.mutedFg or T.foreground
+
+    -- The tail, not the head. A line longer than the field scrolls so what is
+    -- being typed stays visible; showing the first N characters would hide it.
+    local room = node.Focused and width - 1 or width
+    if #text > room then
+      text = text:sub(#text - room + 1)
+    end
+
+    local shown = text
+    if #text == 0 and not node.Focused and node.Placeholder then
+      shown = tostring(node.Placeholder)
+      colour = T.mutedFg
+    end
+
+    frame:write(x, y, format.pad(shown, width, "left"), colour, background)
+
+    -- The caret is a filled cell rather than a character, so it reads the same
+    -- on a monitor that cannot blink and in a screenshot.
+    if node.Focused and not node.Disabled then
+      frame:write(x + math.min(#text, width - 1), y, " ", T.accentFg, T.accent)
     end
   end,
 })

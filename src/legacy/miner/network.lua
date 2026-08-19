@@ -3,7 +3,7 @@
 local log = require("adapters.cc.logfile")
 local net = require("legacy.net")
 local peers = require("os.turtle.device.peers")
-local site = require("legacy.mine.site")
+local site = require("os.turtle.site")
 
 local network = {}
 

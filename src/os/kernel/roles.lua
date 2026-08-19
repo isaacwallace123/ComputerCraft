@@ -153,6 +153,116 @@ function roles.check(role, capabilities)
   return true
 end
 
+--- The roles a machine may be *offered*, in menu order.
+---
+--- Distinct from `check`, and the difference matters. `check` answers "is this
+--- machine allowed to be what it already claims to be" and is asked at boot;
+--- this answers "what should somebody be shown at setup" and is asked once, by
+--- a person. A role can be offerable and still warn - a handheld with no modem
+--- is a usable handheld (D019) - and a role can be checkable and never offered.
+---
+--- **A server is offered without a position**, even though `check` refuses one.
+--- That is deliberate: setup is where somebody is standing at the machine and
+--- can be told to run `where`, and hiding the role until they have would leave
+--- them with no way to discover that a server is what they wanted. The refusal
+--- comes later, with an instruction, from the place that can act on it.
+---
+--- `detail` is what the role *is*, not what it needs. What it needs is `warn`,
+--- which is shown after it is chosen, because a menu of caveats is a menu
+--- nobody reads.
+roles.OFFERED = {
+  {
+    key = roles.TURTLE,
+    label = "Turtle",
+    detail = "Runs jobs, moves, reports to the base",
+    offer = function(caps)
+      return caps.turtle == true
+    end,
+    warn = function(caps)
+      if not caps.modem then
+        return "no modem: it will work, but nothing will track it"
+      end
+      return nil
+    end,
+  },
+  {
+    key = roles.SERVER,
+    label = "Server",
+    detail = "Holds the fleet's state and hosts GPS",
+    offer = function(caps)
+      -- Not a pocket computer: a server must stay loaded, and a machine in
+      -- somebody's pocket is the definition of one that does not (D019).
+      return caps.pocket ~= true
+    end,
+    warn = function(caps)
+      if not caps.modem then
+        return "a server needs a wireless or ender modem before it can start"
+      end
+      if not caps.wireless then
+        return "wired modem: turtles will not reach this"
+      end
+      if not caps.located then
+        return "run `locate` before starting: a GPS host must know where it is"
+      end
+      if caps.turtle and not caps.chunkLoaded then
+        return "not a Chunky Turtle: keep this chunk loaded another way"
+      end
+      return nil
+    end,
+  },
+  {
+    key = roles.CLIENT,
+    label = "Client",
+    detail = "Screens and controls. Holds no authority",
+    offer = function(caps)
+      return caps.turtle ~= true and caps.pocket ~= true
+    end,
+    warn = function(caps)
+      if not caps.modem then
+        return "no modem: it will show nothing until one is attached"
+      end
+      if not caps.monitor then
+        return "no monitor: the dashboard will draw on this screen"
+      end
+      return nil
+    end,
+  },
+  {
+    key = roles.MOBILE,
+    label = "Handheld",
+    detail = "The same screens, in your pocket",
+    offer = function(caps)
+      return caps.pocket == true
+    end,
+    warn = function(caps)
+      if not caps.modem then
+        return "no modem: the screens work offline; fleet control needs one"
+      end
+      if not caps.wireless then
+        return "wired modem: use a wireless or ender one while mobile"
+      end
+      return nil
+    end,
+  },
+}
+
+--- The offerable roles for these capabilities, in menu order.
+---
+--- Never empty for any real machine: every form factor matches at least one
+--- entry, which is what stops setup showing somebody a list with nothing in it
+--- and no way forward. A turtle gets Turtle and Server; a pocket gets Handheld;
+--- a computer gets Server and Client.
+function roles.offered(capabilities)
+  capabilities = capabilities or {}
+  local out = {}
+  for _, entry in ipairs(roles.OFFERED) do
+    if entry.offer(capabilities) then
+      out[#out + 1] = entry
+    end
+  end
+  return out
+end
+
 --- What the composition root should start on this machine.
 ---
 --- One place that answers "what runs here", so `startup.lua` does not grow a

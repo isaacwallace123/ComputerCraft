@@ -12,7 +12,7 @@ local device = require("legacy.device")
 local util = require("lib.util")
 local coordinator = require("legacy.fleet.coordinator")
 local minePlan = require("domain.mine.plan")
-local mineRegistry = require("domain.mine.registry")
+local mineRegistry = require("legacy.mine.registry")
 
 local console = {}
 

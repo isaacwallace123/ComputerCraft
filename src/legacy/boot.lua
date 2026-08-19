@@ -9,7 +9,7 @@
 --- animation you end up deleting.
 
 local ui = require("legacy.shell.ui")
-local sound = require("legacy.sound")
+local sound = require("adapters.cc.sound")
 local version = require("lib.version")
 
 local boot = {}

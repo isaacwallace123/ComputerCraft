@@ -38,10 +38,11 @@ local persist = require("os.server.services.persist")
 local plan = require("domain.mine.plan")
 local registry = require("domain.mine.registry")
 local service = require("os.kernel.service")
+local wire = require("domain.protocol.message")
 
 local leases = {}
 
-leases.PROTOCOL = "icos"
+leases.PROTOCOL = wire.NAME
 
 --- The message kind that carries a mine request.
 ---
@@ -151,6 +152,49 @@ function leases.surface(context, state, sender, body, now)
   return { kind = "mine_result", ok = true, requestId = body.requestId, surface = surface }
 end
 
+--- Place or reshape the mine.
+---
+--- **The only way an ICOS 2 fleet gets a mine at all.** Until this existed the
+--- new server could lease sectors from a plan but had no way to be given one -
+--- `mine at x y z` lived in `legacy/console.lua` and nowhere else, so an ICOS 2
+--- base could not be configured without booting ICOS 1 to do it. An in-world
+--- test found that the direct way: a turtle that refused every deploy with "no
+--- mine configured at base".
+---
+--- It is a `mine` action rather than a message of its own, which means it
+--- crosses `os/server/services/bridge.lua` unaltered and an ICOS 1 console can
+--- configure an ICOS 2 server. That is not a nicety - it is the same envelope
+--- rule the rest of this file follows, and it is what makes the migration
+--- reversible in both directions.
+---
+--- Flushed rather than batched, and loudly. A mine placement that changed the
+--- grid has just discarded every recorded frontier (`registry.configure`), and
+--- losing that write to a crash would leave sector numbers pointing at ground
+--- the fleet has already been told is different.
+function leases.configure(context, state, body)
+  local plan_, moved = registry.configure(state, {
+    centreX = tonumber(body.centreX),
+    centreZ = tonumber(body.centreZ),
+    surfaceY = tonumber(body.surfaceY),
+    cellSize = tonumber(body.cellSize),
+    minRing = tonumber(body.minRing),
+    maxRing = tonumber(body.maxRing),
+  })
+
+  persist.flush(context, leases.SECTION)
+
+  return {
+    kind = "mine_result",
+    ok = true,
+    requestId = body.requestId,
+    plan = plan_,
+    -- Reported rather than assumed. Somebody needs to be told that a day of
+    -- sector progress was thrown away on purpose, and the console is where they
+    -- will be standing when it happens.
+    moved = moved,
+  }
+end
+
 --- Give a sector back without marking progress.
 function leases.release(context, state, sender, body)
   local index = math.floor(tonumber(body.sector) or 0)
@@ -214,7 +258,9 @@ function leases.handle(context, sender, message)
   local state = context.state[leases.SECTION]
   local now = context.clock.now()
 
-  if body.action == "claim" then
+  if body.action == "configure" then
+    return leases.configure(context, state, body)
+  elseif body.action == "claim" then
     return leases.claim(context, state, sender, body, now)
   elseif body.action == "report" then
     return leases.report(context, state, sender, body, now)

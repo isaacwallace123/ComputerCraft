@@ -157,7 +157,7 @@ The bottom two rows exist as of phase 1. `ports/screen` is
 [`src/adapters/cc/screen.lua`](../src/adapters/cc/screen.lua) and over a recording cell
 grid by [`src/adapters/sim/screen.lua`](../src/adapters/sim/screen.lua);
 [`src/ui/buffer.lua`](../src/ui/buffer.lua) is the grid and the diff, and
-[`tools/spec/buffer_spec.lua`](../tools/spec/buffer_spec.lua) is the first test in this
+[`tests/ui/buffer_spec.lua`](../tests/ui/buffer_spec.lua) is the first test in this
 repository that asserts what is on a screen without a world to put it in.
 
 Two decisions made while building it are worth knowing before adding to the layer, and
@@ -873,7 +873,7 @@ This is the whole technical argument and it is a number, not a preference.
 
 **2. It is testable, and that is what keeps the number true.** Neither Basalt version has
 a test suite. Ours renders through `ports/screen`, so a recording adapter with a cell grid
-and a call log is a complete substitute for a monitor: `tools/spec/buffer_spec.lua` asserts
+and a call log is a complete substitute for a monitor: `tests/ui/buffer_spec.lua` asserts
 both what is on the screen and how many calls put it there. A performance property nothing
 checks is a performance property that decays. This one fails the build.
 
@@ -932,7 +932,7 @@ We are starting ICOS 2. Read these completely before writing anything:
   docs/icos-2.md            the OS split, services, desired state     <- the plan
   docs/ui-framework.md      the UI framework                          <- the plan
   src/core/ui.lua           what the UI framework replaces
-  tools/spec/               the existing simulated-world spec suite
+  tests/                    the simulated-world spec suite
 
 The UI framework is modelled on Fusion (the Roblox library), NOT React. State
 objects bind directly to node properties and components never re-run. Read
@@ -952,7 +952,7 @@ Deliver:
    no inheritance, no metatable trickery.
 
 2. src/adapters/cc/ — real implementations over fs, rednet, term, turtle, gps.
-   src/adapters/sim/ — promote tools/spec/support/world.lua to a first-class
+   src/adapters/sim/ — promote the suite's support/world.lua to a first-class
    adapter rather than a monkey-patch over _G.
    Nothing outside adapters/cc may reference a CC global.
 

@@ -65,14 +65,19 @@ $ccGlobals = @(
   "keys", "textutils", "parallel", "settings", "window", "paintutils", "vector",
   "disk", "redstone", "commands", "multishell", "shell", "pocket", "http", "os"
 )
-# Known debt, with the reason recorded in the file's own header. `registry` was
-# moved into `domain/` without being de-globalised, deliberately, so that the
-# existing specs could prove the move changed nothing. Threading a clock port
-# through its callers is the change that empties this list; do not add to it.
-$layeringDebt = @{
-  "domain/mine/registry.lua" = @("os")
-  "lib/util.lua"             = @("os")
-}
+# Known debt, with the reason recorded in the file's own header.
+#
+# **This list is empty, and keeping it empty is the point.** It held two files:
+# `domain/mine/registry.lua`, moved into `domain/` without being de-globalised
+# so the existing specs could prove the move changed nothing, and `lib/util.lua`,
+# whose `since` defaulted its clock. Both are clean - the CC clock and the CC
+# file now live in `legacy/mine/registry.lua` and at the one call site in
+# `legacy/fleet/roster.lua`, which are ICOS 1 and are allowed to.
+#
+# Adding an entry here is declaring that a pure folder is not pure. Do it only
+# with a header comment in the file saying what empties it again, and treat it
+# as a debt with a due date rather than an exemption.
+$layeringDebt = @{}
 
 # `lib/` joined the pure roots when `core/` was dismantled. It holds the two
 # files that were genuinely generic - `util` and `version` - and the point of
@@ -89,6 +94,14 @@ foreach ($root in $pureRoots) {
     $code = [System.IO.File]::ReadAllText($file.FullName)
     $code = [regex]::Replace($code, "--\[\[.*?\]\]", "", "Singleline")
     $code = [regex]::Replace($code, "--[^\r\n]*", "")
+    # String literals go too, for the same reason comments do: their contents
+    # are not references. `domain/turtle/jobs.lua` names the module each job
+    # lives in - "os.turtle.jobs.mining.quarry" - and a check that reads that
+    # as a use of the CC global `os` reports a file for saying where its own
+    # code is. Like the comment stripping above, this can only make the check
+    # more permissive; it is a guardrail against drift, not a proof.
+    $code = [regex]::Replace($code, '"(?:[^"\\\r\n]|\\.)*"', "")
+    $code = [regex]::Replace($code, "'(?:[^'\\\r\n]|\\.)*'", "")
     foreach ($name in $ccGlobals) {
       if ($allowed -contains $name) { continue }
       if ($code -match "(?m)^\s*local\s+$name\b") { continue }
@@ -111,7 +124,14 @@ Write-Host "== lua-language-server ==" -ForegroundColor Cyan
 $luals = Find-Tool "lua-language-server.exe"
 if ($luals) {
   $logs = "$env:TEMP\cc-check"
-  $out = & $luals --check $repo --checklevel=Warning --logpath=$logs 2>&1
+  # `--check_out_path` names the report explicitly. It used to be read out of
+  # `--logpath`, where the language server does not put it - so every failure
+  # printed "N problems found" and nothing else, which is the exact thing the
+  # comment below says this branch exists to prevent. It cost somebody five
+  # minutes before anybody noticed the report had never been found.
+  $report = "$logs\check.json"
+  if (Test-Path $report) { Remove-Item $report -Force }
+  $out = & $luals --check $repo --checklevel=Warning --logpath=$logs --check_out_path=$report 2>&1
   $summary = $out | Select-Object -Last 1
   Write-Host "  $summary"
   if ($summary -notmatch "no problems found") {
@@ -119,7 +139,6 @@ if ($luals) {
     # branch below prints everything: "1 problems found" without a file and a
     # line is a check that tells you to go and find it yourself, and the report
     # is sitting in a file this script already knows the path of.
-    $report = Join-Path $logs "check.json"
     if (Test-Path $report) {
       $json = Get-Content $report -Raw | ConvertFrom-Json
       foreach ($file in $json.PSObject.Properties) {
@@ -176,6 +195,13 @@ if ($stylua) {
 else {
   Write-Host "  skipped (install the johnnymorganz.stylua extension)" -ForegroundColor DarkGray
 }
+
+# The handoff map, checked for the same reason the layering rule is: it was a
+# claim nothing verified, and it had rotted to thirty-three broken rows out of
+# forty. A wrong map is worse than no map - it sends a change into `src/os/`
+# that needed to go into `src/legacy/`, which builds, passes, and does nothing.
+& (Join-Path $PSScriptRoot "check-docs.ps1")
+if ($LASTEXITCODE -ne 0) { $failed = $true }
 
 Write-Host ""
 if ($failed) {

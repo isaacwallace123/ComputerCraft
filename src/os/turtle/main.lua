@@ -53,10 +53,11 @@ local control = require("os.turtle.control")
 local jobs = require("domain.turtle.jobs")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
+local wire = require("domain.protocol.message")
 
 local turtleOs = {}
 
-turtleOs.PROTOCOL = "icos"
+turtleOs.PROTOCOL = wire.NAME
 
 --- Seconds between heartbeats.
 ---
@@ -87,7 +88,12 @@ turtleOs.HEARTBEAT = 2
 --- discovers the truth the first time it digs, parks, and reports why. That is
 --- the existing D004 park path and it already works; the catalogue makes the
 --- requirement visible ten seconds earlier, where it is cheap.
-function turtleOs.capabilities(ports)
+--- `machine` is what `adapters/cc/machine.lua` reported about the hardware, or
+--- nil in a spec that has no hardware to report. The two vocabularies are
+--- deliberately different - that one answers "what is this computer", this one
+--- answers "what can a job ask of it" - so the translation happens here, once,
+--- rather than every job learning both.
+function turtleOs.capabilities(ports, machine)
   local body = ports.body
   local level = body and body.fuel() or 0
 
@@ -97,6 +103,13 @@ function turtleOs.capabilities(ports)
     dig = body ~= nil,
     place = body ~= nil,
     modem = ports.transport ~= nil and ports.transport.id() ~= nil,
+
+    -- The one capability in this table that can actually be observed rather than
+    -- assumed: the chunk loader is a peripheral, so it either answers or it does
+    -- not. A turtle without one is refused the `general` job at setup instead of
+    -- being posted to a chunk it cannot hold - which would look like coverage on
+    -- the base and be nothing at all in the world.
+    chunky = machine ~= nil and machine.chunkLoaded == true,
   }
 end
 
@@ -142,7 +155,10 @@ turtleOs.heartbeat = service.define({
   run = function(context)
     while true do
       local snapshot = context.snapshot()
-      context.transport.broadcast(agent.heartbeat(context.state, snapshot), turtleOs.PROTOCOL)
+      context.transport.broadcast(
+        wire.stamp(agent.heartbeat(context.state, snapshot)),
+        turtleOs.PROTOCOL
+      )
 
       -- A short receive rather than a sleep, so a reply is picked up as soon as
       -- it lands instead of on the next tick of a timer that knows nothing
@@ -151,6 +167,15 @@ turtleOs.heartbeat = service.define({
         context.transport.receive(turtleOs.PROTOCOL, turtleOs.HEARTBEAT)
       if sender ~= nil and protocol == turtleOs.PROTOCOL then
         turtleOs.orders(context, message)
+
+        -- Anything else that needs to see a message registers here, for the
+        -- reason `os/server/services/discovery.lua` gives: receiving consumes,
+        -- so only one loop may call it, and a second reader would silently eat
+        -- half the traffic while looking perfectly healthy. The sector client
+        -- is the one that needs it - its reply arrives here, not where it asked.
+        for _, handler in ipairs(context.handlers or {}) do
+          handler(context, sender, message)
+        end
       end
     end
   end,
@@ -286,10 +311,39 @@ function turtleOs.boot(ports, options)
     end,
   }
 
+  -- The mine link, and the mailbox its replies land in.
+  --
+  -- `os/turtle/site.lua` is shared with ICOS 1 and deliberately does not know
+  -- which protocol it is on, so the composition root says. Required here rather
+  -- than at the top of the file because it reaches for `fs` through the config
+  -- adapter, and a spec that only wanted to check supervision should not have
+  -- to own a filesystem.
+  local site = require("os.turtle.site")
+  site.attach({
+    broadcast = function(body)
+      context.transport.broadcast(wire.stamp({ kind = "mine", body = body }), turtleOs.PROTOCOL)
+      -- `transport.broadcast` reports nothing - the port says so, because a
+      -- broadcast has no addressee to have reached. So "did this get out" is
+      -- answered by whether the radio is open at all, which `os/kernel/boot.lua`
+      -- recorded when it opened it. False sends the turtle down its offline
+      -- path, which is the right answer for a machine with no modem.
+      return ports.radio ~= nil and ports.radio.open == true
+    end,
+  })
+
+  context.handlers = options.handlers
+    or {
+      function(_, _, message)
+        if type(message) == "table" and message.kind == "mine_result" then
+          site.deliver(message)
+        end
+      end,
+    }
+
   -- Resolved before the services start, so the job service has something to
   -- run and the first heartbeat already reports the truth rather than a job
   -- name the base will have to correct on the next one.
-  local capabilities = options.capabilities or turtleOs.capabilities(ports)
+  local capabilities = options.capabilities or turtleOs.capabilities(ports, options.machine)
   local entry, corrected, runnable, why = turtleOs.selectJob(context.node, capabilities)
   context.job = entry
   context.jobRunnable = runnable

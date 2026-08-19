@@ -147,11 +147,13 @@ function app.mount(scope, context, options)
     })
   end
 
-  return scope:Page({
-    Title = "Logs",
-    Status = status,
-    Children = rows,
-    Actions = options.readOnly and nil or {
+  -- Built before the page rather than inline. `readOnly and nil or {...}` reads
+  -- like a guard and is not one: `and` yields nil and `nil or {...}` is the
+  -- table, so the actions were passed on every surface including a monitor
+  -- nobody can press. D020 calls that boundary a safety property.
+  local actions = nil
+  if not options.readOnly then
+    actions = {
       scope:Button({
         Text = "Warnings only",
         Variant = "ghost",
@@ -159,7 +161,14 @@ function app.mount(scope, context, options)
           filter:set(not filter:get())
         end,
       }),
-    },
+    }
+  end
+
+  return scope:Page({
+    Title = "Logs",
+    Status = status,
+    Children = rows,
+    Actions = actions,
   })
 end
 

@@ -1,19 +1,27 @@
 --- Local controls and autonomous job lifecycle for miner turtles.
 
 local config = require("adapters.cc.config")
+local lifecycle = require("domain.turtle.lifecycle")
 local log = require("adapters.cc.logfile")
 local nav = require("os.turtle.device.nav")
-local sound = require("legacy.sound")
+local runnerModule = require("os.turtle.runner")
+local sound = require("adapters.cc.sound")
 local ui = require("legacy.shell.ui")
 
 local runtime = {}
 
-local function prepareJob(ctx)
-  if ctx.jobModule.prepare then
-    return ctx.jobModule.prepare(ctx.job)
-  end
-  return true
-end
+--- The keys the local controls listen for, by name.
+---
+--- Only these. A table rather than a reverse lookup over `keys`, because that
+--- table holds every key on the board and this turtle answers five of them.
+local NAMED_KEYS = {
+  [keys.q] = "q",
+  [keys.d] = "d",
+  [keys.enter] = "enter",
+  [keys.c] = "c",
+  [keys.j] = "j",
+  [keys.r] = "r",
+}
 
 local function readyJob(ctx)
   if ctx.jobModule.ready then
@@ -26,17 +34,14 @@ function runtime.localControls(ctx)
   while true do
     local event = { os.pullEvent() }
     if event[1] == "key" and not ctx.interactive then
-      local key = event[2]
-      if key == keys.q then
+      -- Keycode to name here, meaning in `domain/turtle/lifecycle.lua`. What a
+      -- key does - and which keys a parked or running turtle has at all - is a
+      -- rule worth testing; which integer CC gives it is not.
+      local action = lifecycle.keypress(NAMED_KEYS[event[2]], ctx.node.parked)
+      if action == "quit" then
         return
-      elseif ctx.node.parked and (key == keys.d or key == keys.enter) then
-        ctx.control.deploy = true
-      elseif ctx.node.parked and key == keys.c then
-        ctx.control.configure = true
-      elseif ctx.node.parked and key == keys.j then
-        ctx.control.changeJob = true
-      elseif not ctx.node.parked and key == keys.r then
-        ctx.control.recall = true
+      elseif action then
+        ctx.control[action] = true
       end
     elseif event[1] == "mouse_click" and not ctx.interactive then
       local _, height = ui.size()
@@ -189,138 +194,127 @@ local function localSetup(ctx, changeJob)
 end
 
 --- Sit still, stay visible, and accept local or remote controls.
-function runtime.park(ctx, reason, kind)
-  ctx.node.parked = true
-  ctx.node.parkKind = kind or ctx.node.parkKind or "idle"
-  ctx.node.parkReason = reason or ctx.node.parkReason or "waiting for orders"
-  ctx:saveNode()
-  ctx:report("parked", ctx.node.parkReason)
-  log.info("parked: " .. tostring(ctx.node.parkReason))
-
-  local launchRequester = nil
-  while true do
-    if ctx.control.update then
+--- The handlers the runner cannot perform itself.
+---
+--- Each one needs a screen or a shell: an OTA update replaces the running code,
+--- and the job pickers prompt. `os/turtle/runner.lua` knows an order was
+--- serviced and whether the turtle is now working; it does not know how to ask
+--- somebody a question.
+---
+--- Each returns true when it has already put the turtle to work, which is the
+--- contract `Runner:wait` reads.
+function runtime.handlers(ctx)
+  return {
+    update = function()
       runUpdate(ctx)
-    elseif ctx.control.assignment then
+      return false
+    end,
+    assignment = function()
       applyAssignment(ctx)
-    elseif ctx.control.setJob then
+      return false
+    end,
+    setJob = function()
       applyRemoteJob(ctx)
-    elseif ctx.control.settings then
+      return false
+    end,
+    settings = function()
       applyRemoteSettings(ctx)
-    elseif ctx.control.configure then
+      return false
+    end,
+    configure = function()
       ctx.control.configure = false
-      if localSetup(ctx, false) then
-        return
-      end
-    elseif ctx.control.changeJob then
+      return localSetup(ctx, false)
+    end,
+    changeJob = function()
       ctx.control.changeJob = false
-      if localSetup(ctx, true) then
-        return
-      end
-    elseif ctx.control.deploy then
-      ctx.control.deploy = false
-      local requester = ctx.control.deployFrom
-      ctx.control.deployFrom = nil
-      local canStart, why, notReadyKind = prepareJob(ctx)
-      if canStart then
-        canStart, why, notReadyKind = readyJob(ctx)
-      end
+      return localSetup(ctx, true)
+    end,
+  }
+end
 
-      if canStart then
-        launchRequester = requester
-        break
-      end
-
-      log.warn("deploy refused: " .. tostring(why))
-      sound.play("error")
-      ctx.node.parkKind = notReadyKind or "fuel"
-      ctx.node.parkReason = why or "not ready"
+--- The effects the runner performs through, bound to this context.
+function runtime.effects(ctx)
+  return {
+    saveNode = function()
       ctx:saveNode()
-      ctx:report("parked", ctx.node.parkReason)
-      ctx:reply(requester, "deploy", false, ctx.node.parkReason)
-    end
-    sleep(0.2)
-  end
-
-  ctx.control.recall = false
-  nav.setHome()
-  ctx.job = ctx.jobModule.restart(ctx.job)
-  ctx.node.parked = false
-  ctx.node.parkKind = nil
-  ctx.node.parkReason = nil
-  ctx:saveNode()
-  log.info("redeployed")
-  ctx:reply(launchRequester, "deploy", true, ctx.jobModule.name .. " started")
+    end,
+    report = function(phase, detail)
+      ctx:report(phase, detail)
+    end,
+    log = function(message)
+      log.info(message)
+    end,
+    tone = function(name)
+      sound.play(name)
+    end,
+    setHome = function()
+      nav.setHome()
+    end,
+    -- The pause that makes a parked turtle cheap. Without it the wait loop spins
+    -- at full speed and starves every other coroutine on the machine, which on a
+    -- turtle means the heartbeat stops and the base decides it has gone.
+    idle = function()
+      sleep(0.2)
+    end,
+  }
 end
 
-local function nextMiningCycle(ctx)
-  -- Route assignment comes before fuel preflight: a newly leased outer sector
-  -- can cost more than the sector just completed. Checking the old route and
-  -- claiming the new one afterwards can launch a turtle without its return
-  -- reserve.
-  local canStart, why, notReadyKind = prepareJob(ctx)
-  if canStart then
-    canStart, why, notReadyKind = readyJob(ctx)
-  end
-  if not canStart then
-    runtime.park(ctx, why or "not enough fuel for another run", notReadyKind or "fuel")
-    return
+--- Build the runner this turtle drives its job with.
+---
+--- The loop, the parking and the deploy checks are `os/turtle/runner.lua` and
+--- are shared with ICOS 2. What stays here is what needs a screen.
+function runtime.runner(ctx)
+  local built = runnerModule.new({
+    node = ctx.node,
+    flags = ctx.control,
+    job = ctx.job,
+    module = ctx.jobModule,
+    effects = runtime.effects(ctx),
+    handlers = runtime.handlers(ctx),
+  })
+
+  -- The job table is replaced by `restart`, and ICOS 1 keeps its copy on the
+  -- context because everything else here reads `ctx.job`. Keeping the two in
+  -- step is a one-line effect rather than a second source of truth.
+  local start = built.start
+  built.start = function(selfRef, reason)
+    local working = start(selfRef, reason)
+    ctx.job = selfRef.job
+    return working
   end
 
-  ctx:report("cycling", "unloaded - resuming assigned sector")
-  log.info("automatic mining cycle starting")
-  nav.setHome()
-  ctx.job = ctx.jobModule.restart(ctx.job)
+  return built
 end
 
+--- The job service body.
+---
+--- A turtle that rebooted while parked parks again with the reason it had, and a
+--- turtle whose job was never set up asks for setup. Everything after that is
+--- the shared runner.
 function runtime.agent(ctx)
+  local built = runtime.runner(ctx)
+
   if ctx.node.parked then
-    runtime.park(ctx, ctx.node.parkReason or "parked before reboot", ctx.node.parkKind)
+    built:park(ctx.node.parkReason or "parked before reboot", ctx.node.parkKind)
   elseif not ctx.job.active then
     ctx.interactive = true
     ctx.job = ctx.jobModule.setup(ui)
     ctx.interactive = false
+    built.job = ctx.job
     if ctx.job.active then
       local ready, why, kind = readyJob(ctx)
       if not ready then
         ctx.job.active = false
         ctx.jobModule.save(ctx.job)
-        runtime.park(ctx, why or "setup incomplete", kind or "setup")
+        built:park(why or "setup incomplete", kind or "setup")
       end
     end
     if not ctx.job.active then
-      runtime.park(ctx, "setup incomplete", "idle")
+      built:park("setup incomplete", "idle")
     end
   end
 
-  while true do
-    local jobContext = {
-      report = function(phase, detail)
-        ctx:report(phase, detail)
-      end,
-      aborted = function()
-        return ctx.control.recall and "recalled by base" or nil
-      end,
-    }
-
-    local ok, stopped, stopKind = ctx.jobModule.run(ctx.job, jobContext)
-    if ctx.control.recall or stopKind == "recalled" then
-      ctx.control.recall = false
-      runtime.park(ctx, "recalled - deploy again; run where first if moved", "recalled")
-    elseif not ok then
-      log.error("job stopped: " .. tostring(stopped))
-      sound.play("error")
-      runtime.park(ctx, "stopped: " .. tostring(stopped), "error")
-    elseif stopKind == "fuel" then
-      sound.play("ready")
-      runtime.park(ctx, stopped or "fuel reserve reached", "fuel")
-    elseif ctx.jobModule.continuous and stopKind == "cycle" then
-      nextMiningCycle(ctx)
-    else
-      sound.play("ready")
-      runtime.park(ctx, stopped or "job complete", "complete")
-    end
-  end
+  built:run()
 end
 
 return runtime

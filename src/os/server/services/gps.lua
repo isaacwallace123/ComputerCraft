@@ -50,11 +50,11 @@ gps.WAIT = 2
 function gps.position(context)
   local saved = context.locator.saved()
   if type(saved) ~= "table" then
-    return nil, "this machine has no saved position - run `where set` on the console"
+    return nil, "this machine has no saved position - run `locate` on this machine"
   end
   local x, y, z = tonumber(saved.x), tonumber(saved.y), tonumber(saved.z)
   if x == nil or y == nil or z == nil then
-    return nil, "the saved position is incomplete - run `where set` on the console"
+    return nil, "the saved position is incomplete - run `locate` on this machine"
   end
   return { x = x, y = y, z = z }
 end

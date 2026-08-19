@@ -6,6 +6,7 @@ local inv = require("os.turtle.device.inv")
 local nav = require("os.turtle.device.nav")
 local ore = require("os.turtle.device.ore")
 local safety = require("os.turtle.jobs.common.safety")
+local settings = require("domain.turtle.settings")
 
 local hollow = {
   name = "hollow",
@@ -111,29 +112,19 @@ function hollow.status(job)
   }
 end
 
-function hollow.configure(job, settings)
-  local updates = {}
-  for _, field in ipairs(hollow.settingFields) do
-    if settings[field.key] ~= nil then
-      local value = tonumber(settings[field.key])
-      if not value then
-        return false, field.key .. " must be a number"
-      end
-      value = math.floor(value)
-      if value < field.min or value > field.max then
-        return false, ("%s must be %d..%d"):format(field.key, field.min, field.max)
-      end
-      updates[field.key] = value
-    end
+function hollow.configure(job, values)
+  local updates, why = settings.apply(hollow.settingFields, values)
+  if updates == nil then
+    return false, why
   end
-  local changed = false
-  for key, value in pairs(updates) do
-    changed = changed or job[key] ~= value
-    job[key] = value
-  end
-  if changed then
+
+  -- A room that moved or resized is a different room, so the cell walk starts
+  -- again. Re-sending the settings it already had is not a change and must not
+  -- throw away a part-cleared floor.
+  if settings.merge(job, updates) then
     job.cell = 0
   end
+
   job.travelY = routeY(job)
   hollow.save(job)
   return true

@@ -3,7 +3,7 @@
 local log = require("adapters.cc.logfile")
 local net = require("legacy.net")
 local plan = require("domain.mine.plan")
-local registry = require("domain.mine.registry")
+local registry = require("legacy.mine.registry")
 local rosterStore = require("legacy.fleet.roster")
 
 local coordinator = {}
@@ -241,36 +241,15 @@ end
 
 --- Point the mine at a world position and hand out fresh sectors from there.
 function coordinator.setMine(fields)
+  -- The decision is `domain/mine/registry.configure`; this loads, calls, saves.
+  -- Shared with the ICOS 2 server so that `mine at` on an ICOS 1 console and a
+  -- mine request on the new protocol cannot disagree about what placing a mine
+  -- means - and in particular cannot disagree about when it throws away every
+  -- recorded frontier.
   local state = registry.load()
-  local merged = {}
-  for key, value in pairs(state.plan) do
-    merged[key] = value
-  end
-  for key, value in pairs(fields or {}) do
-    merged[key] = value
-  end
-  local hasCentre = fields and fields.centreX ~= nil and fields.centreZ ~= nil
-  merged.configured = state.plan.configured or hasCentre
-
-  local normalised = plan.normalise(merged)
-
-  -- Anything that changes which ground a sector number refers to invalidates
-  -- every recorded frontier. The keep-out radius counts: raising it shifts every
-  -- sector outward in the spiral.
-  local moved = normalised.centreX ~= state.plan.centreX
-    or normalised.centreZ ~= state.plan.centreZ
-    or normalised.cellSize ~= state.plan.cellSize
-    or normalised.minRing ~= state.plan.minRing
-
-  state.plan = normalised
-  if moved then
-    -- Sector N means a different patch of ground now, so every frontier and
-    -- lease recorded against the old grid is meaningless. Keeping them would
-    -- send turtles to tunnels that do not exist.
-    state.sectors = {}
-  end
+  local normalised, moved = registry.configure(state, fields)
   registry.save(state)
-  return state.plan, moved
+  return normalised, moved
 end
 
 function coordinator.mineState()

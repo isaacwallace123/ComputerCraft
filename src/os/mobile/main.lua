@@ -40,6 +40,7 @@
 local client = require("os.client.main")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
+local wire = require("domain.protocol.message")
 
 local mobile = {}
 
@@ -83,7 +84,7 @@ mobile.sync = service.define({
 
   run = function(context)
     while true do
-      context.transport.broadcast({ kind = mobile.REQUEST }, mobile.PROTOCOL)
+      context.transport.broadcast(wire.stamp({ kind = mobile.REQUEST }), mobile.PROTOCOL)
       local sender, message, protocol = context.transport.receive(mobile.PROTOCOL, mobile.SYNC)
 
       local heard = sender ~= nil

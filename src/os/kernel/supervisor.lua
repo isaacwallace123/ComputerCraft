@@ -121,7 +121,14 @@ local function fail(self, entry, reason, now)
   entry.lastErrorAt = now
   entry.thread = nil
 
-  if self.onError then
+  -- A machine going down is not a service failing.
+  --
+  -- CC delivers `terminate` into the coroutine, where it surfaces as an error
+  -- out of whatever the service was parked in - so a clean Ctrl-T made every
+  -- service on the machine report a fault, and put one warning per service in
+  -- the log. A log that records five failures every time somebody stops the
+  -- server is a log that teaches people to ignore failures.
+  if self.onError and not self.stopping then
     self.onError(entry.id, reason, entry.failures)
   end
 
@@ -301,6 +308,19 @@ function Supervisor:healthy()
     end
   end
   return true
+end
+
+--- Take the machine down, delivering `event` to the services first.
+---
+--- Separate from `stop` because the two are different moments: this is the one
+--- where services are still running and are being told to finish, and `stop` is
+--- the one after. Nothing that happens between them is a fault, which is what
+--- `stopping` says - see `fail`.
+function Supervisor:shutdown(event)
+  self.stopping = true
+  self:step(event)
+  self:stop()
+  return self
 end
 
 --- Stop everything. The machine is going down, not a service failing.

@@ -19,7 +19,7 @@ package.path = table.concat({
   package.path,
 }, ";")
 
-local buffer = require("ui.buffer")
+local buffer = require("ui.render.buffer")
 
 ---------------------------------------------------------------------------
 -- The palette

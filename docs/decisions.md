@@ -218,7 +218,7 @@ types; nothing could execute a turtle, and the only way to reach a lava pocket, 
 inventory, or a server restart was to fly out and watch. PR #12 shipped a cap mechanism
 whose correctness rested entirely on reasoning about power-loss windows.
 
-`tools/spec/` is a sparse block world with the CC: Tweaked turtle, fs, and peripheral
+`tests/` drives a sparse block world that with the CC: Tweaked turtle, fs, and peripheral
 APIs implemented over it, refusals included. Two properties make the interesting tests
 possible: the filesystem lives in the world rather than in a module, so dropping
 `package.loaded` is exactly a reboot; and every world interaction ticks a counter that
@@ -295,19 +295,19 @@ fails on a reference to `fs`, `term`, `turtle`, `rednet`, `gps`, `os`, or any ot
 global. Nothing else could enforce it: the type checker is happy with a CC global and
 selene is happier still, because in every other folder they are correct.
 
-There is one entry in the allow list. `domain/mine/registry.lua` still reads `os.epoch`
-and persists through `core/config`, because moving the file and changing how it gets its
+There was one entry in the allow list. `domain/mine/registry.lua` read `os.epoch` and
+persisted through `core/config`, because moving the file and changing how it gets its
 clock and its storage are two different changes, and doing both at once would have
 destroyed the only available evidence that a live fleet's sector bookkeeping came through
-the move unaltered - that the existing specs passed untouched. Threading a clock and a
-storage port through `legacy/fleet/coordinator.lua` and `legacy/console.lua` empties the list.
+the move unaltered - that the existing specs passed untouched.
 
-The allow list is the mechanism that keeps the debt visible. A rule with an exception
+The allow list is the mechanism that keeps that debt visible. A rule with an exception
 nobody can see is a rule that has already been abandoned.
 
-**Half-paid, deliberately.** Every function in `domain/mine/registry.lua` that stamps a
-time now takes an optional `now`, so an ICOS 2 caller with a clock port passes it and gets
-a pure function. `os.epoch` survives only as the fallback, and the allow-list entry stays.
+**Paid in full by D041.** `now` is a required argument, reading and writing `.mine`
+belongs to the caller, and ICOS 1's clock and file live in `legacy/mine/registry.lua`.
+The allow list is empty, and D041 records why the intermediate step - an *optional* `now`
+- was worse than either end of the change.
 
 Making `now` *required* was the obvious finish and is the wrong trade. It would change
 three live call sites - `legacy/fleet/coordinator.lua`, `legacy/console.lua`, `legacy/fleet/operations.lua`
@@ -746,7 +746,9 @@ the host block coordinates once and startup runs only the beacon, while preservi
 normal updater and held-key recovery path. This also lets a Chunky + Ender Turtle serve
 as one host and keep the other three hosts' shared chunk loaded.
 
-## D036 - The four roles are form factors, not jobs
+## D038 — The four roles are form factors, not jobs
+
+**Status:** accepted
 
 `server`, `client`, `mobile` are all about what a machine *is*. `miner` was about what one
 *does*, and it was the odd one out - noticed only when the fleet was about to gain farming
@@ -769,7 +771,9 @@ mining was always the job.
 **The general rule:** a role that names an activity is a role that will need a sibling.
 Roles answer "what hardware is this?", and everything else is configuration.
 
-## D037 - One architecture in the tree, and a quarantine for the other
+## D039 — One architecture in the tree, and a quarantine for the other
+
+**Status:** accepted
 
 The source tree had grown two complete operating systems interleaved. `src/mine/` sat
 beside `src/domain/mine/`; `src/miner/` beside `src/os/turtle/`; `src/fleet/` beside
@@ -804,6 +808,10 @@ for. Debt is declared, not disguised.
 `util.since` did gain an optional `now`, so a caller with a clock port gets a pure function.
 That is the same half-fix as `domain/mine/registry.lua` and for the same reason.
 
+**Superseded on both counts by D041**, which finished the job: `now` is required rather
+than optional, the CC clock and the `.mine` file moved into `legacy/`, and the allow list
+is empty.
+
 **The general rule:** a directory name should answer "which way does this point?" - what it
 knows and what knows it. `core`, `common`, `shared` and `utils` answer nothing, so they
 accumulate. If a file needs to know two layers at once it is a composition root and belongs
@@ -819,4 +827,305 @@ list jobs it cannot run. `device/` is required only by jobs, `legacy/miner/` and
 Moving both under `os/turtle/` makes `os/` symmetric: a server is `main.lua` plus
 `services/`, its long-running work; a turtle is `main.lua` plus `jobs/`, its work, and
 `device/`, its hardware. Adding a farming job becomes `os/turtle/jobs/farming/` plus one
-catalogue entry, which is the shape D036 was aiming at.
+catalogue entry, which is the shape D038 was aiming at.
+
+## D040 — One protocol name, one version field, and a rule that lets both sides be wrong
+
+**Status:** accepted
+
+§13 of the ICOS 2 plan promised that *"protocol messages gain a version field in phase 1"*
+so a device on an old build keeps working against a new server. It was never written. In
+its place the protocol *name* was inlined in seven files — `os/server/services/discovery`,
+`reconcile`, `leases`, `os/turtle/main`, `os/turtle/agent`, `os/client/main`,
+`apps/devices/app` — each with its own copy of the literal `"icos"`, under a comment in
+`discovery.lua` explaining why that must never happen: a typo there is *a failure mode
+with no error message*, because both sides work perfectly and never hear each other.
+
+`domain/protocol/message.lua` holds the name once and adds the version field. The rule
+that makes the field useful is one sentence:
+
+> **A version bump may add fields and add kinds. It may never change what an existing
+> field means.** A change that cannot obey that gets a new `kind`, not a new version.
+
+That is what lets `accept` take a message from the future. The updater upgrades machines
+one at a time, so a device running ahead of the machine reading its message is the normal
+case during a rollout, not the exception — and refusing anything newer than ourselves
+would strand precisely the devices that upgraded first. So `NEWER` is classified and
+accepted; every field the reader knows still means what it meant, and the rest is ignored.
+
+**Absent means version 1, not version 0.** The builds that shipped before this file
+existed are real and are on the fleet. Their messages are valid version 1, so the missing
+field is a default rather than a fault.
+
+Only two things are refused: a message that is not a table, and one claiming a version
+below one — which no build ever sent, so it is corruption or somebody else's traffic on
+our protocol name. An unknown `kind` is deliberately *not* refused here, because
+`discovery.handle` already returns nil for a message that is not its own and duplicating
+the list of valid kinds would put it in two files.
+
+The gate sits in `discovery.dispatch` rather than in each handler, and replies are stamped
+there on the way out rather than at each `return`. A handler that has to remember is a
+handler that can forget, and a reply that forgot its stamp does not look broken — it looks
+like a pre-versioning build, which is a wrong answer wearing a right one's clothes.
+
+Every heartbeat also carries the sender's build string, not just its protocol version.
+`build` rides on every message rather than only on `hello`, because a device already known
+never sends another hello — so a build carried only there would be whatever that device was
+running when the server last rebooted, which is stale at exactly the moment a rollout makes
+"which devices are still on the old build" the question being asked.
+
+## D041 — A defaulted clock is a second clock nobody declared
+
+**Status:** accepted
+
+`domain/mine/registry.lua` and `lib/util.lua` were the two entries in the layering check's
+allow list. Both were there for the same reason and both are now empty.
+
+The registry was moved into `domain/` without being de-globalised, deliberately: doing both
+at once would have destroyed the only evidence that a live fleet's sector bookkeeping
+survived the move, which was that the specs passed untouched (D027). The half-fix that
+followed gave every function that *stamped* a time an optional `now`, defaulting to
+`os.epoch`.
+
+**The optional default is what caused the bug it was supposed to avoid.** `util.since`,
+which every *comparison* went through, kept reading `os.epoch` while callers holding a
+clock port stamped from theirs. Every lease the leases service took looked fifteen minutes
+stale the instant it was written, and two turtles were handed the same shaft. A comparison
+is as much a use of the clock as a stamp is, and an optional `now` is how a second clock
+gets into a system without anybody declaring one.
+
+So `now` is required, in both files. The mismatch that used to be a lease which quietly
+never expired is now a nil arithmetic error at the call site.
+
+ICOS 1 has no clock port and no storage port and will never get one — it is being replaced,
+not upgraded. `legacy/mine/registry.lua` is where its CC clock and its `.mine` file went:
+a facade that adds one argument in one place and re-exports every name explicitly rather
+than forwarding through `__index`, so "what does ICOS 1 still use the mine registry for"
+is answerable by reading the file. `legacy/fleet/roster.lua` names the clock at its one
+call site for the same reason.
+
+**The allow list is now empty, and keeping it empty is the point.** An entry in it is a
+declaration that a pure folder is not pure; it needs a header comment in the file saying
+what empties it again, and it is a debt with a due date rather than an exemption.
+
+## D042 — The dual run was on the wrong protocol, and a bridge is not optional
+
+**Status:** accepted
+
+§12 of the ICOS 2 plan names phase 3 the high-risk one, because it replaces recall — a
+safety control — while turtles are underground. Its stated mitigation is a dual run: the
+desired-state reply and the old ICOS 1 command go out together *"until every device
+converges, then events go"*. `reconcile` duly sends both.
+
+**It sends both on `icos`.** ICOS 1 talks `ccfleet`. So the old-shaped command reached only
+devices that already spoke the new protocol, and the mitigation for the riskiest phase in
+the plan protected nobody.
+
+The consequence was not subtle. Every turtle in the live fleet is an ICOS 1 miner (§13:
+*"the migration that actually runs on ten machines"*), so the moment `startup.lua` booted
+`os/server/main.lua` the whole fleet would have gone silent to its own base:
+
+- no heartbeats received, so an empty registry, so an empty Devices page and no recall —
+  §1's first two failures reappearing, caused by the change written to fix them;
+- no sector leases, because a mine request is a `ccfleet` message like any other, so
+  turtles would also have lost the ability to ask where to dig;
+- nothing addressed at all, because no ICOS 2 service hosted the rednet name `base` that
+  an ICOS 1 Pocket controller resolves for every authoritative request.
+
+`os/server/services/bridge.lua` is the translator: a second inbox on the old protocol.
+Receiving consumes, so one loop per protocol is the rule — but two loops on two protocols
+do not eat each other's traffic, so this is a second ear rather than a second reader of the
+first one.
+
+**It is a bridge, not a second implementation.** `registry.observe` records the heartbeat,
+`desired` decides the goal, `leases.handle` answers the mine request, and `reconcile.legacy`
+translates the goal — every decision is made by the code the ICOS 2 path already uses. This
+file changes an envelope and a protocol name and nothing else, because a rule that lived
+there would be a rule that applied to half the fleet.
+
+**A legacy device converges on its `command_result`, not on a generation.** ICOS 1 has no
+notion of an applied generation, so such a device reports nothing `desired.converged` can
+read and would be commanded forever. Its acknowledgement carries the same information by
+another route. The generation credited is the one that was *sent*, not the one currently
+wanted, so an order set while an acknowledgement was in flight stays pending rather than
+being marked applied by a reply to its predecessor. Marking it converged when the command
+went out would have been the "sent" status §5 exists to abolish.
+
+**A goal with no ICOS 1 equivalent is not faked.** `park` has no old command; nothing is
+sent and nothing is recorded as sent, so the device stays honestly pending.
+
+`transport` gained a `host` method for this, and it is the general lesson: the port had no
+way to express "be findable under a name", so nothing could notice that the new server was
+never going to be addressable. A capability absent from a port is a capability nobody can
+discover is missing.
+
+## D043 — One file holds the turtle's dependency on ICOS 1, and it is a seam not a habit
+
+**Status:** accepted
+
+`os/turtle/main.lua` declares `runJob` and `runControls` as seams and defaults them to a
+function that does nothing and a launcher. So an ICOS 2 turtle booted today heartbeats,
+obeys recall, and **never mines** — which from the base looks identical to a turtle that is
+working. That is the worst failure mode this project has: something that reports health it
+does not have.
+
+`os/turtle/engine.lua` fills them, by building ICOS 1's `Context` and handing back
+`runtime.agent` and `runtime.localControls`. `legacy/miner/runtime.lua` is 326 lines
+deciding when a turtle parks, deploys, updates, changes job and starts its next cycle, and
+every one of those decisions is load-bearing on a machine that is underground with an open
+shaft behind it. Rewriting it in the same change that gives ICOS 2 its first working turtle
+would put two untested halves in one hole.
+
+**Two of ICOS 1's four loops are taken, not four.** The heartbeat and the command receiver
+are ICOS 2's own, on ICOS 2's protocol, under desired state — so a turtle running this
+engine is *not* an ICOS 1 device and `bridge` does not see it as one. That works only
+because `ctx:report` draws locally and sends nothing; if it broadcast, the same machine
+would appear twice on two protocols.
+
+It is wired from `boot.WIRING`, a table keyed by role beside `boot.ROOTS`, because a branch
+there would be `os/kernel/boot.lua` growing an opinion about mining — which its own header
+forbids. The entry declares `when = "runJob"`: the seam whose absence means "this machine
+has no engine". Declared rather than discovered, because *building* the engine constructs
+an ICOS 1 context that reads `turtle` and paints a screen, and a caller that brought its own
+must not pay for one — finding that out by calling it would be finding out too late.
+
+**Deleting it** is the last step of the turtle migration: when a job runner exists that
+takes ports instead of globals, this file, `legacy/miner/` and `legacy/apps/miner.lua` go
+together. Keeping the dependency in exactly one file is what makes "what is left to port"
+a question with an answer you can read.
+
+**A bug this found.** `domain/turtle/jobs.lua` said `module = "jobs.quarry"` for all five
+jobs — paths that moved in D039 and had been wrong ever since, because nothing resolved
+them and the only check asserted the field was *a string*, which a wrong path satisfies
+perfectly. A string that names a module is not tested by looking at it. `os_spec` now
+requires every entry, and the layering check learned to strip string literals so that a
+module path beginning `os.` is not read as a use of the CC global `os`.
+
+## D044 — The turtle's decisions are data before they are a rewrite
+
+**Status:** accepted
+
+§14 puts the turtle runtime first in the retirement order because it is the piece most
+likely to need a second attempt. `legacy/miner/runtime.lua` decides when a turtle parks,
+which pending order it services, and what each key on its case does — and **not one of
+those decisions had a test**, because all of them live inside a `while true` that also
+draws a screen, writes a file, plays a sound and sleeps.
+
+So they came out first, into `domain/turtle/lifecycle.lua`, before anything was rewritten
+around them. Nothing there does anything: `after` says what should happen, `pending` says
+what to service, `keypress` says what a key means, and the caller performs all three. That
+is the shape every service on the server already has, for the reason `discovery.lua` gives
+— anything worth testing that lives inside a loop is something that cannot be tested.
+
+ICOS 1 was rewired through it in the same change rather than left alone, which is the D027
+discipline applied twice: the extraction is only proven mechanical if the existing caller
+uses the extracted version. **The honest caveat is that `runtime.agent` and `runtime.park`
+have no spec coverage of their own**, so that proof is weaker here than it was for the mine
+registry — the sixteen new specs cover the decisions, and review covers the wiring.
+
+Three invariants are now assertions rather than the shape of a branch:
+
+- **Recall outranks every other outcome**, including a job that failed in the same cycle.
+  A turtle told to come home must not report as broken instead.
+- **A fuel stop is not a failure.** A turtle that came home because its return reserve said
+  so did the right thing, and reporting it as an error trains somebody to ignore errors.
+- **Deploy is serviced last.** Servicing it before a pending job change would deploy the
+  turtle on the job it had before — the three-message race §5 exists to collapse.
+
+The keypress table carries the same idea further: a running turtle has no `deploy` and a
+parked one has no `recall`, **not** because a guard rejects them but because they are not
+in the table. A rule enforced by absence cannot be got wrong by somebody adding a key.
+
+Keys are names, not CC keycodes. `keys.d` is a number that exists only on a machine with
+the CC globals loaded, and what `d` does is a rule rather than an I/O concern; the runtime
+translates once, at the edge.
+
+## D045 — `x and nil or y` is not a guard, and D020 was open because of it
+
+**Status:** accepted
+
+Three apps wrote their display-only boundary as:
+
+```lua
+onDeploy = options.readOnly and nil or function(device) ... end
+```
+
+It reads as "no callback when read-only". **It always passes the callback.** `and` yields
+`nil`, and `nil or fn` is `fn` — so the guard evaluated to the function in both branches,
+in nine places, since each app was written.
+
+D020 calls that boundary a safety property: an Advanced Monitor reports touch coordinates,
+and a display-only surface must not be able to send commands. The Devices app's own header
+claimed "there is no code path that could put a Deploy button on it". There was, and it was
+the one that said it could not.
+
+The fix is not a cleverer expression. Every one of them is now a block:
+
+```lua
+if not options.readOnly then
+  page.onDeploy = function(device) ... end
+end
+```
+
+There is nothing to get subtly right, which is the property worth having in a guard that
+nothing was checking.
+
+## D046 — Coverage is a claim on ground, not an assignment of turtles
+
+**Status:** accepted
+
+A turtle outside a loaded chunk is not disobeying an order, it is **not executing**. §5's
+desired state fixed the delivery of orders and cannot fix that, so an unattended fleet has
+to carry its loaded region with it. Chunk-loading turtles — *generals* — are how, and the
+question is what the base allocates.
+
+The obvious model is to assign miners to generals: two generals, twenty miners, ten each.
+It is wrong in three ways. Miners move between work whenever they are re-leased, so the
+binding needs constant maintenance; the thing that actually has to be loaded is *where the
+work is*, not *who is doing it*; and a headcount ratio has no opinion about whether the
+ground in question is reachable.
+
+So coverage is a second claim table beside sector leases. **A general claims a chunk; work
+is only handed out on ground somebody is holding.** The ratio stops being a rule and
+becomes a consequence — the fleet works as much ground as it can keep loaded and no more.
+
+Three things fall out of that, and each was got wrong once first.
+
+**The rule is disjoint footprints, not one turtle per chunk.** The Chunky Turtle holds the
+chunk it stands in, so at radius 0 the two are identical. They are not identical for every
+loader: under a radius-1 loader, two generals one chunk apart sit in different chunks,
+satisfy "never two in one chunk", and overlap on six of their nine. `grid.RADIUS` exists so
+that changing the mod changes a number rather than revealing an assumption.
+
+**An expired claim is not reassigned.** This is where a chunk claim and a sector lease
+differ. A stale sector handed to somebody else costs a few seconds of two turtles in one
+shaft. A stale *chunk* handed to a second general puts two loaders in one chunk — which is
+precisely the waste the whole feature exists to prevent, and it looks like working
+coverage. So staleness stops a chunk counting as coverage and does not free it; only an
+operator, or a general physically reporting from that chunk, does. Presence beats a record;
+absence does not.
+
+**Coverage that is not joined to the base is not coverage.** A miner flies home across
+every chunk between its work and the depot, so an island of loaded ground is worse than
+none: it looks like somewhere to work and strands whoever is sent there. The region is
+therefore grown one adjacent chunk at a time from the base chunk, which makes it connected
+by construction rather than by inspection, and an island is reported as an island.
+
+The last piece is that slices belong to the chunk rather than to the headcount.
+`quarry` already splits an area by `workerIndex` of `workerCount` and its defaults are
+already a 16×16 area — a chunk — so a chunk quarry needed no new turtle code at all. But
+deriving `workerCount` from however many miners are currently assigned would re-cut the
+area under every other turtle in that chunk whenever one ran out of fuel. The divisor is
+fixed at `PER_CHUNK`; an absent miner leaves an unworked slice, and the next free turtle
+takes exactly that slice.
+
+**The first spec written for it passed vacuously**, and that is the more useful half of
+this entry. It asserted on the return of `mount` — which is a *node tree*, not the options
+table — so `page.onDeploy` was nil whatever the app did, and the test went green against
+the bug it existed to catch. The spec now captures what the app hands its view, and it was
+confirmed to fail when the guard is removed. **A test for a boundary is worth nothing until
+it has been seen to fail.**
+
+Lua's `and`/`or` idiom is safe only when the middle value cannot be false or nil. It is
+banned here for optional callbacks, optional tables, and anything else whose absence is the
+point — which is most of the places somebody reaches for it.

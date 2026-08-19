@@ -28,7 +28,7 @@ local inv = require("os.turtle.device.inv")
 local nav = require("os.turtle.device.nav")
 local ore = require("os.turtle.device.ore")
 local safety = require("os.turtle.jobs.common.safety")
-local site = require("legacy.mine.site")
+local site = require("os.turtle.site")
 local surface = require("os.turtle.jobs.prospecting.surface")
 
 local runner = {}

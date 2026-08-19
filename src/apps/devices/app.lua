@@ -38,6 +38,7 @@
 local desired = require("domain.fleet.desired")
 local registry = require("domain.fleet.registry")
 local view = require("apps.devices.view")
+local wire = require("domain.protocol.message")
 
 local app = {}
 
@@ -51,7 +52,10 @@ local app = {}
 app.manifest = {
   id = "devices",
   name = "Devices",
-  roles = { "client", "mobile" },
+  -- `server` for the same reason Fleet carries it: a base with a screen is both
+  -- halves of §2's split, and reads its own authoritative state rather than a
+  -- mirror of it.
+  roles = { "client", "mobile", "server" },
   surfaces = { "desktop", "monitor", "handheld" },
   requiresInput = false,
 }
@@ -173,12 +177,12 @@ function app.mount(scope, context, options)
   local function want(device, mode, extra)
     local message = app.intent(device, mode, extra)
     if message and context.transport then
-      context.transport.broadcast(message, options.protocol or "icos")
+      context.transport.broadcast(wire.stamp(message), options.protocol or wire.NAME)
     end
     return message
   end
 
-  return view.build(scope, {
+  local page = {
     devices = rows,
     selected = selected,
     capacity = options.capacity or 8,
@@ -187,30 +191,41 @@ function app.mount(scope, context, options)
     onSelect = function(device)
       selected:set(device and device.id or nil)
     end,
+  }
 
-    -- Absent on a display-only surface, which is D020 expressed as an argument
-    -- that is not passed rather than as a branch inside the view.
-    onDeploy = options.readOnly and nil or function(device)
+  -- Absent on a display-only surface, which is D020 expressed as an argument
+  -- that is not passed rather than as a branch inside the view.
+  --
+  -- Written as a block rather than `readOnly and nil or fn` on each line, and
+  -- that is not style. **`x and nil or y` always evaluates to `y`** - `and`
+  -- yields nil, and `nil or y` is y - so the guard did nothing and every
+  -- callback was passed on every surface. D020 calls this a safety boundary and
+  -- it had been open since the page was written; this shape cannot be wrong,
+  -- because there is nothing to get subtly right.
+  if not options.readOnly then
+    page.onDeploy = function(device)
       return want(device, "deploy")
-    end,
-    onRecall = options.readOnly and nil or function(device)
+    end
+    page.onRecall = function(device)
       return want(device, "recall")
-    end,
-    onStop = options.readOnly and nil or function(device)
+    end
+    page.onStop = function(device)
       return want(device, "stop")
-    end,
-    onJob = options.readOnly and nil or function(device, job)
+    end
+    page.onJob = function(device, job)
       return want(device, "deploy", { job = job })
-    end,
-    onSetting = options.readOnly and nil or function(device, key, value)
+    end
+    page.onSetting = function(device, key, value)
       local settings = {}
       for name, existing in pairs(device.settings or {}) do
         settings[name] = existing
       end
       settings[key] = value
       return want(device, "deploy", { job = device.job, settings = settings })
-    end,
-  })
+    end
+  end
+
+  return view.build(scope, page)
 end
 
 return app

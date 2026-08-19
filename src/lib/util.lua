@@ -101,29 +101,33 @@ function util.naturalLess(a, b)
   end
 end
 
---- Seconds since a millisecond epoch stamp, floored at zero.
---- Seconds since an epoch stamp.
+--- Seconds between two millisecond epoch stamps, floored at zero.
 ---
---- `now` is optional and is the whole reason this is not a one-liner. A caller
---- holding a clock port passes it and gets a pure function; ICOS 1 passes
---- nothing and reads the CC clock, exactly as it always has.
+--- `now` is required, and that is the whole reason this is not a one-liner.
 ---
---- The default reads `os.epoch` directly, and this file is therefore the one
---- entry in the layering check's allow list for `lib/`. The first attempt hid it
---- behind `_G["os"]` so the check would not see it, which selene flagged and was
---- right to: a check that exists to make CC dependencies visible is not served
---- by an indirection that hides one. Debt is declared, not disguised.
+--- It used to default to `os.epoch`, which made this file the one entry in the
+--- layering check's allow list for `lib/`. The first attempt at hiding that
+--- read it through `_G["os"]` so the grep would not see it, which selene
+--- flagged and was right to: a check that exists to make CC dependencies
+--- visible is not served by an indirection that hides one.
 ---
---- The same mistake was made once already and cost two turtles the same shaft:
---- `domain/mine/registry.lua` threaded a clock through everything that *wrote*
---- a timestamp and left this function - which every comparison went through -
---- reading a different clock. A comparison is as much a use of the clock as a
---- stamp is.
+--- The default is gone rather than disguised, and the reason it had to go is a
+--- fleet bug. `domain/mine/registry.lua` threaded a clock through everything
+--- that *wrote* a timestamp and left this function - which every comparison
+--- went through - reading a different one. Every lease looked fifteen minutes
+--- stale the instant it was taken, so two turtles were sent down the same
+--- shaft. **A comparison is as much a use of the clock as a stamp is**, and an
+--- optional `now` is how a second clock gets into a system without anybody
+--- declaring one.
+---
+--- A missing `epochMillis` is `math.huge`: something that was never stamped is
+--- infinitely old, which is what makes an absent record expire rather than
+--- look fresh forever.
 function util.since(epochMillis, now)
   if not epochMillis then
     return math.huge
   end
-  return math.max(0, ((now or os.epoch("utc")) - epochMillis) / 1000)
+  return math.max(0, (now - epochMillis) / 1000)
 end
 
 --- Truncate to `width`, no ellipsis - dashboard columns are tight.

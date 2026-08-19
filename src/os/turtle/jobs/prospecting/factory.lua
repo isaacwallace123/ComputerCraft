@@ -14,7 +14,8 @@ local ore = require("os.turtle.device.ore")
 local plan = require("domain.mine.plan")
 local profiles = require("os.turtle.jobs.prospecting.profiles")
 local runner = require("os.turtle.jobs.prospecting.runner")
-local site = require("legacy.mine.site")
+local settings = require("domain.turtle.settings")
+local site = require("os.turtle.site")
 local surface = require("os.turtle.jobs.prospecting.surface")
 
 local factory = {}
@@ -372,28 +373,23 @@ function factory.create(definition)
     }
   end
 
-  function jobType.configure(job, settings)
-    local updates = {}
-    local previousTargetY = job.targetY
-    for _, field in ipairs(jobType.settingFields) do
-      if settings[field.key] ~= nil then
-        local value = tonumber(settings[field.key])
-        if not value then
-          return false, field.key .. " must be a number"
-        end
-        value = math.floor(value)
-        if value < field.min or value > field.max then
-          return false, ("%s must be %d..%d"):format(field.key, field.min, field.max)
-        end
-        updates[field.key] = value
-      end
+  function jobType.configure(job, values)
+    local updates, why = settings.apply(jobType.settingFields, values)
+    if updates == nil then
+      return false, why
     end
-    for key, value in pairs(updates) do
-      job[key] = value
-    end
-    if job.targetY ~= previousTargetY then
+
+    -- Only `targetY`, never "anything changed". A pending vein is a real hole
+    -- with real ore in it that this turtle has promised to come back to, and
+    -- forgetting it because somebody adjusted the vein budget would abandon it.
+    -- Asked before the merge, because afterwards the old value is gone.
+    local depthMoved = settings.moved(job, updates, "targetY")
+
+    settings.merge(job, updates)
+    if depthMoved then
       job.pendingVein = nil
     end
+
     jobType.save(job)
     return true
   end

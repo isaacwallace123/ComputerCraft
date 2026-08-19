@@ -37,10 +37,11 @@
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
+local wire = require("domain.protocol.message")
 
 local client = {}
 
-client.PROTOCOL = "icos"
+client.PROTOCOL = wire.NAME
 
 --- How often the mirror is refreshed.
 ---
@@ -66,7 +67,14 @@ client.REQUEST = "mirror"
 --- Returns true when something arrived, so the caller can tell a refused reply
 --- from an empty fleet.
 function client.absorb(context, message)
-  if type(message) ~= "table" or message.kind ~= "mirror" or type(message.fleet) ~= "table" then
+  -- The client's version gate, and `os/mobile/main.lua` gets it by calling this
+  -- function rather than by having its own. One gate per receive path is the
+  -- rule; a second copy on the handheld is a second thing to forget to update.
+  message = wire.accept(message)
+  if message == nil then
+    return false
+  end
+  if message.kind ~= "mirror" or type(message.fleet) ~= "table" then
     return false
   end
   context.state.fleet = message.fleet
@@ -105,7 +113,7 @@ client.sync = service.define({
 
   run = function(context)
     while true do
-      context.transport.broadcast({ kind = client.REQUEST }, client.PROTOCOL)
+      context.transport.broadcast(wire.stamp({ kind = client.REQUEST }), client.PROTOCOL)
       local sender, message, protocol = context.transport.receive(client.PROTOCOL, client.SYNC)
       if sender ~= nil and protocol == client.PROTOCOL then
         client.absorb(context, message)

@@ -11,60 +11,43 @@
 --- `LEASE_SECONDS` and the sector returns to the pool, because the alternative -
 --- a sector locked out permanently by a turtle that fell in lava - is worse.
 ---
---- ## Not pure yet
+--- ## Pure, finally
 ---
---- This file lives under `domain/` and does not yet obey the rule domain/ is
---- for: it reads `os.epoch` and it persists through `core/config`. That is
---- deliberate and it is debt, not an exemption. Moving the file and changing how
---- it gets its clock and its storage are two different changes, and doing both
---- at once would mean the existing specs could no longer prove the move was
---- mechanical - which is the only evidence available that a live fleet's sector
---- bookkeeping came through it unaltered.
+--- This file was moved into `domain/` without being de-globalised - it read
+--- `os.epoch` and it persisted through `core/config` - and was the last entry
+--- in the layering check's allow list. The move and the de-globalising were
+--- deliberately two changes: doing both at once would have destroyed the only
+--- evidence available that a live fleet's sector bookkeeping came through the
+--- move unaltered, which was that the specs passed untouched.
 ---
---- The fix is a `clock` and a `storage` port threaded in from the caller, which
---- is a change to `legacy/fleet/coordinator.lua` and `legacy/console.lua` as much as to
---- this file. It belongs to the phase that does the OS split, alongside the rest
---- of the composition roots.
+--- The second change is now done. `now` is a required argument to everything
+--- that stamps or compares a time, and reading and writing `.mine` belongs to
+--- the caller. The ICOS 1 callers get both back from
+--- `legacy/mine/registry.lua`, a facade that supplies the CC clock and the CC
+--- file, so nothing about what the live fleet does changed.
+---
+--- **`now` is required, not optional, and that is the point.** An optional one
+--- looks harmless and is not: a caller holding a clock port and this module
+--- were briefly measuring against two different clocks, and the leases service
+--- found it immediately - every lease it took looked fifteen minutes stale the
+--- instant it was written, so two turtles were handed the same shaft. A
+--- defaulted clock is a second clock nobody declared. Required means the
+--- mismatch is a nil arithmetic error at the call site rather than a lease that
+--- quietly never expires.
 
-local config = require("adapters.cc.config")
 local plan = require("domain.mine.plan")
-local util = require("lib.util")
 
 local registry = {}
 
---- The clock, injectable, falling back to CC's.
+--- Seconds between two stamps taken from the same clock.
 ---
---- D027 records that this file was moved into `domain/` without being
---- de-globalised, and that it is the single entry in the layering check's allow
---- list. This does not clear that - `os.epoch` is still named below - but it is
---- the half of the fix that can be made without touching live code.
----
---- Every function that stamps a time now takes an optional `now`. An ICOS 2
---- caller that has a clock port passes it; `legacy/fleet/coordinator.lua` and
---- `legacy/console.lua`, which are ICOS 1 and are being replaced, pass nothing and
---- behave exactly as before. The allow-list entry goes when those callers do.
----
---- The alternative was a required parameter, which would have changed three live
---- call sites and the unmodified spec suite in one go - a refactor of the sector
---- bookkeeping a running fleet depends on, in exchange for deleting one line
---- from a check. Wrong trade.
-local function stamp(now)
-  return now or os.epoch("utc")
-end
-
---- Seconds since a stamp, measured against the same clock that wrote it.
----
---- `util.since` reads `os.epoch` directly, which means a caller holding a clock
---- port and this module were measuring against two different clocks - and the
---- leases service found it immediately: every lease it took looked fifteen
---- minutes stale the instant it was written, so two turtles were handed the same
---- shaft. A comparison is as much a use of the clock as a stamp is.
+--- A comparison is as much a use of the clock as a stamp is, which is why this
+--- takes `now` rather than reading one. `at` of nil is `math.huge` - a lease
+--- that was never taken is infinitely old, which is what makes an absent record
+--- expire rather than persist forever.
 local function elapsed(at, now)
   if at == nil then
     return math.huge
-  end
-  if now == nil then
-    return util.since(at)
   end
   return math.max(0, (now - at) / 1000)
 end
@@ -99,12 +82,91 @@ function registry.normalise(state)
   return state
 end
 
-function registry.load()
-  return registry.normalise(config.load(registry.PATH, registry.empty()))
+--- Place or reshape the mine, and say whether the ground moved under it.
+---
+--- Merged into the existing plan rather than replacing it, so `mine at x y z`
+--- moves the centre without forgetting the cell size somebody tuned, and a
+--- later `cellSize` change does not un-place the mine.
+---
+--- **The second return value is the dangerous one.** Anything that changes which
+--- ground a sector *number* refers to makes every recorded frontier and lease
+--- meaningless - sector 7 is now a different patch of world, and a turtle sent
+--- to resume its tunnel would be sent to a tunnel that does not exist. So those
+--- changes clear the sectors, and the caller is told it happened because
+--- somebody needs to be shown that a day of progress was just discarded on
+--- purpose.
+---
+--- The keep-out radius counts as moving the ground. It is not obvious and it was
+--- got wrong once: raising `minRing` shifts every sector outward along the
+--- spiral, so the numbers stay and the places change, which is the worst version
+--- of this bug because nothing looks different.
+---
+--- `configured` latches. A mine that has been placed stays placed, and a later
+--- call that tunes one field without naming a centre must not un-place it.
+function registry.configure(state, fields)
+  fields = type(fields) == "table" and fields or {}
+  state = registry.normalise(state)
+
+  local merged = {}
+  for key, value in pairs(state.plan) do
+    merged[key] = value
+  end
+  for key, value in pairs(fields) do
+    merged[key] = value
+  end
+
+  local placed = fields.centreX ~= nil and fields.centreZ ~= nil
+  merged.configured = state.plan.configured == true or placed
+
+  local normalised = plan.normalise(merged)
+
+  local moved = normalised.centreX ~= state.plan.centreX
+    or normalised.centreZ ~= state.plan.centreZ
+    or normalised.cellSize ~= state.plan.cellSize
+    or normalised.minRing ~= state.plan.minRing
+
+  state.plan = normalised
+  if moved then
+    state.sectors = {}
+  end
+  return normalised, moved
 end
 
-function registry.save(state)
-  config.save(registry.PATH, state)
+--- Look at a sector without bringing it into existence.
+---
+--- `entry` below is get-**or-create**, and it was being called from four scan
+--- loops that only wanted to read - so the first claim on a fresh mine
+--- materialised a record for every sector in the plan, each carrying an empty
+--- work entry and `surface = unknown`. A live base's `.mine` was 10,626 bytes of
+--- forty-eight records with **zero holders** between them: almost entirely
+--- bookkeeping for ground no turtle had ever visited.
+---
+--- That is not only waste on disk. `leases` flushes the whole file on every
+--- claim, surface report and release, so the write was ten times the size it
+--- needed to be on a computer with a one-megabyte disk - and at `maxRing = 8`
+--- the plan holds 288 sectors rather than 48.
+---
+--- Nil means free and untouched, which is exactly what an absent record means.
+local function peek(state, index)
+  return state.sectors[tostring(index)]
+end
+
+--- The work a sector has recorded for this key, or nothing.
+---
+--- The read-only half of `workEntry`. Returns a frozen default rather than nil so
+--- a caller can compare frontiers without a nil check on every branch, and
+--- **never writes it back** - which is the whole point.
+local EMPTY_WORK = { frontier = 0, exhausted = false, blocks = 0 }
+
+local function peekWork(record, workKey)
+  if record == nil or type(record.work) ~= "table" then
+    return EMPTY_WORK
+  end
+  local work = record.work[workKey]
+  if work == nil then
+    return EMPTY_WORK
+  end
+  return work
 end
 
 local function entry(state, index)
@@ -184,28 +246,33 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier,
   local function take(index, record, work)
     -- One turtle can only occupy one shaft. Release any older lease it owned
     -- before recording the newly selected work.
-    for otherIndex = 1, capacity do
-      if otherIndex ~= index then
-        local other = entry(state, otherIndex)
-        if other.holder == turtleId then
-          other.holder = nil
-          other.holderWorkKey = nil
-          other.leasedAt = nil
-        end
+    --
+    -- Over the records that exist, not over `1..capacity`: a turtle can only
+    -- hold a sector somebody has already claimed, so the sectors nobody has
+    -- touched cannot be holding anything and do not need creating to find out.
+    for key, other in pairs(state.sectors) do
+      if key ~= tostring(index) and other.holder == turtleId then
+        other.holder = nil
+        other.holderWorkKey = nil
+        other.leasedAt = nil
       end
     end
     record.holder = turtleId
     record.holderWorkKey = workKey
-    record.leasedAt = stamp(now)
+    record.leasedAt = now
     return index, work
   end
 
   -- Prefer the turtle's cached sector. This is what lets offline progress and a
   -- reboot resume the same ground once the base becomes reachable again.
   if preferredIndex >= 1 and preferredIndex <= capacity then
-    local record = entry(state, preferredIndex)
-    local work = workEntry(record, workKey)
-    if (not held(record, now) or record.holder == turtleId) and not work.exhausted then
+    local existing = peek(state, preferredIndex)
+    local free = existing == nil or not held(existing, now) or existing.holder == turtleId
+    if free and not peekWork(existing, workKey).exhausted then
+      -- Only now is it worth creating: this sector is about to be leased, so a
+      -- record for it is a record of something rather than of nothing.
+      local record = entry(state, preferredIndex)
+      local work = workEntry(record, workKey)
       local sector = plan.sector(state.plan, preferredIndex)
       local trunkLength = sector and sector.trunkLength or 0
       work.frontier = math.max(work.frontier or 0, math.min(localFrontier, trunkLength))
@@ -213,11 +280,12 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier,
     end
   end
 
-  for index = 1, capacity do
-    local record = entry(state, index)
-    local work = workEntry(record, workKey)
-    if record.holder == turtleId and not work.exhausted then
-      return take(index, record, work)
+  -- A sector this turtle already holds. Again over what exists: it cannot be
+  -- holding one nobody has ever claimed.
+  for key, record in pairs(state.sectors) do
+    local index = tonumber(key)
+    if index and record.holder == turtleId and not peekWork(record, workKey).exhausted then
+      return take(index, record, workEntry(record, workKey))
     end
   end
 
@@ -228,23 +296,39 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier,
   -- mine, and comes home. No separate job, no separate route, and an exposed
   -- shaft is repaired by the next turtle that asks for work rather than by
   -- somebody noticing it.
-  for index = 1, capacity do
-    local record = entry(state, index)
-    if not held(record, now) and exposed(record) then
-      return take(index, record, workEntry(record, workKey))
+  -- An open shaft head can only be known about from a record somebody wrote, so
+  -- this is a scan over what exists by definition. Ordered by index rather than
+  -- by `pairs`, because `pairs` has no order and a patrol that picked a
+  -- different hole each time it was asked would leave the same ones open.
+  local exposedIndex = nil
+  for key, record in pairs(state.sectors) do
+    local index = tonumber(key)
+    if index and index <= capacity and not held(record, now) and exposed(record) then
+      if exposedIndex == nil or index < exposedIndex then
+        exposedIndex = index
+      end
     end
+  end
+  if exposedIndex then
+    local record = entry(state, exposedIndex)
+    return take(exposedIndex, record, workEntry(record, workKey))
   end
 
   -- Partly worked sectors before untouched ones: finishing a tunnel the fleet
   -- already paid to reach is cheaper than opening another shaft.
-  local best, bestRecord = nil, nil
-  local bestWork = nil
+  --
+  -- This is the one scan that genuinely has to walk the whole plan, because an
+  -- untouched sector is a candidate and has no record. It reads through `peek`,
+  -- so walking past four hundred sectors costs four hundred table lookups and
+  -- creates nothing.
+  local best = nil
+  local bestFrontier = -1
   for index = 1, capacity do
-    local record = entry(state, index)
-    local work = workEntry(record, workKey)
-    if not held(record, now) and not work.exhausted then
-      if not bestWork or (work.frontier or 0) > (bestWork.frontier or 0) then
-        best, bestRecord, bestWork = index, record, work
+    local record = peek(state, index)
+    local work = peekWork(record, workKey)
+    if (record == nil or not held(record, now)) and not work.exhausted then
+      if work.frontier > bestFrontier then
+        best, bestFrontier = index, work.frontier
       end
     end
   end
@@ -253,7 +337,8 @@ function registry.claim(state, turtleId, workKey, preferredIndex, localFrontier,
     return nil, "every sector in the plan is exhausted - raise maxRing or move the mine"
   end
 
-  return take(best, bestRecord, bestWork)
+  local record = entry(state, best)
+  return take(best, record, workEntry(record, workKey))
 end
 
 --- Record what a turtle observed about a sector's shaft head.
@@ -282,7 +367,7 @@ function registry.surface(state, turtleId, index, report, now)
     headY = tonumber(report.headY) and math.floor(report.headY) or record.surface.headY,
     headOffset = math.floor(tonumber(report.headOffset) or record.surface.headOffset or 0),
     reason = type(report.reason) == "string" and report.reason:sub(1, 120) or nil,
-    at = stamp(now),
+    at = now,
     by = turtleId,
   }
   return true, record.surface
@@ -339,13 +424,13 @@ function registry.report(state, turtleId, index, workKey, frontier, blocks, exha
   local work = workEntry(record, workKey)
   record.holder = turtleId
   record.holderWorkKey = workKey
-  record.leasedAt = stamp(now)
+  record.leasedAt = now
   local sector = plan.sector(state.plan, index)
   local reportedFrontier = math.max(0, math.floor(tonumber(frontier) or 0))
   work.frontier =
     math.max(work.frontier or 0, math.min(reportedFrontier, sector and sector.trunkLength or 0))
   work.blocks = (work.blocks or 0) + math.max(0, math.floor(tonumber(blocks) or 0))
-  work.lastMined = stamp(now)
+  work.lastMined = now
 
   if exhausted == true or (sector and work.frontier >= sector.trunkLength) then
     work.exhausted = true
@@ -371,7 +456,7 @@ function registry.renew(state, turtleId, index, workKey, now)
   if elapsed(record.leasedAt, now) < 30 then
     return false
   end
-  record.leasedAt = stamp(now)
+  record.leasedAt = now
   return true
 end
 

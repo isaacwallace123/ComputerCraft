@@ -141,6 +141,100 @@ modem, no saved position, a role with no operating system - and they are discove
 the ports are built and the services registered, which is what `status` does and what
 reading a config file would not.
 
+    icos2 watch       run a server and show the fleet while it does
+
+A running server prints nothing: services return what they did rather than drawing, and the
+Devices page belongs to the *client* role on another machine. `watch` is the diagnostic
+view - the registry as plain text, repainted every second - and it sets goals, because
+otherwise there is no way to ask a server for a recall and therefore no way to test that
+recall works. A digit selects a device, `r`/`d`/`p` set recall/deploy/park, and each goes
+through `discovery.want`, the same function a client's button press arrives at.
+
+The `wire` column is the one to read: `icos1` means that device was heard through
+`os/server/services/bridge.lua`, on the old protocol.
+
+### Testing the ICOS 1 bridge in a world
+
+This is the test D042 exists for, and the one thing that cannot be checked without a world:
+whether an unupgraded fleet survives its base being switched to ICOS 2.
+
+**You need two machines.** An Advanced Computer with a wireless or Ender modem, and a
+Mining Turtle with a wireless or Ender modem, a pickaxe, and some coal. Place both, run
+`id` on each to note their computer IDs, then from the repository:
+
+```powershell
+.\tools\link-world.ps1 -List
+.\tools\link-world.ps1 -World "<your world>" -Id <computer id>
+```
+
+Link **only the computer**. The turtle needs its own copy, because a junction points both
+machines at the same directory and they would share one `.node`, one `.nav`, and one job
+file:
+
+```powershell
+$turtle = "<instance>\saves\<world>\computercraft\computer\<turtle id>"
+New-Item -ItemType Directory -Force $turtle | Out-Null
+Copy-Item -Recurse -Force .\src\* $turtle
+```
+
+Reboot both. Each has no `.node`, so each runs setup.
+
+**1. Set the turtle up as ICOS 1.** Role `miner`, any job. Let it boot to its launcher and
+leave it running - it now broadcasts a heartbeat on `ccfleet` every two seconds. This is a
+genuinely unupgraded device; nothing about it knows ICOS 2 exists.
+
+**2. Set the computer up as ICOS 1 first, and confirm the fleet works.** Role `fleet`. The
+turtle should appear in Devices within a few seconds. This is the control: it proves the
+modems, the world, and the turtle are fine *before* anything changes, so a later failure
+has only one possible cause.
+
+While you are here, run `mine here` on the console if you want to test sector leasing. It
+writes `.mine`, which ICOS 2 reads unchanged.
+
+**3. Switch the computer to ICOS 2.** Exit ICOS 1 to CraftOS (hold a key during the splash
+for system tools, then Exit), then:
+
+```text
+icos2 status
+```
+
+Expect `ok radio` and eight services running, `healthy`. **If the radio line says FAIL, stop
+there** - nothing else in the test can pass, and the answer is a modem that is not attached
+or not wireless.
+
+**4. Watch the fleet come back.**
+
+```text
+icos2 watch
+```
+
+Within about two seconds the turtle should appear, with `wire` reading `icos1`. That single
+line is the whole of D042: the server heard a device that has never spoken its protocol.
+An empty table here means the bridge is not receiving, and `.log` on the computer is the
+next place to look.
+
+**5. Recall it.** Press `1` to select the turtle, then `r`. The notice line reports the
+generation. Watch for two things, in order:
+
+- the turtle physically returns home and parks - the order crossed the protocol boundary;
+- the goal column changes from `recall pending` to `recall converged` - its ICOS 1
+  `command_result` came back and was credited.
+
+Converged is the assertion that matters. Pending forever means the command went out and the
+acknowledgement did not come back, which is a different bug from silence.
+
+**6. Deploy it again.** Press `d`. The turtle should leave. If you configured a mine at
+step 2, it will ask for a sector over `ccfleet` and should be granted one - the `mine`
+translation, which is the half of the outage that would never have shown on a dashboard.
+
+**7. Optional, and it should do nothing.** Press `p`. `park` has no ICOS 1 command, so the
+goal is set and nothing is sent; the device stays `park pending` forever. That is correct
+and deliberate - inventing a command for a build that would not understand it is a message
+into the void that looks like delivery.
+
+Reboot the computer at any point to get ICOS 1 back. Nothing ICOS 2 writes is read by
+ICOS 1, and `.mine` is shared on purpose.
+
 ## Testing in a local world
 
 The fastest loop by a wide margin: point a singleplayer computer's filesystem straight at

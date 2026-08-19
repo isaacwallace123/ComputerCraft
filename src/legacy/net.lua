@@ -7,9 +7,16 @@
 --- caller carries on mining. Ender modems have unlimited range and are what you
 --- actually want for this.
 
+local wire = require("domain.protocol.message")
+
 local net = {}
 
-net.PROTOCOL = "ccfleet"
+--- Read from `domain/protocol/message.lua` rather than spelled here, so this
+--- and `os/server/services/bridge.lua` - which has to speak this protocol to
+--- keep an ICOS 1 fleet alive under an ICOS 2 server - cannot drift apart by a
+--- typo. That failure has no error message: both sides work and never hear
+--- each other. D040.
+net.PROTOCOL = wire.LEGACY_NAME
 net.HOSTNAME = "base"
 
 local modemName = nil
@@ -92,7 +99,7 @@ function net.findBase()
 end
 
 local function envelope(kind, body)
-  return { kind = kind, body = body, at = os.epoch("utc") }
+  return wire.wrap(kind, body, os.epoch("utc"))
 end
 
 function net.send(id, kind, body)
@@ -119,10 +126,14 @@ function net.receive(timeout)
   end
 
   local sender, message = rednet.receive(net.PROTOCOL, timeout)
-  if not sender or type(message) ~= "table" or type(message.kind) ~= "string" then
+  if not sender then
     return nil
   end
-  return sender, message.kind, message.body
+  local kind, body = wire.unwrap(message)
+  if kind == nil then
+    return nil
+  end
+  return sender, kind, body
 end
 
 return net

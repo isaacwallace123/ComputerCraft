@@ -1,6 +1,10 @@
 # ICOS 2 — architecture plan
 
-This is a plan, not a description. Nothing here is built yet.
+This is a plan, not a description — but it is no longer a plan for nothing. §12 carries
+the phase-by-phase record of what has actually been built; read that before assuming a
+section here describes something that does not exist. Phases 1 to 5 are largely done, and
+the one thing that has *not* changed is what a machine boots into: `src/startup.lua` still
+starts the ICOS 1 paths, so a live fleet runs `src/legacy/`.
 
 It covers four things that were asked for together because they turn out to be the same
 change: a server that is the brain, control that survives an unloaded chunk, a mutable
@@ -91,13 +95,16 @@ required simulating a whole world.
 `term`, not `os.epoch`. Everything it needs arrives through a port.
 
 That single rule is what makes the rest cheap. The simulated world in
-[`tools/spec/`](../tools/spec) stops being a monkey-patch over `_G` and becomes an
+[`tests/`](../tests) stops being a monkey-patch over `_G` and becomes an
 ordinary adapter, and domain tests need no world at all.
 
 **The rule is checked.** `tools\check.ps1` strips comments from everything under
-`src/domain`, `src/ports`, and `src/ui` and fails the build on a reference to any CC
-global. It has one entry in its allow list — `domain/mine/registry.lua` and `os` — with
-the reason recorded in that file's header. Do not add a second without doing the same.
+`src/domain`, `src/ports`, `src/ui` and `src/lib` and fails the build on a reference to
+any CC global. **Its allow list is empty**, and keeping it empty is the point: an entry
+is a declaration that a pure folder is not pure, and it needs a header comment in the
+file saying what empties it again. D041 records the two that were there, and why the
+intermediate step — a clock that was *optional* rather than required — was worse than
+either end of the change.
 
 The simulated world keeps its `install()` alongside its new `ports()` face, and will for
 a while. Every module written before ports existed reads `turtle`, `fs`, and `os` as
@@ -469,7 +476,7 @@ flag day, because there is a live fleet to keep running.
 | # | Phase | Delivers | Risk | |
 | --- | --- | --- | --- | --- |
 | 0 | Finish the worksite redesign | Shared shaft, spines | — | |
-| 1 | Extract `domain/` + `ports/` + `adapters/` | No behaviour change. Specs stop needing globals. | Low, purely mechanical | **started** |
+| 1 | Extract `domain/` + `ports/` + `adapters/` | No behaviour change. Specs stop needing globals. | Low, purely mechanical | **done** |
 | 2 | Device registry + last known location | Missing turtles become findable | Low, additive | **domain done** |
 | 3 | Desired state, running alongside events | Recall that works from an unloaded chunk | **High** — dual-run both paths, then delete events | **domain done** |
 | 4 | Drop-off list | Multiple depots | Medium — touches return fuel | **domain done** |
@@ -487,7 +494,7 @@ project can currently test properly.
   and a null implementation. `ports/contract.lua` is the whole mechanism and it is thirty
   lines: no classes, no metatables, no dispatch cost.
 - `src/adapters/cc/` — the six over `fs`, `rednet`, `term`, `turtle`, `gps`, and `os`.
-- `src/adapters/sim/` — `world.lua`, moved here from `tools/spec/support/` and given a
+- `src/adapters/sim/` — `world.lua`, moved here from the spec suite's support folder and given a
   `ports()` face beside its existing `install()`. `screen.lua` is new: a recording screen
   that keeps a real cell grid and a call log.
 - `src/domain/mine/` — `plan.lua` and `registry.lua`, moved with no logic changes.
@@ -502,12 +509,22 @@ project can currently test properly.
 
 Still open in phase 1, and deliberately deferred rather than forgotten:
 
-- **`domain/mine/registry.lua` is not pure yet.** It still reads `os.epoch` and persists
-  through `core/config`. Moving the file and changing how it gets its clock and its
-  storage are two changes, and doing both at once would have destroyed the evidence that
-  the move altered nothing. It is the one entry in the layering check's allow list.
-- **`protocol/` and the message version field** named in §13. Nothing has been written yet
-  and nothing depends on it until phase 3.
+- ~~**`domain/mine/registry.lua` is not pure yet.**~~ **Done.** `now` is a required
+  argument to everything that stamps or compares a time, and reading and writing `.mine`
+  belongs to the caller. ICOS 1's clock and file moved to `legacy/mine/registry.lua`, a
+  facade that adds the argument in one place instead of at nineteen call sites in
+  `legacy/fleet/coordinator.lua`. `lib/util.lua` went the same way. **The layering
+  check's allow list is now empty**; D041 records why the intermediate step - an
+  *optional* `now` - was worse than either end of the change, and it is worth reading
+  before anybody adds a default clock anywhere else.
+- ~~**`protocol/` and the message version field** named in §13.~~ **Done**, as
+  `domain/protocol/message.lua`. It holds the protocol name - which had been inlined in
+  seven files, under a comment in `discovery.lua` explaining why that must never happen -
+  and the version field, with the compatibility rule that makes the field mean something:
+  a bump may add fields and kinds, never change what an existing field means. The gate is
+  in `discovery.dispatch` and in `agent.receive`, one per side, and a message from a
+  *newer* build is accepted rather than refused, because the updater upgrades machines one
+  at a time and a device ahead of its base is the normal case during a rollout. See D040.
 - **Nothing has been rewired.** Every adapter is constructed by nobody: the live fleet runs
   the same code paths it did before. Wiring composition roots is phase 5's job.
 - **`adapters/sim/` ships in `src/manifest.json` and therefore onto every turtle.** It is
@@ -519,6 +536,14 @@ Still open in phase 1, and deliberately deferred rather than forgotten:
 Phase 3 is the one to be careful with. Recall is a safety control; replacing its
 mechanism while turtles are underground is how a fleet gets stranded. Both paths run
 together until the dashboard shows every device converging, then events go.
+
+**Correction, and it matters more than the paragraph above.** "Both paths" meant both
+*message shapes*, and both went out on the ICOS 2 protocol — which only a device that
+already speaks ICOS 2 can receive. ICOS 1 talks `ccfleet`. So the dual run protected
+nobody, and an ICOS 2 server would have been deaf to the entire live fleet: no heartbeats,
+no registry, no recall, no sector leases, and no way for an unupgraded handheld to address
+it at all. `os/server/services/bridge.lua` is the second inbox that fixes it, and it is a
+prerequisite for the switchover rather than a convenience. See D042.
 
 ### Phase 2: the device registry
 
@@ -1105,6 +1130,80 @@ The whole thing is plain Lua coroutines with an injected clock, so the backoff c
 give-up threshold and the revive path are exercised by advancing a number. Nobody would
 ever sit and wait thirty seconds five times over in a world, which is exactly why those are
 the parts that ship broken.
+
+## 14. Retiring ICOS 1
+
+§13 describes how devices migrate. This describes how the *code* does, because
+"delete `legacy/`" turned out to be a project rather than a step and it needs an order.
+
+**The bar is that `src/legacy/` ceases to exist.** Not that ICOS 2 works beside it — the
+two-systems-in-one-tree state D039 cleaned up is exactly what a half-finished migration
+recreates, and the quarantine was always meant to be temporary.
+
+### What still reaches into it
+
+Four files, and they are the whole list:
+
+| File | Depends on | Replaced by |
+| --- | --- | --- |
+| `startup.lua` | `shell.ui`, `shell.desktop`, `shell.display`, `shell.handheld`, `apps`, `boot`, `device`, `net`, `fleet.service` | role dispatch into `os/kernel/boot.lua` |
+| `install.lua` | `shell.ui`, `boot`, `device`, `net` | ICOS 2 setup writing ICOS 2 roles |
+| `update.lua` | `shell.ui` | the UI framework, or nothing |
+| `os/turtle/engine.lua` | `miner.context`, `miner.runtime` | a job runner that takes ports (D043) |
+
+Everything else in `legacy/` is reachable only from inside `legacy/`, which means it dies
+the moment its last caller does. That is the property to preserve while working: **the list
+above should only ever get shorter.**
+
+### The order, and why
+
+1. **The turtle runtime.** ~~The largest single piece.~~ **Half done, and the half that
+   was risky.** `domain/turtle/lifecycle.lua` holds the decisions and
+   `os/turtle/runner.lua` performs them, both specced, and ICOS 1 now drives its job
+   through the same runner rather than a loop of its own — so what remains in
+   `legacy/miner/runtime.lua` is the handlers that need a screen or a shell.
+
+   **What is left of it is blocked on step 3**, which is a change to this plan rather than
+   a slip against it. `legacy/miner/context.lua` is the rest of the dependency, and what
+   it does is draw a status screen, prompt for job setup, and format a snapshot. Those are
+   the shell's job, and writing a second one to retire the first would be building the
+   thing twice. Retiring `legacy/miner/` and `os/turtle/engine.lua` therefore happens
+   *after* the shell exists, not before.
+
+2. **The console, and mine configuration.** `mine at <x> <y> <z>` lives in
+   `legacy/console.lua` and there is **no ICOS 2 way to configure a mine at all** — which
+   an in-world test found the hard way, since a fleet with no mine cannot deploy. Small,
+   self-contained, and blocking.
+
+3. **The shell and the apps.** `legacy/shell/` and `legacy/apps/` are about 3,000 lines of
+   ICOS 1 drawing. `src/ui/` exists to replace them and is deliberately not wired into
+   anything yet. This is the bulk of the work and the least risky part of it: a page that
+   is wrong is visibly wrong, unlike a lease that is wrong.
+
+   It is also, after step 1, **the thing most other steps are waiting on** — the turtle's
+   status screen and job pickers, the console, and setup all need it. Doing it before the
+   remainder of step 1 is the shorter path.
+
+4. **Setup.** `install.lua` writes ICOS 1 roles that `os/kernel/roles.lua` then maps
+   forward. Once nothing reads the old names, setup writes the new ones directly and
+   `FROM_ROLE` keeps only the migration entries.
+
+5. **`startup.lua`.** The switchover, last, because it is the only change that alters what
+   a machine does on power-up and every step above makes it smaller. When it dispatches
+   through `os/kernel/boot.lua`, `legacy/` has no callers.
+
+6. **Delete `legacy/`**, and with it `net.lua` — at which point `bridge` stops being a
+   translator between two live systems and becomes a compatibility shim for devices that
+   have not been updated yet. It stays: §13's promise is that an old device keeps working
+   against a new server, and deleting the code that keeps that promise would break it.
+
+### The rule while this is in progress
+
+Do not add a dependency on `legacy/` from outside it. `os/turtle/engine.lua` is the single
+deliberate exception, it is documented as one in D043, and it exists so the answer to
+"what is left to port" is a table you can read rather than an archaeology exercise.
+
+---
 
 ## 13. Migration
 

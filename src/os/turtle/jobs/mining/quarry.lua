@@ -5,6 +5,7 @@ local fuel = require("os.turtle.device.fuel")
 local inv = require("os.turtle.device.inv")
 local nav = require("os.turtle.device.nav")
 local safety = require("os.turtle.jobs.common.safety")
+local settings = require("domain.turtle.settings")
 
 local quarry = {
   name = "quarry",
@@ -200,31 +201,44 @@ function quarry.status(job)
   }
 end
 
-function quarry.configure(job, settings)
-  local numeric = {
-    minX = { -30000000, 30000000 },
-    maxX = { -30000000, 30000000 },
-    minZ = { -30000000, 30000000 },
-    maxZ = { -30000000, 30000000 },
-    topY = { -63, 319 },
-    bottomY = { -64, 318 },
-    workerIndex = { 1, 1024 },
-    workerCount = { 1, 1024 },
-  }
-  local updates = {}
-  for key, range in pairs(numeric) do
-    if settings[key] ~= nil then
-      local value = tonumber(settings[key])
-      if not value then
-        return false, key .. " must be a number"
-      end
-      value = math.floor(value)
-      if value < range[1] or value > range[2] then
-        return false, ("%s must be %d..%d"):format(key, range[1], range[2])
-      end
-      updates[key] = value
-    end
+--- The worker slice, which is assigned rather than chosen.
+---
+--- Deliberately not in `settingFields`: those are what a person is shown, and
+--- nobody hand-picks their own index out of a fleet-wide split. The base sends
+--- these - `legacy/fleet/coordinator.lua` does today, and
+--- `os/server/services/coverage.lua` does for a chunk quarry - so they are
+--- validated exactly like the rest and never rendered as a form.
+---
+--- They were previously validated by a private table that listed the visible
+--- fields *again*, so a range could be changed in one place and not the other.
+quarry.assignmentFields = {
+  { label = "Worker", key = "workerIndex", step = 1, min = 1, max = 1024 },
+  { label = "Of", key = "workerCount", step = 1, min = 1, max = 1024 },
+}
+
+--- Everything a quarry accepts, shown or not.
+function quarry.fields()
+  local all = {}
+  for _, field in ipairs(quarry.settingFields) do
+    all[#all + 1] = field
   end
+  for _, field in ipairs(quarry.assignmentFields) do
+    all[#all + 1] = field
+  end
+  return all
+end
+
+function quarry.configure(job, values)
+  local updates, why = settings.apply(quarry.fields(), values)
+  if updates == nil then
+    return false, why
+  end
+
+  -- Cross-field rules, checked against what the job *would* become rather than
+  -- against either half. A change that is fine on its own can still produce an
+  -- impossible box - raising `minX` past an unchanged `maxX` is the obvious one
+  -- - and validating field by field would accept it and leave a quarry with no
+  -- cells in it.
   local candidate = {}
   for key, value in pairs(job) do
     candidate[key] = value
@@ -232,6 +246,7 @@ function quarry.configure(job, settings)
   for key, value in pairs(updates) do
     candidate[key] = value
   end
+
   if
     candidate.maxX < candidate.minX
     or candidate.maxZ < candidate.minZ
@@ -245,15 +260,15 @@ function quarry.configure(job, settings)
   if candidate.workerCount > areaCells(candidate) then
     return false, "worker count exceeds horizontal quarry cells"
   end
-  local changed = false
-  for key, value in pairs(updates) do
-    changed = changed or job[key] ~= value
-    job[key] = value
-  end
-  if changed then
+
+  -- A quarry whose area or slice moved is cutting different ground, so the
+  -- layer and cell walk restart. Re-sending identical settings is not a change
+  -- and must not discard a part-finished layer.
+  if settings.merge(job, updates) then
     job.layer = 0
     job.cell = 0
   end
+
   job.configured = true
   quarry.save(job)
   return true
