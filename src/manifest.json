@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-19T17:02:02-04:00",
+    "generated":  "2026-08-19T17:08:21-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -108,6 +108,7 @@
                   "os/server/services/policy.lua",
                   "os/server/services/reconcile.lua",
                   "os/turtle/agent.lua",
+                  "os/turtle/context.lua",
                   "os/turtle/control.lua",
                   "os/turtle/device/access.lua",
                   "os/turtle/device/depot.lua",

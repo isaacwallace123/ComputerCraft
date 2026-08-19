@@ -25,18 +25,23 @@
 --- *any* of them finishes and a failed radio therefore stopped the mining.
 ---
 --- Only two of the four are taken from here. The heartbeat and the command
---- receiver are ICOS 2's own, on ICOS 2's protocol, under desired state - so a
---- turtle running this engine is **not** an ICOS 1 device and is not seen as one
---- by `os/server/services/bridge.lua`. That distinction matters: `ctx:report`
---- draws to the local screen and sends nothing, which is the only reason mixing
---- the two halves does not put two heartbeats on two protocols.
+--- receiver are ICOS 2's own, on ICOS 2's protocol, under desired state.
 ---
---- ## Deleting this file
+--- ## It no longer reaches into `legacy/`
 ---
---- It is the turtle's whole remaining dependency on `legacy/`, deliberately in
---- one file so that "what is left to port" has an answer you can read. It goes
---- when a job runner exists that takes ports instead of globals; at that point
---- `legacy/miner/` and `legacy/apps/miner.lua` go with it.
+--- It did, and that was the whole point of the file: one place holding the
+--- turtle's remaining dependency on ICOS 1, so "what is left to port" had an
+--- answer somebody could read. The answer was `legacy/miner/context.lua` and
+--- `legacy/miner/runtime.lua` - the state and the loop.
+---
+--- Both now have ICOS 2 versions. `os/turtle/runner.lua` is the loop, with its
+--- decisions in `domain/turtle/lifecycle.lua`; `os/turtle/context.lua` is the
+--- state, with its job selection in `domain/turtle/jobs.lua`. So this file
+--- assembles ICOS 2 parts and `legacy/miner/` has nothing left pointing at it.
+---
+--- The jobs themselves still reach `turtle` directly through
+--- `os/turtle/device/`. That is the port debt recorded in `src/README.md` and it
+--- is a separate project; it is not a dependency on ICOS 1.
 
 local engine = {}
 
@@ -50,29 +55,147 @@ local engine = {}
 --- requiring them at file scope would make this file unloadable in a spec, and
 --- therefore make `os/kernel/boot.lua` unloadable, and therefore make the whole
 --- boot path untestable in order to save one line.
-function engine.new()
-  local Context = require("legacy.miner.context")
-  local runtime = require("legacy.miner.runtime")
-  local catalogue = require("domain.turtle.jobs")
+function engine.new(options)
+  options = options or {}
 
-  -- Built from the catalogue rather than listed here, so adding a job is one
-  -- entry in `domain/turtle/jobs.lua` and nothing else. ICOS 1 listed the five
-  -- modules inline in its entrypoint, which is how the catalogue's paths came
-  -- to be wrong for a whole restructure without anybody noticing: nothing
-  -- resolved them.
-  local jobs = {}
-  for _, entry in ipairs(catalogue.list()) do
-    jobs[entry.id] = require(entry.module)
+  local config = require("adapters.cc.config")
+  local context = require("os.turtle.context")
+  local logfile = require("adapters.cc.logfile")
+  local nav = require("os.turtle.device.nav")
+  local runner = require("os.turtle.runner")
+  local sound = require("adapters.cc.sound")
+
+  local nodePath = options.nodePath or ".node"
+  local node = options.node or config.load(nodePath, { parked = true })
+  local flags = options.flags or {}
+
+  local function saveNode(record)
+    config.save(nodePath, record)
   end
 
-  local ctx = Context.new(jobs)
+  local ctx = context.new({
+    node = node,
+    flags = flags,
+    saveNode = saveNode,
+  })
+
+  -- Every effect the loop needs, named rather than reached for. This is the
+  -- list that used to be `ctx` methods on a god object, and writing it out is
+  -- what makes the loop drivable by a spec with a table of counters.
+  -- Declared before it is built, so the handlers below can close over it. They
+  -- are passed the runner as an argument too, and using that instead would mean
+  -- a parameter named the same as the local it always equals - which reads like
+  -- two things and is one.
+  local drive
+  drive = runner.new({
+    node = node,
+    flags = flags,
+    job = ctx.job,
+    module = ctx.module,
+    effects = {
+      saveNode = saveNode,
+      report = function(phase, detail)
+        ctx:report(phase, detail)
+      end,
+      log = function(message)
+        logfile.info(message)
+      end,
+      tone = function(name)
+        sound.play(name)
+      end,
+      setHome = function()
+        nav.setHome()
+      end,
+      idle = function()
+        sleep(1)
+      end,
+    },
+
+    -- Without these, `runner.wait` drops the order and logs that it did. That
+    -- is the correct behaviour for an order nobody can service - the
+    -- alternative is servicing it forever at full speed, because nothing clears
+    -- it - but every order below *can* be serviced, and leaving them out would
+    -- have meant a job assignment from the Devices page vanishing into a log
+    -- line nobody reads.
+    --
+    -- Each one clears its own flag first. A handler that failed halfway with the
+    -- flag still raised would be re-entered on the next step, forever, on a
+    -- turtle that is parked and looks idle.
+    handlers = {
+      assignment = function()
+        local request = flags.assignment
+        flags.assignment = nil
+        if type(request) ~= "table" then
+          return false
+        end
+
+        ctx:selectJob(request.name)
+        drive.job = ctx.job
+        drive.module = ctx.module
+
+        if type(request.settings) == "table" and ctx.module.configure then
+          local ok, why = ctx.module.configure(ctx.job, request.settings)
+          if not ok then
+            drive:park("assignment refused: " .. tostring(why), "setup")
+            return true
+          end
+        end
+
+        -- An assignment is a job *and* a deployment - §5's point about the
+        -- three-message set-job/configure/deploy dance being one goal. Starting
+        -- here rather than raising `deploy` means it happens in this step
+        -- instead of the next one, so a turtle does not sit parked for a second
+        -- with a job it has already accepted.
+        return drive:start("assigned " .. tostring(ctx.entry.id))
+      end,
+
+      setJob = function()
+        local request = flags.setJob
+        flags.setJob = nil
+        if type(request) ~= "table" then
+          return false
+        end
+
+        local entry = ctx:selectJob(request.name)
+        drive.job = ctx.job
+        drive.module = ctx.module
+        return drive:park("job changed to " .. entry.id, "idle")
+      end,
+
+      settings = function()
+        local request = flags.settings
+        flags.settings = nil
+        if type(request) ~= "table" or type(request.values) ~= "table" then
+          return false
+        end
+        if not ctx.module.configure then
+          return drive:park("this job cannot be configured remotely", "idle")
+        end
+
+        local ok, why = ctx.module.configure(ctx.job, request.values)
+        return drive:park(ok and "settings saved" or tostring(why), ok and "idle" or "setup")
+      end,
+
+      update = function()
+        flags.update = nil
+        drive:park("installing ICOS update", "updating")
+
+        -- `shell.run`, because the updater replaces the files this program is
+        -- running from and has to survive doing so. It reboots on success, so
+        -- anything after this line only runs when the update failed.
+        local ran = shell and shell.run("update.lua", "--automatic", "--reboot")
+        local result = config.load(".update-result", { message = "update stopped" })
+        return drive:park(ran and result.message or "updater crashed", "error")
+      end,
+    },
+  })
 
   return {
     -- The same tables `control.apply` writes and the runtime reads. Shared by
     -- reference on purpose: a copy would mean a recall that set a flag nothing
     -- was looking at.
-    node = ctx.node,
-    flags = ctx.control,
+    node = node,
+    flags = flags,
 
     snapshot = function()
       return ctx:snapshot()
@@ -83,16 +206,20 @@ function engine.new()
     -- the two agree about what "still working" means without either knowing
     -- about the other.
     runJob = function()
-      return runtime.agent(ctx)
+      return drive:run()
     end,
 
-    -- ICOS 1's own controls, not the ICOS 2 launcher. `ctx:draw` owns this
-    -- screen and repaints it from job progress; putting the client shell on top
-    -- would give one terminal two things drawing to it, and the turtle's status
-    -- would flicker against a page nobody asked for.
-    runControls = function()
-      return runtime.localControls(ctx)
-    end,
+    -- The ICOS 2 launcher now, because nothing else draws this screen any more.
+    -- `legacy/miner/context.lua` owned the terminal and repainted it from job
+    -- progress, which is why the client shell could not be put on top of it -
+    -- two things drawing to one terminal made the status flicker against a page
+    -- nobody asked for. `os/turtle/context.lua` stores the status and draws
+    -- nothing, so the shell is free to.
+    --
+    -- Nil rather than a function: `os/turtle/main.lua` already defaults this to
+    -- the launcher, and a wrapper that called it would be a second place the
+    -- surface and capacity had to agree.
+    runControls = nil,
 
     -- Exposed for the entrypoint's benefit only. Nothing in `os/` reads it.
     context = ctx,
