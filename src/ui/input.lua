@@ -51,6 +51,7 @@ input.MIDDLE = 3
 --- the framework *itself* consumes need naming here.
 input.KEY = {
   space = 32,
+  escape = 256,
   enter = 257,
   tab = 258,
   backspace = 259,
@@ -65,6 +66,7 @@ input.KEY = {
   ["end"] = 269,
   leftShift = 340,
   rightShift = 344,
+  numpadEnter = 335,
 }
 
 ---------------------------------------------------------------------------

@@ -1007,3 +1007,21 @@ it("a select with no options does nothing rather than erroring", function()
   expect.contains(screen.rowText(1), "none", "and it says so")
   root:destroy()
 end)
+
+it("the keycodes are GLFW, which is what CC has used since Minecraft 1.13", function()
+  -- A wrong constant here is invisible: the screen draws correctly and every
+  -- key is ignored. `os/kernel/prompt.lua` shipped with the pre-1.13 LWJGL2
+  -- scancodes - 200 for up, 28 for enter - in a table of its own, and the menu
+  -- looked finished while responding to nothing.
+  --
+  -- One table now, this one. These four are the ones a menu cannot work
+  -- without, so they are the ones worth pinning.
+  expect.equal(input.KEY.up, 265, "up")
+  expect.equal(input.KEY.down, 264, "down")
+  expect.equal(input.KEY.enter, 257, "enter")
+  expect.equal(input.KEY.escape, 256, "escape")
+
+  -- And the prompt uses it rather than restating it, which is what stops the
+  -- two drifting again.
+  expect.equal(require("os.kernel.prompt").KEY, input.KEY, "one table, shared")
+end)

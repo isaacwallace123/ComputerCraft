@@ -29,19 +29,22 @@ local T = console.TOKENS
 
 local prompt = {}
 
---- CC keycodes, named.
+--- Keycodes, borrowed rather than restated.
 ---
---- The numbers rather than `keys.up`, because this file is required by specs
---- that have no CC globals - and a menu whose arrow keys only exist inside
---- Minecraft is a menu nobody can test.
-prompt.KEY = {
-  up = 200,
-  down = 208,
-  enter = 28,
-  numpadEnter = 156,
-  escape = 1,
-  one = 2,
-}
+--- This file had its own table and every number in it was wrong: 200 for up, 28
+--- for enter - the LWJGL2 scancodes ComputerCraft used before Minecraft 1.13.
+--- CC:Tweaked has used GLFW numbering for years, where up is 265 and enter is
+--- 257, so the menu drew correctly and ignored every key pressed at it.
+---
+--- `ui/input.lua` had the right numbers the whole time. Two tables meant one of
+--- them could be wrong without anything noticing, and the one nothing else read
+--- was the one that was. So there is one table now, and it is the one the rest
+--- of the system already trusts.
+---
+--- Requiring `ui/input.lua` costs nothing here: it is pure - the layering check
+--- proves it holds no CC globals - so it loads on a machine whose files were
+--- replaced ten seconds ago exactly as the buffer does.
+prompt.KEY = require("ui.input").KEY
 
 --- Where each entry is drawn, given the screen and how many there are.
 ---
@@ -147,14 +150,25 @@ function prompt.choose(screen, entries, options)
         return selected
       elseif key == prompt.KEY.escape then
         return nil
-      elseif key >= prompt.KEY.one and key < prompt.KEY.one + math.min(#entries, 9) then
-        -- Typing the number picks *and* confirms. Somebody who knows what they
-        -- want should not have to arrow to it and then press enter.
-        return key - prompt.KEY.one + 1
       end
       rows, spacing = draw()
-    elseif name == "char" and (event[2] == "q" or event[2] == "Q") then
-      return nil
+    elseif name == "char" then
+      local typed = event[2]
+      if typed == "q" or typed == "Q" then
+        return nil
+      end
+
+      -- Digits through `char` rather than through a keycode, because a keycode
+      -- for "1" is a key *position* and a char is what the person actually
+      -- typed. The number row and the numpad produce different codes and the
+      -- same character, and somebody using a non-QWERTY layout produces neither
+      -- of the codes we would have guessed.
+      local picked = tonumber(typed)
+      if picked and entries[picked] then
+        -- Typing the number picks *and* confirms. Somebody who knows what they
+        -- want should not have to arrow to it and then press enter.
+        return picked
+      end
     elseif name == "mouse_click" or name == "monitor_touch" then
       -- A click selects and confirms in one, for the same reason a number does:
       -- on a monitor there is no second gesture available.
