@@ -36,6 +36,7 @@
 --- in `.node` onto one of four operating systems. `icos` starts the same thing
 --- by hand.
 
+local gps = require("os.kernel.services.gps")
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
@@ -151,7 +152,7 @@ client.screen = service.define({
 })
 
 function client.services()
-  return { client.sync, client.screen }
+  return { client.sync, client.screen, gps.service }
 end
 
 --- Build a supervised client, ready to be stepped.
@@ -177,6 +178,14 @@ function client.boot(ports, options)
     transport = ports.transport,
     screen = ports.screen,
     input = ports.input,
+    beacon = ports.beacon,
+    locator = ports.locator,
+    saveLocation = ports.saveLocation,
+
+    -- A client is a block, like a server. Same answer, same reason.
+    anchored = function()
+      return true
+    end,
     serialise = ports.serialise,
     log = ports.log,
 

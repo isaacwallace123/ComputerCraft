@@ -40,6 +40,14 @@ it("a machine whose services have all given up returns rather than spinning", fu
     error("no modem", 0)
   end
 
+  -- A client hosts GPS now, so "every service" is three rather than two. It
+  -- stops of its own accord when the beacon will not open, which is the shape
+  -- this test needs and is also the honest behaviour: a machine with no
+  -- wireless modem is not a host and never will be without one being attached.
+  machine.context.beacon.open = function()
+    return false, "no wireless modem"
+  end
+
   local index = 0
   local outcome = osBoot.run(machine, function()
     index = index + 1

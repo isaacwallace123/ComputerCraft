@@ -109,6 +109,24 @@ mobile.sync = service.define({
   end,
 })
 
+--- The services a handheld runs.
+---
+--- Deliberately **without** `gps.service`, and this is the one place in the
+--- fleet where that is true.
+---
+--- A pocket computer travels in somebody's inventory at ten blocks a second and
+--- has no way to observe any of it - no state to check, no event, nothing it
+--- could report. `domain/gps/host.lua` phrases the rule as "would this machine
+--- know if it had moved", and this is the only machine whose answer is never.
+---
+--- Leaving the service out rather than letting it refuse itself is deliberate: a
+--- handheld that registered a beacon and declined to answer would look, on the
+--- Services page, exactly like one whose modem had failed. It does not host, so
+--- it does not have the service.
+---
+--- It still *stores* a position, and `commands/locate` still works here. Knowing
+--- where you are is useful on the machine you carry; telling other machines
+--- where **they** are is a different job with a different requirement.
 function mobile.services()
   return { mobile.sync, client.screen }
 end

@@ -24,7 +24,7 @@ local coverage = require("domain.fleet.coverage")
 local coverageService = require("os.server.services.coverage")
 local depotList = require("domain.depot.list")
 local discovery = require("os.server.services.discovery")
-local gps = require("os.server.services.gps")
+local gps = require("os.kernel.services.gps")
 local leases = require("os.server.services.leases")
 local logrotate = require("os.server.services.logrotate")
 local mine = require("domain.mine.registry")
@@ -227,6 +227,14 @@ function server.boot(ports, options)
     transport = ports.transport,
     locator = ports.locator,
     beacon = ports.beacon,
+
+    -- A server is a block in the world. It cannot move without being broken,
+    -- and breaking it ends the program - so there is no state to check and the
+    -- answer is always yes. See `domain/gps/host.lua`.
+    anchored = function()
+      return true
+    end,
+    saveLocation = ports.saveLocation,
     serialise = ports.serialise,
     log = ports.log,
     state = state,

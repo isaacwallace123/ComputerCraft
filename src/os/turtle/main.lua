@@ -49,6 +49,7 @@
 
 local agent = require("os.turtle.agent")
 local control = require("os.turtle.control")
+local gps = require("os.kernel.services.gps")
 local jobs = require("domain.turtle.jobs")
 local legacyLink = require("os.turtle.legacy")
 local service = require("os.kernel.service")
@@ -260,7 +261,7 @@ turtleOs.controls = service.define({
 --- base does. The switch that ends the dual run is deleting
 --- `os/turtle/legacy.lua`, which is one decision taken once.
 function turtleOs.services()
-  return { turtleOs.job, turtleOs.heartbeat, turtleOs.controls, legacyLink.service }
+  return { turtleOs.job, turtleOs.heartbeat, turtleOs.controls, legacyLink.service, gps.service }
 end
 
 ---------------------------------------------------------------------------
@@ -285,9 +286,11 @@ function turtleOs.boot(ports, options)
     clock = ports.clock,
     storage = ports.storage,
     transport = ports.transport,
-    locator = ports.locator,
     body = ports.body,
     serialise = ports.serialise,
+    beacon = ports.beacon,
+    locator = ports.locator,
+    saveLocation = ports.saveLocation,
     log = ports.log,
 
     -- What this turtle has already carried out, read from disk. A missing file
@@ -326,6 +329,20 @@ function turtleOs.boot(ports, options)
   -- than at the top of the file because it reaches for `fs` through the config
   -- adapter, and a spec that only wanted to check supervision should not have
   -- to own a filesystem.
+  -- A turtle counts every confirmed move, so it knows exactly when it is under
+  -- way - which is what lets it host at all. Parked is the only state in which
+  -- the position on disk is the position it is standing on.
+  --
+  -- Read from the node on every call rather than captured, because parking is
+  -- the thing that changes most often on a turtle and a captured value would be
+  -- wrong within a minute of booting.
+  context.anchored = function()
+    if context.node.parked then
+      return true
+    end
+    return false, "mining - a turtle hosts only while parked"
+  end
+
   -- How the legacy loop reaches the order path without requiring this file and
   -- making a cycle. A function on the context rather than a require, which is
   -- the same shape `context.handlers` uses and for the same reason.

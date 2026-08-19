@@ -68,10 +68,17 @@ end)
 
 it("the GPS service serves the saved position, and refuses without one", function()
   scenario.new({ groundY = 64 })
-  local gps = require("os.server.services.gps")
+  local gps = require("os.kernel.services.gps")
   local locator = require("adapters.cc.locator")
 
-  local context = { locator = locator.new() }
+  -- Every context has to say whether it can vouch for its position. A computer
+  -- is a block and always can; see `domain/gps/host.lua`.
+  local context = {
+    locator = locator.new(),
+    anchored = function()
+      return true
+    end,
+  }
   local position, why = gps.position(context)
   expect.falsy(position, "a host with no position must not answer")
   expect.contains(why, "locate", "and names the command that fixes it")
@@ -79,9 +86,12 @@ it("the GPS service serves the saved position, and refuses without one", functio
   locate(10, 70, -20, 0)
   context.locator = locator.new()
 
-  -- What a person entered, never what `gps.locate` returned. A constellation
-  -- bootstrapped off its own error drifts with every host that joins, and a host
-  -- that is confidently wrong is worse than no host at all.
+  -- What is on disk, whether a person typed it or a fix wrote it. The original
+  -- version of this comment said a derived fix must never be served because the
+  -- error would drift - which is true of real GPS and not of CC, where
+  -- trilateration from exact coordinates gives exactly the right answer. What
+  -- actually matters is whether the machine could have moved since, which is
+  -- `anchored` above.
   local served = assert(gps.position(context), "it answers now")
   expect.equal(served.x, 10, "x")
   expect.equal(served.y, 70, "y")

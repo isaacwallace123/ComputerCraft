@@ -49,6 +49,19 @@ function boot.ports()
     transport = require("adapters.cc.transport").new(),
     locator = require("adapters.cc.locator").new(),
     beacon = require("adapters.cc.beacon").new(),
+
+    -- The write half of the locator. `locator` reads `.location`; nothing could
+    -- write it except `commands/locate`, so a machine that corrected itself
+    -- against the constellation on boot would have thrown the correction away
+    -- the moment it rebooted - the whole point of refreshing, silently undone.
+    --
+    -- A function rather than a port method because it is one write to one file
+    -- and widening the locator port would mean every null and every spec
+    -- carrying a setter that only one caller uses.
+    saveLocation = function(record)
+      local locator = require("adapters.cc.locator")
+      return require("adapters.cc.config").save(locator.PATH, record)
+    end,
     screen = require("adapters.cc.screen").new(term),
 
     -- Filtered, not the raw queue. A base station runs two screens and the
