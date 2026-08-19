@@ -9,7 +9,7 @@
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
-local ui = require("legacy.shell.ui")
+local console = require("os.kernel.console")
 local config = require("adapters.cc.config")
 
 local CONFIG_PATH = ".update"
@@ -42,7 +42,8 @@ local cfg = config.load(CONFIG_PATH, defaults)
 config.save(RESULT_PATH, { ok = false, message = "update interrupted" })
 
 if firstRun then
-  ui.clear()
+  term.clear()
+  term.setCursorPos(1, 1)
   print("Update source - enter to accept each default.\n")
 
   local function ask(prompt, current)
@@ -185,47 +186,58 @@ local function remember(name, note, color)
   end
 end
 
+--- The screen, built once.
+---
+--- `os/kernel/console.lua` rather than the component tree, because an updater
+--- that could not draw its own failure would be the worst possible thing to be
+--- unable to draw - it runs at the moment the files it is drawing with are
+--- being replaced.
+local screen = console.new(require("adapters.cc.screen").new(term))
+local T = console.TOKENS
+
 --- Repaint the whole screen. Cheap enough to call per file, and redrawing
---- everything avoids the stale-artifact bugs that partial updates invite.
+--- everything avoids the stale-artifact bugs that partial updates invite - the
+--- buffer turns a full repaint into one blit per row that actually differs, so
+--- "redraw everything" costs what "redraw what changed" used to.
 local function draw(stage, done, total, current)
-  local width, height = ui.size()
+  local _, height = screen:size()
   frame = frame + 1
 
-  ui.clear()
-  ui.header("ICOS update", stage)
-
-  ui.text(2, 3, ui.pad(cfg.user .. "/" .. cfg.repo, width - 3), ui.theme.dim)
-
-  local barWidth = width - 12
-  ui.bar(2, 5, barWidth, total > 0 and done / total or 0, ui.theme.accent)
-  ui.text(barWidth + 3, 5, ui.pad(("%d/%d"):format(done, total), 8, "right"), ui.theme.fg)
+  screen:clear()
+  screen:header("ICOS update", stage)
+  screen:line(3, cfg.user .. "/" .. cfg.repo, T.mutedFg)
+  screen:bar(5, done, total)
 
   local spin = done < total and SPINNER[(frame % #SPINNER) + 1] .. " " or "  "
-  ui.text(2, 6, ui.pad(spin .. (current or ""), width - 3), ui.theme.fg)
+  screen:line(6, spin .. (current or ""), T.foreground)
 
-  local line = 8
+  local row = 8
   for _, entry in ipairs(recent) do
-    if line >= height then
+    if row >= height then
       break
     end
-    local note = entry.note
-    ui.text(2, line, ui.pad(entry.name, width - #note - 4), entry.color)
-    ui.text(width - #note - 1, line, note, entry.color)
-    line = line + 1
+    screen:line(row, entry.name, entry.color)
+    screen:right(row, entry.note, entry.color)
+    row = row + 1
   end
 
-  ui.footer(stage)
+  screen:present()
 end
 
 local function fail(message, detail)
   config.save(RESULT_PATH, { ok = false, message = message, detail = detail })
-  ui.clear()
-  ui.header("ICOS update", "failed")
-  ui.text(2, 3, message, ui.theme.bad)
+
+  screen:clear()
+  screen:header("ICOS update", "failed")
+  screen:line(3, message, T.destructive)
   if detail then
-    ui.text(2, 5, ui.pad(detail, (ui.size()) - 3), ui.theme.dim)
+    screen:line(5, detail, T.mutedFg)
   end
-  local _, height = ui.size()
+  screen:present()
+
+  -- The cursor goes below whatever was drawn, so anything printed after this -
+  -- a stack trace, a shell prompt - does not land on top of the reason.
+  local _, height = screen:size()
   term.setCursorPos(1, height - 1)
 end
 
@@ -266,7 +278,7 @@ for index, name in ipairs(files) do
 
   local body, err = get(urlFor(ref, name))
   if not body then
-    remember(name, tostring(err):sub(1, 12), ui.theme.bad)
+    remember(name, tostring(err):sub(1, 12), T.destructive)
     failed = failed + 1
   else
     bytes = bytes + #body
@@ -275,10 +287,10 @@ for index, name in ipairs(files) do
     if body == readLocal(name) then
       unchanged = unchanged + 1
     elseif writeLocal(name, body) then
-      remember(name, "updated", ui.theme.good)
+      remember(name, "updated", T.good)
       changed = changed + 1
     else
-      remember(name, "UNWRITABLE", ui.theme.bad)
+      remember(name, "UNWRITABLE", T.destructive)
       failed = failed + 1
     end
   end
@@ -313,7 +325,7 @@ end
 -- ----------------------------------------------------------------- summary
 
 local ok = failed == 0 and #broken == 0
-local width, height = ui.size()
+local _, height = screen:size()
 config.save(RESULT_PATH, {
   ok = ok,
   message = ok and "update verified" or "update verification failed",
@@ -323,47 +335,52 @@ config.save(RESULT_PATH, {
   commit = ref,
 })
 
-ui.clear()
-ui.header("ICOS update", ok and "verified" or "PROBLEMS")
+screen:clear()
+screen:header("ICOS update", ok and "verified" or "PROBLEMS")
 
-ui.text(2, 3, ui.pad(cfg.user .. "/" .. cfg.repo, width - 3), ui.theme.dim)
-ui.text(2, 4, "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (branch)"), ui.theme.dim)
+screen:line(3, cfg.user .. "/" .. cfg.repo, T.mutedFg)
+screen:line(4, "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (branch)"), T.mutedFg)
 
-ui.text(
-  2,
-  6,
-  ("%-10s %d"):format("updated", changed),
-  changed > 0 and ui.theme.good or ui.theme.dim
-)
-ui.text(2, 7, ("%-10s %d"):format("unchanged", unchanged), ui.theme.dim)
-ui.text(2, 8, ("%-10s %d"):format("failed", failed), failed > 0 and ui.theme.bad or ui.theme.dim)
+screen:line(6, ("%-10s %d"):format("updated", changed), changed > 0 and T.good or T.mutedFg)
+screen:line(7, ("%-10s %d"):format("unchanged", unchanged), T.mutedFg)
+screen:line(8, ("%-10s %d"):format("failed", failed), failed > 0 and T.destructive or T.mutedFg)
 
-ui.text(
-  2,
+screen:line(
   10,
   ("%-10s %d/%d files, %dkB"):format("verified", verified, total, math.floor(bytes / 1024)),
-  ok and ui.theme.good or ui.theme.bad
+  ok and T.good or T.destructive
 )
-ui.text(2, 11, ("%-10s %s"):format("fingerprint", hex(fingerprint)), ui.theme.accent)
+screen:line(11, ("%-10s %s"):format("fingerprint", hex(fingerprint)), T.accent)
 
-local line = 13
+local row = 13
 for _, problem in ipairs(broken) do
-  if line >= height - 1 then
+  if row >= height - 1 then
     break
   end
-  ui.text(2, line, ui.pad(problem, width - 3), ui.theme.bad)
-  line = line + 1
+  screen:line(row, problem, T.destructive)
+  row = row + 1
 end
 
+-- The last line says what to do next rather than what happened, because what
+-- happened is the six lines above it and somebody reading a summary is deciding
+-- whether they still have to do something.
+local footer
 if ok and rebootAfter then
-  ui.footer("Update verified - rebooting")
+  footer = "Update verified - rebooting"
 elseif ok and changed > 0 then
-  ui.footer("Updated - reboot to run the new code")
+  footer = "Updated - reboot to run the new code"
 elseif ok then
-  ui.footer("Already up to date")
+  footer = "Already up to date"
 else
-  ui.footer("Update incomplete - see above")
+  footer = "Update incomplete - see above"
 end
+
+screen:line(height, footer, ok and T.mutedFg or T.warn)
+screen:present()
+
+-- A tone, because an automatic update runs unattended and the thing somebody
+-- wants to know from across the room is whether it worked.
+require("adapters.cc.sound").play(ok and "confirm" or "error")
 
 -- Sound is optional: a machine with no speaker just updates quietly, and a
 -- missing module must never be able to break updating itself.

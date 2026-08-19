@@ -1,21 +1,44 @@
 --- ICOS boot entry point.
 ---
----   splash -> automatic update -> hardware-appropriate shell
+---   splash -> escape hatch -> automatic update -> the machine this computer is
 ---
---- Computers get a full desktop on their own keyboard terminal and a separate
---- display-only dashboard on an attached monitor. Pocket Computers get a
---- touch-first shell, and turtles get a compact launcher. Holding a key during
---- the splash opens system tools instead, so a broken autorun can never trap
---- the machine.
+--- ## What replaced what
+---
+--- The ICOS 1 version was two hundred lines that discovered a monitor, migrated
+--- a role, drew a splash, ran an updater, loaded an app registry, and then
+--- branched five ways on role and hardware to decide which program to run.
+---
+--- Four of those five branches were "which shell does this machine get", and
+--- that question is now answered by `os/kernel/roles.lua` mapping a node record
+--- onto one of four operating systems - so the branch is a table lookup in
+--- `os/kernel/boot.lua` and does not appear here at all.
+---
+--- What is left is the part that is genuinely about *booting*: put something on
+--- the screen, let somebody stop you, take the update, hand over.
+---
+--- ## The escape hatch comes before everything
+---
+--- Holding a key during the splash opens setup instead of the autorun, and that
+--- ordering is the whole safety property: a bad deploy must never produce a
+--- machine that boots straight into a broken program forever. It is checked
+--- before the update runs, because the update is the most likely thing to have
+--- broken the machine and the least useful thing to run again when it has.
+---
+--- ## It still boots ICOS 1 if the node says so
+---
+--- `roles.roleOf` maps every ICOS 1 role onto an ICOS 2 operating system, so
+--- there is no fallback path and no flag. A machine set up as `miner` boots the
+--- turtle OS; one set up as `fleet` boots a server with a client beside it. The
+--- migration happens in the mapping, once, rather than as a branch here that
+--- somebody would eventually have to delete.
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
-local ui = require("legacy.shell.ui")
-local boot = require("legacy.boot")
-local sound = require("adapters.cc.sound")
-local device = require("legacy.device")
 local config = require("adapters.cc.config")
-local display = require("legacy.shell.display")
+local machine = require("adapters.cc.machine")
+local sound = require("adapters.cc.sound")
+local splash = require("os.kernel.splash")
+local version = require("lib.version")
 
 local NODE_PATH = ".node"
 
@@ -27,215 +50,91 @@ local node = config.load(NODE_PATH, {
   autoUpdate = true,
 })
 
-local caps = device.capabilities()
+local caps = machine.capabilities()
 
--- Early builds offered the stationary base role to Pocket Computers. Migrate
--- those installations to the controller role so they never compete with the
--- real base for the hosted Rednet name.
+--- Early builds offered the stationary base role to Pocket Computers. Migrate
+--- those installations to the controller role so they never compete with the
+--- real base for the hosted Rednet name.
 if caps.kind == "pocket" and node.role == "fleet" then
   node.role = "controller"
   config.save(NODE_PATH, node)
 end
 
-local localScreen = term.current()
-local screen = localScreen
-local monitor, monitorName
+---------------------------------------------------------------------------
+-- Splash, and the way out of it
+---------------------------------------------------------------------------
 
--- Turtles and Pockets keep their own screen. A computer discovers and scales
--- its monitor for the display-only dashboard; the monitor remains the boot
--- splash target while the local terminal becomes the full desktop afterward.
-if caps.kind ~= "turtle" and caps.kind ~= "pocket" and node.role ~= "gps" then
-  monitor, _, _, _, monitorName = display.attach(42, 18)
-  screen = monitor or screen
-end
+local screen = require("adapters.cc.screen").new(term)
 
-local function onScreen(fn)
-  return display.on(screen, fn)
-end
-
-local interrupted = onScreen(function()
-  return boot.splash(node.label or device.KINDS[caps.kind])
+-- The jingle runs alongside the animation rather than before it, so a machine
+-- with a speaker boots no slower than one without. `parallel` is used here and
+-- nowhere else in ICOS 2: this is before the supervisor exists, and two things
+-- that both finish is exactly what `waitForAll` is for. The bug `os/turtle/
+-- main.lua` exists to fix is `waitForAny`, which returns when *either*
+-- finishes - a different function with a similar name.
+local interrupted = false
+parallel.waitForAll(function()
+  interrupted = splash.run(screen, {
+    subtitle = node.label or caps.kind,
+    version = version,
+    pull = function()
+      return os.pullEvent()
+    end,
+  })
+end, function()
+  sound.play("boot")
 end)
 
-local function autoUpdate()
-  if node.autoUpdate == false or not caps.http or not fs.exists(".update") then
-    return
-  end
-
-  onScreen(function()
-    ui.clear()
-    ui.header(boot.NAME, "updating")
-    ui.text(2, 3, "Checking for updates...", ui.theme.dim)
-    term.setCursorPos(1, 5)
-
-    local called, ran = pcall(shell.run, "update.lua", "--automatic")
-    if not called or ran == false then
-      ui.text(2, 5, "Update failed - running installed code.", ui.theme.warn)
-      sound.play("error")
-    end
-    sleep(1.2)
-  end)
-end
-
-local function runApp(apps, app, target)
-  display.on(target or localScreen, function()
-    ui.clear()
-    apps.run(app)
-  end)
-end
-
-local function systemMenu(apps, target)
-  target = target or localScreen
-  while true do
-    local tools = apps.available(caps, node, "tools")
-    local labels = {}
-    for i, app in ipairs(tools) do
-      labels[i] = app.name
-    end
-    labels[#labels + 1] = "Restart ICOS"
-    labels[#labels + 1] = "Exit to CraftOS"
-
-    local choice = display.on(target, function()
-      return ui.menu((node.label or ("id " .. caps.id)) .. " system", labels)
-    end)
-
-    if not choice or choice == #labels then
-      display.on(target, function()
-        ui.clear()
-      end)
-      print("Type `startup` to start ICOS again.")
-      return
-    elseif choice == #labels - 1 then
-      display.on(target, boot.reboot)
-      return
-    else
-      runApp(apps, tools[choice], target)
-      display.on(target, function()
-        sound.blip(14)
-        print("\nPress any key to return.")
-        os.pullEvent("key")
-      end)
-      node = config.load(NODE_PATH, node)
-      caps = device.capabilities()
-    end
-  end
-end
+---------------------------------------------------------------------------
+-- Setup, update, hand over
+---------------------------------------------------------------------------
 
 if not node.role then
-  shell.run("install.lua")
+  -- Never been set up. Setup is not optional and there is nothing to fall back
+  -- to, so this is the one path that does not care whether a key was held.
+  shell.run("commands/setup.lua")
   return
 end
-
-if not interrupted then
-  autoUpdate()
-end
-
--- Load these after updating: applications are the part most likely to have
--- changed, and no reboot is needed just to pick up a new registry entry.
-local apps = require("legacy.apps")
 
 if interrupted then
-  systemMenu(apps, localScreen)
+  -- The hatch. Setup can change the role, the job and the position, which is
+  -- everything needed to rescue a machine that is booting into the wrong thing.
+  print("")
+  print("Interrupted - opening setup.")
+  print("Reboot to start normally.")
+  print("")
+  shell.run("commands/setup.lua")
   return
 end
 
--- GPS hosts are infrastructure appliances, not tiny fleet bases. They run one
--- blocking beacon program on both computers and stationary Chunky Turtles.
-if node.role == "gps" then
-  runApp(apps, apps.byId("gps-host"), localScreen)
-  systemMenu(apps, localScreen)
+if node.autoUpdate ~= false and caps.http and fs.exists(".update") then
+  local ok, ran = pcall(shell.run, "update.lua", "--automatic")
+  if not ok or ran == false then
+    -- Not fatal. A machine that refused to boot because it could not reach a
+    -- repository would be a fleet that stops working when GitHub does.
+    printError("Update failed - running installed code.")
+    sound.play("error")
+    sleep(1.2)
+  end
+end
+
+local booted, why = require("os.kernel.boot").machine(node)
+if booted == nil then
+  printError(why)
+  print("Run `commands/setup.lua` to choose a role.")
   return
 end
 
-if caps.kind == "turtle" then
-  local available = apps.available(caps, node, "launcher")
+sound.play("ready")
 
-  if #available == 1 then
-    runApp(apps, available[1])
-    return
-  end
+local outcome, reason = require("os.kernel.boot").run(booted)
 
-  while true do
-    local labels = {}
-    for i, app in ipairs(available) do
-      labels[i] = app.name
-    end
-    labels[#labels + 1] = "System tools"
-
-    local choice = ui.menu(boot.NAME .. " apps", labels)
-    if not choice or choice == #labels then
-      systemMenu(apps)
-      return
-    end
-    runApp(apps, available[choice])
-  end
-end
-
-local modemStatus = caps.modem and (caps.wireless and "wireless modem" or "wired modem")
-  or "NO MODEM DETECTED"
-local homeMessage = ("v%s  role %s  %s"):format(boot.VERSION, node.role or "unset", modemStatus)
-local homeWarning = (node.role ~= "fleet" and node.role ~= "controller") or not caps.modem
-
-local function interfaceSession()
-  if caps.kind == "pocket" then
-    local handheld = require("legacy.shell.handheld")
-    handheld.run(localScreen, apps.available(caps, node, "handheld"), {
-      name = boot.NAME,
-      homeMessage = homeMessage,
-      homeWarning = homeWarning,
-    })
-  else
-    local desktop = require("legacy.shell.desktop")
-    local desktopApps = apps.available(caps, node, "desktop")
-    if monitor then
-      parallel.waitForAny(function()
-        desktop.run(localScreen, desktopApps, {
-          name = boot.NAME,
-          autoLaunch = false,
-          localInput = true,
-          homeMessage = homeMessage,
-          homeWarning = homeWarning,
-        })
-      end, function()
-        desktop.run(monitor, apps.available(caps, node, "monitor"), {
-          name = boot.NAME,
-          autoLaunch = "fleet-status",
-          localInput = false,
-          monitorName = monitorName,
-          homeMessage = homeMessage,
-          homeWarning = homeWarning,
-        })
-      end)
-    else
-      desktop.run(screen, desktopApps, {
-        name = boot.NAME,
-        autoLaunch = false,
-        localInput = true,
-        homeMessage = homeMessage,
-        homeWarning = homeWarning,
-      })
-    end
-  end
-  systemMenu(apps, localScreen)
-end
-
-if node.role == "fleet" or node.role == "controller" then
-  local service = require("legacy.fleet.service")
-  local serviceMain = node.role == "fleet" and service.runBase or service.runController
-  local function superviseService()
-    local log = require("adapters.cc.logfile")
-    while true do
-      local ok, err = pcall(serviceMain)
-      if not ok and not tostring(err):find("Terminated", 1, true) then
-        log.error("fleet service crashed - " .. tostring(err) .. "; restarting")
-      end
-      sleep(2)
-    end
-  end
-  parallel.waitForAny(superviseService, interfaceSession)
-  if node.role == "fleet" then
-    require("legacy.net").unhostBase()
-  end
+if outcome == "stopped" then
+  printError("every service gave up: " .. tostring(reason))
+  print("Run `icos2 status` to see which.")
+  sound.play("error")
+elseif outcome == "halted" then
+  print("Stopped on request.")
 else
-  interfaceSession()
+  print("ICOS stopped.")
 end
