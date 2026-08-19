@@ -78,6 +78,15 @@ function client.absorb(context, message)
     return false
   end
   context.state.fleet = message.fleet
+
+  -- Kept only when it arrives. An older server sends a mirror with no policy,
+  -- and overwriting the last known one with nil would make the Automation page
+  -- flicker to defaults every three seconds - which reads as the server
+  -- resetting itself.
+  if type(message.policy) == "table" then
+    context.state.policy = message.policy
+  end
+
   context.syncedAt = context.clock.now()
   return true
 end

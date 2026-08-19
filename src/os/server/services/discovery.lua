@@ -25,6 +25,7 @@
 
 local desired = require("domain.fleet.desired")
 local persist = require("os.server.services.persist")
+local policyService = require("os.server.services.policy")
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
 local wire = require("domain.protocol.message")
@@ -79,6 +80,15 @@ discovery.FAREWELL = "farewell"
 --- Worth stating rather than leaving as an assumption somebody discovers.
 discovery.WANT = "want"
 
+--- A client reading or changing the auto-recovery policy.
+---
+--- One kind for both directions rather than a read and a write, because the
+--- useful reply to a change is the state *after* it - a page that set a toggle
+--- and then asked what the toggle was would be showing a value it inferred
+--- rather than one the server confirmed, and the two diverge exactly when
+--- something has gone wrong.
+discovery.POLICY = "policy"
+
 --- Record one heartbeat and work out the reply.
 ---
 --- Returns the reply table, or nil when the message is not ours. Nil rather than
@@ -102,12 +112,25 @@ function discovery.handle(context, sender, message)
     return nil
   end
 
+  if message.kind == discovery.POLICY then
+    return discovery.policy(context, message)
+  end
+
   if message.kind == discovery.MIRROR then
     -- The whole registry, not a diff. Ten devices is a small table and a diff
     -- would need the client and the server to agree about what the client
     -- already has - which is a second piece of state to get wrong, on the side
     -- of the system that is allowed to be wrong about everything else.
-    return { kind = discovery.MIRROR, fleet = context.state.fleet, now = context.clock.now() }
+    return {
+      kind = discovery.MIRROR,
+      fleet = context.state.fleet,
+      -- Carried on the mirror rather than fetched separately. It is five
+      -- booleans, it changes when a person changes it, and a second round trip
+      -- to read it would double a client's radio traffic to learn nothing new
+      -- ninety-nine times out of a hundred.
+      policy = policyService.settings(context),
+      now = context.clock.now(),
+    }
   end
 
   if message.kind ~= discovery.HELLO and message.kind ~= discovery.STATUS then
@@ -194,6 +217,32 @@ function discovery.want(context, message)
     generation = goal.generation,
     changed = changed,
   }
+end
+
+--- Read the policy, or change it and read it back.
+---
+--- `set` is a partial table: a page toggling one switch sends one field, and
+--- everything absent is left as it was. Sending the whole policy would mean two
+--- people on two screens overwriting each other's unrelated changes, which is a
+--- failure nobody would attribute to the page.
+---
+--- Normalisation is the domain module's, so a client cannot write a value the
+--- server would refuse to load - the same table that decides what a policy *is*
+--- decides what an edit may make it.
+function discovery.policy(context, message)
+  if type(message.set) == "table" then
+    local current = policyService.settings(context)
+    local merged = {}
+    for key, value in pairs(current) do
+      merged[key] = value
+    end
+    for key, value in pairs(message.set) do
+      merged[key] = value
+    end
+    policyService.save(context, merged)
+  end
+
+  return { kind = discovery.POLICY, policy = policyService.settings(context) }
 end
 
 --- A device that has just been seen for the first time, or has come back.

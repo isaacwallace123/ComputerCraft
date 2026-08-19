@@ -89,6 +89,7 @@ function shell.apps()
     require("apps.job.app"),
     require("apps.services.app"),
     require("apps.logs.app"),
+    require("apps.automation.app"),
     require("apps.console.app"),
   }
 end
