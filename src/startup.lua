@@ -142,6 +142,43 @@ end
 
 sound.play("ready")
 
+-- Take the splash down and say what started.
+--
+-- Not decoration. Twice now a machine has looked hung when it was running
+-- perfectly: the splash is the last thing drawn, and if nothing draws over it -
+-- because this role has no screen service, or because the one it has is failing
+-- and backing off - the display keeps showing a boot animation forever. Somebody
+-- looking at it reboots a healthy machine and learns nothing.
+--
+-- One line, printed before the loop starts. A shell that mounts will paint over
+-- it within a frame; a machine with no shell shows this instead of a lie.
+-- Resumed once before reporting, because `start` only *spawns* a coroutine -
+-- every service is "running" until something actually executes it, so a count
+-- taken here would be a count of services that have not had the chance to fail
+-- yet. `icos status` does the same, and for the same reason.
+booted.supervisor:step()
+
+term.clear()
+term.setCursorPos(1, 1)
+print(("ICOS %s - %s"):format(booted.role, node.label or ""))
+
+local running = booted.supervisor:running()
+local total = #booted.supervisor:health()
+if running < total then
+  local stopped = {}
+  for _, row in ipairs(booted.supervisor:health()) do
+    if row.state ~= "running" then
+      stopped[#stopped + 1] = row.id .. (row.lastError and (" - " .. tostring(row.lastError)) or "")
+    end
+  end
+  printError(("%d of %d services did not start:"):format(total - running, total))
+  for _, line in ipairs(stopped) do
+    printError("  " .. line)
+  end
+  print("")
+  print("`icos status` shows the rest.")
+end
+
 local outcome, reason = require("os.kernel.boot").run(booted)
 
 if outcome == "stopped" then

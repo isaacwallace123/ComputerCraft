@@ -206,4 +206,29 @@ prompt.tell(screen, "Ready", lines, T.good, "done")
 -- and a shell prompt drawn on top of the last frame is unreadable.
 term.clear()
 term.setCursorPos(1, 1)
-print(record.label .. " is ready. Reboot to start it.")
+print(record.label .. " is ready.")
+
+-- Reboot rather than telling somebody to. A machine that has just been given a
+-- role is a machine whose role has not started, and the only thing anybody does
+-- next is reboot it - so asking them to is a step that exists only to be
+-- performed. The countdown is there so a mistake can still be caught.
+for remaining = 3, 1, -1 do
+  term.setCursorPos(1, 2)
+  term.clearLine()
+  write(("Starting in %d - press any key to stay here"):format(remaining))
+  local timer = os.startTimer(1)
+  while true do
+    local event, id = os.pullEvent()
+    if event == "key" or event == "char" then
+      term.setCursorPos(1, 2)
+      term.clearLine()
+      print("Stopped. Run `reboot` when ready.")
+      return
+    end
+    if event == "timer" and id == timer then
+      break
+    end
+  end
+end
+
+os.reboot()

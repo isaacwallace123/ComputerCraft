@@ -237,6 +237,7 @@ function server.boot(ports, options)
     saveLocation = ports.saveLocation,
     serialise = ports.serialise,
     log = ports.log,
+
     state = state,
     paths = server.PATHS,
     handlers = server.handlers(),
