@@ -147,8 +147,39 @@ function registry.age(record, now)
   return math.max(0, (now - record.seenAt) / 1000)
 end
 
---- `online`, `late` or `offline`.
+--- Record that a device is going down on purpose.
+---
+--- §6's whole subject is telling "we do not know where miner-7 is" from "there
+--- is no miner-7", and this adds the third case it was missing: *miner-7 was
+--- switched off, deliberately, at a time somebody can see.*
+---
+--- Without it a turtle that is powered down for maintenance looks exactly like
+--- one that fell in lava - both simply stop reporting - so the dashboard raises
+--- the same alarm for a planned shutdown as for a lost machine, and a person
+--- learns to ignore it.
+---
+--- The record is kept rather than removed. A device that has gone away is still
+--- a device that was here, and its last known position is the one fact somebody
+--- may want tomorrow.
+function registry.depart(state, id, now)
+  local record = registry.get(state, id)
+  if record == nil then
+    return nil
+  end
+  record.departedAt = now
+  return record
+end
+
+--- `off`, `online`, `late` or `offline`.
 function registry.health(record, now)
+  -- A farewell only counts until the device speaks again. A turtle that was
+  -- switched off and switched back on is not "off" - and comparing against
+  -- `seenAt` means nothing has to remember to clear the flag, which is the kind
+  -- of bookkeeping that gets forgotten exactly once.
+  if record ~= nil and record.departedAt ~= nil and (record.seenAt or 0) <= record.departedAt then
+    return "off"
+  end
+
   local age = registry.age(record, now)
   if age > registry.OFFLINE_AFTER then
     return "offline"

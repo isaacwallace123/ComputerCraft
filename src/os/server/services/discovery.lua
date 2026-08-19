@@ -56,6 +56,15 @@ discovery.STATUS = "status"
 --- reboot is a list that goes stale and gets written to forever.
 discovery.MIRROR = "mirror"
 
+--- A device saying it is going down on purpose.
+---
+--- Best-effort, like everything else on this radio: a machine that is unplugged
+--- sends nothing and is reported offline, which is the honest answer for a
+--- machine nobody switched off. What this buys is the *planned* case - a device
+--- powered down for maintenance stops looking like one that fell in lava, so
+--- the dashboard stops raising the same alarm for both.
+discovery.FAREWELL = "farewell"
+
 --- A client asking the server to want something of a device.
 ---
 --- The only way an app changes anything. An app never sends an order to a
@@ -81,6 +90,16 @@ function discovery.handle(context, sender, message)
   end
   if message.kind == discovery.WANT then
     return discovery.want(context, message)
+  end
+
+  if message.kind == discovery.FAREWELL then
+    if registry.depart(context.state.fleet, sender, context.clock.now()) then
+      persist.mark(context, "fleet")
+    end
+    -- No reply. The device is already powering down and has nothing left to do
+    -- with an answer; sending one would be a message into a machine that is
+    -- gone, which is how a server ends up with a queue of undeliverable replies.
+    return nil
   end
 
   if message.kind == discovery.MIRROR then

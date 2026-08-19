@@ -78,7 +78,13 @@ function app.row(record, now)
   local health = registry.health(record, now)
 
   local phase = snap.phase or snap.status or "idle"
-  if health == "offline" then
+  if health == "off" then
+    -- Switched off on purpose, which is not the same as gone quiet. Saying so
+    -- is the whole point of the farewell: a planned shutdown that read
+    -- "offline" would raise the same alarm as a turtle that fell in lava, and
+    -- an alarm raised for both is an alarm somebody learns to ignore.
+    phase = "shut down"
+  elseif health == "offline" then
     -- Not the last known phase. "mining" on a device nobody has heard from in
     -- twenty minutes is a claim the server cannot support.
     phase = "offline"
