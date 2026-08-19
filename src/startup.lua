@@ -24,13 +24,14 @@
 --- before the update runs, because the update is the most likely thing to have
 --- broken the machine and the least useful thing to run again when it has.
 ---
---- ## It still boots ICOS 1 if the node says so
+--- ## An ICOS 1 node record still boots
 ---
---- `roles.roleOf` maps every ICOS 1 role onto an ICOS 2 operating system, so
---- there is no fallback path and no flag. A machine set up as `miner` boots the
---- turtle OS; one set up as `fleet` boots a server with a client beside it. The
---- migration happens in the mapping, once, rather than as a branch here that
---- somebody would eventually have to delete.
+--- `roles.roleOf` maps every ICOS 1 role onto one of the four operating systems,
+--- so there is no fallback path and no flag. A machine set up as `miner` boots
+--- the turtle OS; one set up as `fleet` boots a server with a client beside it.
+--- The migration happens in the mapping, once, rather than as a branch here that
+--- somebody would eventually have to delete - which matters because every device
+--- in the world has one of those records on it right now.
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
@@ -131,7 +132,7 @@ local outcome, reason = require("os.kernel.boot").run(booted)
 
 if outcome == "stopped" then
   printError("every service gave up: " .. tostring(reason))
-  print("Run `icos2 status` to see which.")
+  print("Run `icos status` to see which.")
   sound.play("error")
 elseif outcome == "halted" then
   print("Stopped on request.")

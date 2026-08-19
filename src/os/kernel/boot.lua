@@ -129,7 +129,7 @@ boot.WIRING = {
 --- Build the machine this computer is, without starting the loop.
 ---
 --- Separated from `run` so that a person can boot a role, inspect its health,
---- and stop - which is what `icos2 status` does, and what somebody debugging a
+--- and stop - which is what `icos status` does, and what somebody debugging a
 --- base station at 2am needs to be able to do without committing to a loop that
 --- never returns.
 function boot.machine(node, options)
@@ -159,7 +159,7 @@ function boot.machine(node, options)
   --
   -- Not asserted. A machine with no modem must still boot - a turtle with no
   -- radio keeps mining, which is D004 stated as hardware - so the outcome is
-  -- recorded for `icos2 status` to print instead. The services that genuinely
+  -- recorded for `icos status` to print instead. The services that genuinely
   -- cannot work without a radio say so themselves by failing to start.
   local opened, why = ports.transport.open()
   ports.radio = { open = opened == true, reason = why }
@@ -184,7 +184,7 @@ function boot.machine(node, options)
   -- wireless or ender modem" - and refusing to boot on it would leave a base
   -- station that cannot be used to fix the base station. So the machine starts,
   -- the services that genuinely cannot work say so themselves by failing, and
-  -- `icos2 status` prints the sentence.
+  -- `icos status` prints the sentence.
   local ok, note = roles.check(role, options.machine)
   ports.role = { ok = ok, note = note, plan = roles.plan(node, options.machine) }
 

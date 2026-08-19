@@ -33,9 +33,11 @@
 --- range, and D018 is exactly the lesson that coordination must not live
 --- somewhere that can disappear. It asks the server, like every other client.
 ---
---- ## It does not run yet
+--- ## What starts it
 ---
---- Nothing calls `boot`. `src/startup.lua` still starts the ICOS 1 handheld.
+--- `startup.lua` on power-up, through `os/kernel/boot.lua`, which maps the role
+--- in `.node` onto one of four operating systems. `icos` starts the same thing
+--- by hand.
 
 local client = require("os.client.main")
 local service = require("os.kernel.service")

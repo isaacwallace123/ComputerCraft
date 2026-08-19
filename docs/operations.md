@@ -119,14 +119,15 @@ apply. Mine Control actions on the handheld execute at the base, so mine plans, 
 leases, and coordinated quarry assignments remain authoritative rather than becoming
 a second local copy.
 
-## Running ICOS 2 in a test world
+## Running a machine by hand
 
-`startup.lua` still boots ICOS 1, and will until the switch is tested in a world. To run an
-ICOS 2 machine by hand:
+`startup.lua` boots ICOS on power-up, so these are for starting a machine deliberately,
+forcing a role onto one that has not been set up, or asking a running server what it thinks
+is happening:
 
-    icos2 status      build the machine, print which services start, stop
-    icos2             boot the role in .node and run it until Ctrl-T
-    icos2 server      force a role, for a machine that has not been set up
+    icos status      build the machine, print which services start, stop
+    icos             boot the role in .node and run it until Ctrl-T
+    icos server      force a role, for a machine that has not been set up
 
 The roles are `server`, `client`, `turtle` and `mobile` - form factors, not jobs. A mining
 turtle and a farming turtle are both `turtle`; what they do is the job in `.node`.
@@ -141,7 +142,7 @@ modem, no saved position, a role with no operating system - and they are discove
 the ports are built and the services registered, which is what `status` does and what
 reading a config file would not.
 
-    icos2 watch       run a server and show the fleet while it does
+    icos watch       run a server and show the fleet while it does
 
 A running server prints nothing: services return what they did rather than drawing, and the
 Devices page belongs to the *client* role on another machine. `watch` is the diagnostic
@@ -195,7 +196,7 @@ writes `.mine`, which ICOS 2 reads unchanged.
 for system tools, then Exit), then:
 
 ```text
-icos2 status
+icos status
 ```
 
 Expect `ok radio` and eight services running, `healthy`. **If the radio line says FAIL, stop
@@ -205,7 +206,7 @@ or not wireless.
 **4. Watch the fleet come back.**
 
 ```text
-icos2 watch
+icos watch
 ```
 
 Within about two seconds the turtle should appear, with `wire` reading `icos1`. That single

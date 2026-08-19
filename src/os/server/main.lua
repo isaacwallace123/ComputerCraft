@@ -13,12 +13,11 @@
 --- whose decisions are a separate function. If this file ever grows a rule, the
 --- rule is in the wrong place.
 ---
---- ## It does not run yet
+--- ## What starts it
 ---
---- Nothing calls `boot`. `src/startup.lua` still starts the ICOS 1 paths, and
---- switching it over is the change that alters what an existing machine does on
---- power-up. That is the one thing in this branch that reaches a running fleet,
---- so it waits for an in-world test rather than riding along with the rest.
+--- `startup.lua` on power-up, through `os/kernel/boot.lua`, which maps the role
+--- in `.node` onto one of four operating systems. `icos` starts the same thing
+--- by hand.
 
 local bridge = require("os.server.services.bridge")
 local coverage = require("domain.fleet.coverage")

@@ -1,19 +1,18 @@
---- Running ICOS 2 by hand, without changing what this machine does on power-up.
+--- Running a machine by hand, and looking at one that is already running.
 ---
---- `startup.lua` still boots ICOS 1. That is deliberate and it is the last thing
---- that will change: switching it over alters what a live fleet does when the
---- chunk loads, and it is the one change in this branch that cannot be tested
---- anywhere except in a world.
+--- `startup.lua` boots this on power-up, so `icos` is not how a machine normally
+--- starts - it is how somebody starts one *deliberately*, forces a role onto a
+--- computer that has not been set up, or asks a running server what it thinks is
+--- happening.
 ---
---- So this exists instead. Run `icos2` in a test world and the machine becomes
---- an ICOS 2 machine until you press Ctrl-T. Nothing is written that ICOS 1
---- reads, so rebooting puts it back exactly as it was.
+--- It was called `icos2` while there were two operating systems to tell apart.
+--- There are not any more.
 ---
----     icos2              boot the role in .node and run
----     icos2 server       force a role, for a machine that has not been set up
----     icos2 status       build the machine, print its health, and stop
----     icos2 watch        run, and show the fleet while it does
----     icos2 mine <x> <z> <y>   place the shared mine and stop
+---     icos              boot the role in .node and run
+---     icos server       force a role, for a machine that has not been set up
+---     icos status       build the machine, print its health, and stop
+---     icos watch        run, and show the fleet while it does
+---     icos mine <x> <z> <y>   place the shared mine and stop
 ---
 --- ## Why `watch` exists
 ---
@@ -26,8 +25,7 @@
 ---
 --- So this is the diagnostic view: the same registry the client would draw,
 --- rendered as plain text, repainted on a timer. Deliberately not built on the
---- UI framework - that framework is not wired into anything yet, and a
---- diagnostic that could fail for rendering reasons is a diagnostic that
+--- UI framework - a diagnostic that could fail for rendering reasons is one that
 --- confuses the thing it was meant to clarify.
 ---
 --- ## Why `status` builds the machine rather than reading a file
@@ -76,7 +74,7 @@ local node = config.load(".node", {})
 local function placeMine(words)
   local x, z, y = tonumber(words[2]), tonumber(words[3]), tonumber(words[4])
   if not (x and z and y) then
-    printError("usage: icos2 mine <x> <z> <surfaceY>")
+    printError("usage: icos mine <x> <z> <surfaceY>")
     print("The centre of the mine on the ground, then how deep the")
     print("surface is. Read all three off F3 standing at the base.")
     return
@@ -255,7 +253,7 @@ local function draw(state, clock)
       -- Which protocol this device is actually reachable on. The whole point of
       -- the bridge is that `icos1` devices are heard at all, so it is the first
       -- thing worth seeing.
-      record.legacy and "icos1" or "icos2",
+      record.legacy and "icos1" or "icos",
       goal and (goal.mode .. " " .. desired.status(record, now)) or "-"
     ))
   end
@@ -373,7 +371,7 @@ local outcome, reason = boot.run(machine)
 
 if outcome == "stopped" then
   printError("every service gave up: " .. tostring(reason))
-  print("Run `icos2 status` to see which, or reboot for ICOS 1.")
+  print("Run `icos status` to see which, or reboot for ICOS 1.")
 elseif outcome == "halted" then
   print("Stopped on request.")
 else

@@ -1065,12 +1065,15 @@ able to ask "is this a table?" without a `pcall`. `encode` does raise, because a
 cannot be serialised is a bug in the caller, and a silent failure there is a file that
 quietly stops updating and is discovered weeks later.
 
-`src/icos2.lua` runs a machine by hand. `startup.lua` still boots ICOS 1 — switching it over
-alters what a live fleet does when the chunk loads and is the last change to make. Until
-then, `icos2` in a test world makes the machine an ICOS 2 machine until Ctrl-T, writing
-nothing ICOS 1 reads, so a reboot puts it back. `icos2 status` builds the machine, steps it
-once and prints its health: the interesting failures are all in the wiring, and a status
-command that read a file would report a healthy machine that cannot start.
+`src/icos.lua` runs a machine by hand — for starting one deliberately, forcing a role onto a
+computer that has not been set up, or asking a running server what it thinks is happening.
+It was `icos2` while there were two operating systems to tell apart; there are not any more.
+
+`icos status` builds the machine, steps it once and prints its health, rather than reading a
+file. The interesting failures are all in the wiring — no wireless modem, no saved position,
+a role with no operating system — and those are discovered when the ports are constructed
+and the services registered. A status command that read a config file would report a healthy
+machine that cannot start.
 
 ### Phase 5: the client and the mobile
 

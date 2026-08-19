@@ -41,12 +41,11 @@
 --- is a job module like any other, which is the point of not calling this
 --- directory `miner`.
 ---
---- ## It does not run yet
+--- ## What starts it
 ---
---- Nothing calls `boot`. `src/startup.lua` still starts `legacy/apps/miner.lua`, and
---- switching it over is the change that alters what a turtle does on power-up -
---- the one thing in this branch that reaches a running fleet. It waits for an
---- in-world test rather than riding along with the rest.
+--- `startup.lua` on power-up, through `os/kernel/boot.lua`, which maps the role
+--- in `.node` onto one of four operating systems. `icos` starts the same thing
+--- by hand.
 
 local agent = require("os.turtle.agent")
 local control = require("os.turtle.control")

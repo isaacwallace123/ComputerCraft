@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-19T18:20:00-04:00",
+    "generated":  "2026-08-19T18:24:46-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -54,7 +54,7 @@
                   "domain/turtle/jobs.lua",
                   "domain/turtle/lifecycle.lua",
                   "domain/turtle/settings.lua",
-                  "icos2.lua",
+                  "icos.lua",
                   "lib/util.lua",
                   "lib/version.lua",
                   "os/client/main.lua",

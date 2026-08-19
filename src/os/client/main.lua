@@ -30,9 +30,11 @@
 --- sync loop that throws must not take the screen down, because the screen is
 --- where somebody would find out that sync is throwing.
 ---
---- ## It does not run yet
+--- ## What starts it
 ---
---- Nothing calls `boot`. `src/startup.lua` still starts the ICOS 1 desktop.
+--- `startup.lua` on power-up, through `os/kernel/boot.lua`, which maps the role
+--- in `.node` onto one of four operating systems. `icos` starts the same thing
+--- by hand.
 
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
