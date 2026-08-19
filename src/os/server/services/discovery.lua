@@ -129,6 +129,10 @@ function discovery.handle(context, sender, message)
       -- to read it would double a client's radio traffic to learn nothing new
       -- ninety-nine times out of a hundred.
       policy = policyService.settings(context),
+      -- The mine rides along for the same reason the policy does: it is one
+      -- small table that changes when a person changes it, and a second round
+      -- trip would double a client's traffic to learn nothing new.
+      mine = context.state.mine,
       now = context.clock.now(),
     }
   end

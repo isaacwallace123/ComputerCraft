@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-19T18:13:39-04:00",
+    "generated":  "2026-08-19T18:20:00-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -29,6 +29,7 @@
                   "apps/fleet/view.lua",
                   "apps/job/app.lua",
                   "apps/logs/app.lua",
+                  "apps/operations/app.lua",
                   "apps/services/app.lua",
                   "apps/showcase/main.lua",
                   "commands/equip.lua",

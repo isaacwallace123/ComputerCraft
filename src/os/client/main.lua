@@ -86,6 +86,9 @@ function client.absorb(context, message)
   if type(message.policy) == "table" then
     context.state.policy = message.policy
   end
+  if type(message.mine) == "table" then
+    context.state.mine = message.mine
+  end
 
   context.syncedAt = context.clock.now()
   return true

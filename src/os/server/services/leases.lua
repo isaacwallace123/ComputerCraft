@@ -55,6 +55,30 @@ leases.MINE = "mine"
 --- The section name this service persists under.
 leases.SECTION = "mine"
 
+--- A client placing or tuning the mine.
+---
+--- Answered here rather than by `discovery`, because this service owns the mine
+--- and a second owner is how two copies of a plan come to disagree. Same shape
+--- as the policy exchange: one kind for both directions, and the reply is the
+--- state *after* the change - a page that set a value and then asked what it was
+--- would be showing something it inferred rather than something the server
+--- confirmed.
+leases.PLAN = "mineplan"
+
+--- The world's limits, and the plan's.
+---
+--- Checked on the server rather than in the page, because the page is not the
+--- only thing that can send one of these and a limit enforced by a caller is a
+--- limit. The numbers are Minecraft's: the world border, and the build range.
+leases.LIMITS = {
+  centreX = { -30000000, 30000000 },
+  centreZ = { -30000000, 30000000 },
+  surfaceY = { -63, 310 },
+  cellSize = { 16, 128 },
+  maxRing = { 1, 12 },
+  minRing = { 0, 11 },
+}
+
 --- How often stale leases are swept.
 ---
 --- Well under `registry.LEASE_SECONDS`, because the sweep is what turns "the
@@ -64,6 +88,82 @@ leases.SWEEP = 30
 
 local function refuse(body, message)
   return { kind = "mine_result", ok = false, requestId = body.requestId, message = message }
+end
+
+--- Read the mine plan, or change it and read it back.
+---
+--- `set` is partial: a page moving the centre sends three fields and leaves the
+--- grid alone. Sending the whole plan would mean two operators overwriting each
+--- other's unrelated changes, which is a failure neither would attribute to the
+--- page they were looking at.
+---
+--- **Changing the grid clears the sector map**, and the caller is told so rather
+--- than it happening quietly. Sector 7 under a 48-block grid is not the same
+--- ground as sector 7 under a 64-block one, so keeping the progress would mean
+--- turtles resuming shafts that are no longer where the record says - which is
+--- two turtles in one hole by arithmetic rather than by a race.
+function leases.setPlan(context, message)
+  local state = context.state[leases.SECTION]
+
+  if type(message.set) == "table" then
+    local updates = {}
+    for key, bounds in pairs(leases.LIMITS) do
+      local value = tonumber(message.set[key])
+      if message.set[key] ~= nil then
+        value = value and math.floor(value) or nil
+        if value == nil or value < bounds[1] or value > bounds[2] then
+          return {
+            kind = leases.PLAN,
+            ok = false,
+            message = ("%s must be between %d and %d"):format(key, bounds[1], bounds[2]),
+          }
+        end
+        updates[key] = value
+      end
+    end
+
+    if updates.minRing and updates.maxRing and updates.minRing >= updates.maxRing then
+      return { kind = leases.PLAN, ok = false, message = "the inner ring must be smaller" }
+    end
+
+    -- Geometry, as opposed to position. Moving the centre also invalidates the
+    -- map, so both are treated the same way - the test is whether any sector
+    -- index now means different ground, and it does for all five.
+    local regrid = false
+    for _, key in ipairs({ "centreX", "centreZ", "surfaceY", "cellSize", "maxRing", "minRing" }) do
+      if updates[key] ~= nil and updates[key] ~= state.plan[key] then
+        regrid = true
+      end
+    end
+
+    for key, value in pairs(updates) do
+      state.plan[key] = value
+    end
+    state.plan.configured = true
+    state.plan = plan.normalise(state.plan)
+
+    if regrid then
+      state.sectors = {}
+    end
+
+    persist.flush(context, leases.SECTION)
+
+    return {
+      kind = leases.PLAN,
+      ok = true,
+      plan = state.plan,
+      capacity = plan.capacity(state.plan),
+      regridded = regrid,
+    }
+  end
+
+  return {
+    kind = leases.PLAN,
+    ok = true,
+    plan = state.plan,
+    capacity = plan.capacity(state.plan),
+    summary = registry.summary(state, context.clock.now()),
+  }
 end
 
 --- Hand a turtle a sector to work.
@@ -248,6 +348,10 @@ function leases.handle(context, sender, message)
   if message.kind == "status" then
     leases.renew(context, sender, message.snapshot)
     return nil
+  end
+
+  if message.kind == leases.PLAN then
+    return leases.setPlan(context, message)
   end
 
   if message.kind ~= leases.MINE or type(message.body) ~= "table" then
