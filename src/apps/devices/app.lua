@@ -94,6 +94,12 @@ function app.row(record, now)
     fuel = tonumber(snap.fuel),
     fuelLimit = tonumber(snap.fuelLimit),
     settings = snap.settings,
+
+    -- What this device says it can be configured with. Carried through rather
+    -- than derived, because which settings a turtle has depends on the job it
+    -- is running and the base must not need a copy of that - the same rule that
+    -- makes `domain/turtle/jobs.lua` a catalogue of strings.
+    settingFields = snap.settingFields,
     since = age,
     online = health == "online",
 

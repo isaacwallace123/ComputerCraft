@@ -92,6 +92,16 @@ end)()
 --- settings exist depends on the job the turtle is running. This is the fallback
 --- for a device that has not reported any yet, and it is deliberately the same
 --- shape, so the panel below has one code path rather than two.
+--- How many stepper rows the settings panel builds.
+---
+--- Six, which is the most any job in the catalogue advertises - `quarry`, with
+--- two bounds on each of three axes. A job with fewer hides the remainder; a job
+--- with more would have its extra settings unreachable from the base, which is
+--- worth knowing about rather than growing the pool for, because a page that
+--- asks somebody to scroll through nine steppers on a monitor is a page that has
+--- stopped being a dashboard.
+devices.SETTING_SLOTS = 6
+
 devices.FIELDS = {
   { key = "targetY", label = "target Y", step = 1, min = -63, max = 320 },
   { key = "veinBudget", label = "vein budget", step = 8, min = 0, max = 512 },
@@ -242,23 +252,73 @@ function devices.build(scope, options)
 
   --- The settings editor: one Stepper per advertised field.
   ---
-  --- Built once, for the fields the *first* selected device advertises, and then
-  --- bound - the same fixed-pool reasoning as a table (D031). A device running a
-  --- different job advertises different fields, and the honest answer is to show
-  --- the ones this panel knows about and let the rest arrive when the panel is
-  --- rebuilt, rather than to rebuild the binding graph every time a row is
-  --- clicked.
+  --- A fixed pool of rows, bound to whatever the selected device advertises.
+  ---
+  --- The same reasoning as a table's `Capacity` (D031): build the slots once and
+  --- let the bindings decide what is in them, rather than rebuilding the graph
+  --- whenever the selection moves.
+  ---
+  --- This used to build rows from a **static** list, and the list it built them
+  --- from was `devices.FIELDS` - the mining defaults - because nothing ever
+  --- passed `options.fields`. So a farming turtle showed `vein budget` and
+  --- `scan every`: four steppers for settings it does not have, wired to change
+  --- settings it does not have, while its plot size was unreachable from the
+  --- base. Every turtle advertises `settingFields` in its heartbeat and always
+  --- had; the panel simply never looked.
+  ---
+  --- Reading them per device is what makes this panel work for a job that does
+  --- not exist yet, which is the same property the job catalogue has and for the
+  --- same reason.
+  local function fieldAt(slot)
+    return scope:Computed(function(use)
+      local device = use(current)
+      if device == nil then
+        return nil
+      end
+      local advertised = device.settingFields
+      if type(advertised) ~= "table" or #advertised == 0 then
+        advertised = devices.FIELDS
+      end
+      return advertised[slot]
+    end)
+  end
+
   local fieldRows = {}
-  for _, setting in ipairs(options.fields or devices.FIELDS) do
+  for slot = 1, devices.SETTING_SLOTS do
+    local descriptor = fieldAt(slot)
+
     fieldRows[#fieldRows + 1] = scope:Stepper({
-      Label = setting.label,
-      Step = setting.step,
-      Min = setting.min,
-      Max = setting.max,
+      -- Structural, so a job with four settings does not leave two dead rows
+      -- taking up the panel. `Hidden` is a layout property, so the column
+      -- closes up rather than showing gaps.
+      Hidden = scope:Computed(function(use)
+        return use(descriptor) == nil
+      end),
+      Label = scope:Computed(function(use)
+        local setting = use(descriptor)
+        return setting and setting.label or ""
+      end),
+      Step = scope:Computed(function(use)
+        local setting = use(descriptor)
+        return setting and setting.step or 1
+      end),
+      Min = scope:Computed(function(use)
+        local setting = use(descriptor)
+        return setting and setting.min or nil
+      end),
+      Max = scope:Computed(function(use)
+        local setting = use(descriptor)
+        return setting and setting.max or nil
+      end),
       ValueWidth = 6,
-      Value = about(function(device)
+      Value = scope:Computed(function(use)
+        local device = use(current)
+        local setting = use(descriptor)
+        if device == nil or setting == nil then
+          return 0
+        end
         return tonumber((device.settings or {})[setting.key]) or 0
-      end, 0),
+      end),
       -- D019 and the fleet's own rule: configuration requires a parked turtle.
       -- Derived from the same record the panel is showing, so there is no path
       -- that enables these while a turtle is underground.
@@ -268,7 +328,8 @@ function devices.build(scope, options)
       end),
       OnChange = options.onSetting and function(value)
         local device = current:get()
-        if device then
+        local setting = descriptor:get()
+        if device and setting then
           options.onSetting(device, setting.key, value)
         end
       end or nil,

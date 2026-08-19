@@ -367,9 +367,18 @@ end
 --- apply it optimistically.
 runtime.compose("Stepper", function(scope, props)
   props = props or {}
-  local step = props.Step or 1
 
   local function adjust(direction)
+    -- `Step`, `Min` and `Max` go through `peek` for the same reason `Disabled`
+    -- does, and they did not until a settings panel needed them per-device.
+    -- Read imperatively without it, a bound `Min` is a table, and `wanted <
+    -- props.Min` compares a number to a table - which is not a wrong answer, it
+    -- is an error at the moment somebody presses a button. The rule stated
+    -- below applied to these three all along; nothing had exercised it.
+    local step = tonumber(reactive.peek(props.Step)) or 1
+    local low = tonumber(reactive.peek(props.Min))
+    local high = tonumber(reactive.peek(props.Max))
+
     -- `peek`, not a bare truth test. A composite receives the raw props, so
     -- `props.Disabled` is usually a `Computed` - a table, and therefore truthy
     -- whether it currently reads true or false. `if props.Disabled then` looked
@@ -384,11 +393,11 @@ runtime.compose("Stepper", function(scope, props)
 
     local current = tonumber(reactive.peek(props.Value)) or 0
     local wanted = current + direction * step
-    if props.Min and wanted < props.Min then
-      wanted = props.Min
+    if low and wanted < low then
+      wanted = low
     end
-    if props.Max and wanted > props.Max then
-      wanted = props.Max
+    if high and wanted > high then
+      wanted = high
     end
     if wanted == current then
       return false

@@ -767,6 +767,30 @@ arriving mid-rest is noticed in seconds instead of minutes. A turtle that ignore
 while resting would look unresponsive for exactly as long as its rest setting — which is the
 setting somebody would then turn down, for the wrong reason.
 
+### Phase 7: making the new turtles configurable
+
+A job you cannot configure from the base is half a feature, and the Devices page could not
+configure either of the new ones. The settings panel built its stepper rows from a **static**
+list — `devices.FIELDS`, the mining defaults — because nothing ever passed `options.fields`.
+So a farming turtle showed `vein budget` and `scan every`: four steppers for settings it does
+not have, wired to change settings it does not have, while its plot size was unreachable.
+
+Every turtle has advertised `settingFields` in its heartbeat all along. The panel simply
+never looked.
+
+It now builds a fixed pool of six rows and binds each to whatever the selected device
+advertises — the same reasoning as a table's `Capacity` (D031): build the slots once and let
+the bindings decide what is in them. A job with four settings hides the other two; a device
+that advertises nothing falls back to the old defaults, which is what every device got before.
+The panel now works for a job that does not exist yet, which is the same property the job
+catalogue has and for the same reason.
+
+**That exposed a latent bug in `Stepper`.** Its own header states the rule — *"a prop read
+imperatively goes through `reactive.peek`"* — and `Step`, `Min` and `Max` did not. Nothing
+had ever bound them, so nothing had failed; the first bound `Min` would have compared a
+number to a table at the moment somebody pressed a button. The rule applied to those three
+all along.
+
 ### Phase 7: trees, and the proof that the first one was not a special case
 
 `os/turtle/jobs/farming/trees.lua` is the second non-mining job, added the same way: one
