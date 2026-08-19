@@ -132,6 +132,15 @@ jobs.CATALOGUE = {
     summary = "Harvests what is ripe, replants it, and waits for the rest to grow.",
     needs = { "dig", "place", "fuel" },
   },
+  -- The second job that is not mining, and the one that proves the first was
+  -- not a special case: another module, another entry, nothing else touched.
+  {
+    id = "trees",
+    label = "Fell and replant a tree row",
+    module = "os.turtle.jobs.farming.trees",
+    summary = "Takes down grown trees, replants them, and waits for the rest.",
+    needs = { "dig", "place", "fuel" },
+  },
   {
     id = "general",
     label = "Chunk loader",

@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-19T16:25:08-04:00",
+    "generated":  "2026-08-19T16:28:27-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -37,6 +37,7 @@
                   "domain/depot/select.lua",
                   "domain/farm/crops.lua",
                   "domain/farm/plot.lua",
+                  "domain/farm/trees.lua",
                   "domain/fleet/coverage.lua",
                   "domain/fleet/desired.lua",
                   "domain/fleet/policy.lua",
@@ -115,6 +116,7 @@
                   "os/turtle/engine.lua",
                   "os/turtle/jobs/common/safety.lua",
                   "os/turtle/jobs/farming/crops.lua",
+                  "os/turtle/jobs/farming/trees.lua",
                   "os/turtle/jobs/mining/fuel_hunt.lua",
                   "os/turtle/jobs/mining/hollow.lua",
                   "os/turtle/jobs/mining/quarry.lua",

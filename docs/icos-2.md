@@ -767,6 +767,36 @@ arriving mid-rest is noticed in seconds instead of minutes. A turtle that ignore
 while resting would look unresponsive for exactly as long as its rest setting — which is the
 setting somebody would then turn down, for the wrong reason.
 
+### Phase 7: trees, and the proof that the first one was not a special case
+
+`os/turtle/jobs/farming/trees.lua` is the second non-mining job, added the same way: one
+module, one catalogue entry, nothing else in the tree touched.
+
+**It identifies wood by tag, not by name.** Minecraft has a `minecraft:logs` tag, CC's
+`turtle.inspect` returns the block's tags, and the documented example on tweaked.cc is
+literally `tags = { ["minecraft:logs"] = true }`. A name list would need eleven entries for
+vanilla alone, would miss every modded wood, and would go silently wrong the next time
+Mojang adds a tree. The tag is maintained by the game.
+
+Saplings are matched by the `_sapling` suffix instead, and that asymmetry is deliberate:
+item tags cost the expensive `getItemDetail(slot, true)` form, sixteen times per replant. The
+cost of being wrong is bounded — a false positive fails to place, a false negative delivers a
+sapling to the chest — so the cheap test is acceptable here and was *not* acceptable for crop
+maturity, where being wrong destroys a field.
+
+**It works from an aisle.** Trees stand in a line; the turtle works one block short of it and
+only steps into a trunk column while felling. A turtle that lived in the line would be
+standing inside the next tree as it grew and would have to dig its way out — a turtle that
+looks stuck for no visible reason.
+
+**Leaves are left alone.** They decay by themselves, so the climb stops at the first block
+that is not a log. Clearing them would spend most of a fell on blocks that were about to
+vanish, and fill the turtle with leaf blocks instead of wood.
+
+**The height is a budget, not a measurement**, because a turtle at the bottom of a trunk
+cannot see the top. Over-budgeting costs a slightly larger fuel reserve; under-budgeting
+strands a turtle thirty blocks up a jungle tree with no fuel to come down.
+
 ### Phase 6: the other half of the rolling update
 
 `os/server/services/bridge.lua` closed the gap where an ICOS 2 *server* could not hear an
