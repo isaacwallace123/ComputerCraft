@@ -119,7 +119,7 @@ end
 local function target(job)
   local relative, why = nav.worldToRelative(job.postX, job.postY, job.postZ)
   if relative == nil then
-    return nil, why or "this turtle does not know where it is - run `locate` first"
+    return nil, why or "this turtle does not know where it is - run `commands/locate` first"
   end
   return relative
 end
@@ -156,7 +156,7 @@ end
 --- Can this general set off?
 function general.ready(job)
   if not nav.hasOrigin() then
-    return false, "run `locate` on this turtle before posting it", "setup"
+    return false, "run `commands/locate` on this turtle before posting it", "setup"
   end
   if not job.configured then
     return false, "waiting for a chunk from the base", "idle"

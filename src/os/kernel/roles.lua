@@ -163,7 +163,7 @@ end
 ---
 --- **A server is offered without a position**, even though `check` refuses one.
 --- That is deliberate: setup is where somebody is standing at the machine and
---- can be told to run `where`, and hiding the role until they have would leave
+--- can be told to run `commands/locate`, and hiding the role until they have would leave
 --- them with no way to discover that a server is what they wanted. The refusal
 --- comes later, with an instruction, from the place that can act on it.
 ---
@@ -202,7 +202,7 @@ roles.OFFERED = {
         return "wired modem: turtles will not reach this"
       end
       if not caps.located then
-        return "run `locate` before starting: a GPS host must know where it is"
+        return "run `commands/locate` before starting: a GPS host must know where it is"
       end
       if caps.turtle and not caps.chunkLoaded then
         return "not a Chunky Turtle: keep this chunk loaded another way"

@@ -41,6 +41,20 @@ local sound = require("adapters.cc.sound")
 local splash = require("os.kernel.splash")
 local version = require("lib.version")
 
+--- Put the commands on the shell path.
+---
+--- Without this `locate` is "No such program" and only `commands/locate` works -
+--- which the first in-world boot found the hard way, because every message that
+--- tells somebody to fix a position says "run `locate`". A machine whose own
+--- error messages do not work is worse than one with no error messages, since it
+--- costs somebody the time to believe them first.
+---
+--- Set here rather than in each command, because `shell.setPath` affects the
+--- session and startup is the session every other program is launched from.
+if shell and shell.setPath and not shell.path():find("/commands", 1, true) then
+  shell.setPath(shell.path() .. ":/commands")
+end
+
 local NODE_PATH = ".node"
 
 local node = config.load(NODE_PATH, {

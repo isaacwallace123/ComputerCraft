@@ -248,7 +248,7 @@ end
 --- the whole worksite to whichever turtle asked first.
 function coverage.postFor(state, now)
   if state.root == nil then
-    return nil, "the base has no chunk yet - run `locate` on the server, or place the mine"
+    return nil, "the base has no chunk yet - run `commands/locate` on the server, or place the mine"
   end
 
   local held = coverage.held(state, now)

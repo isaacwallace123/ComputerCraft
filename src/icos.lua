@@ -150,14 +150,17 @@ if command == "status" then
   -- that the modules load.
   machine.supervisor:step()
 
-  print("ICOS 2 - " .. machine.role)
+  print("ICOS - " .. machine.role)
 
   -- The radio first, because it is upstream of most of what follows. A server
   -- with no modem shows five services running and hears nothing, and reading
   -- that list without this line would send somebody looking in the wrong place.
+  local blocked = nil
+
   local radio = machine.ports and machine.ports.radio
   if radio then
     print(radio.open and "  ok   radio" or (" FAIL  radio - " .. tostring(radio.reason)))
+    blocked = blocked or (not radio.open and "radio" or nil)
   end
 
   -- Whether this machine can be what it claims, and which screens it found.
@@ -166,6 +169,7 @@ if command == "status" then
   local roleCheck = machine.ports and machine.ports.role
   if roleCheck and roleCheck.note then
     print((roleCheck.ok and "  warn " or " FAIL ") .. " role - " .. tostring(roleCheck.note))
+    blocked = blocked or (not roleCheck.ok and "role" or nil)
   end
 
   local wall = machine.ports and machine.ports.wallSize
@@ -202,8 +206,39 @@ if command == "status" then
     print(line)
   end
 
+  -- The summary counts the preflight too.
+  --
+  -- The first in-world boot printed ` FAIL role` and `healthy` three lines
+  -- apart, and both were true of what they measured: `supervisor:healthy()`
+  -- asks whether a *critical service has given up*, and a machine that cannot
+  -- be what it claims has no service to give up about it.
+  --
+  -- Being true of what it measures is not the same as being right. A status
+  -- screen with a FAIL on it and "healthy" underneath is the exact failure the
+  -- Services page has a rule against, arriving through the command that a
+  -- person reaches for first.
   local healthy, reason = machine.supervisor:healthy()
-  print(healthy and "healthy" or ("unhealthy: " .. tostring(reason)))
+
+  if blocked then
+    print(("unhealthy: %s"):format(roleCheck and roleCheck.note or blocked))
+  elseif not healthy then
+    print("unhealthy: " .. tostring(reason))
+  else
+    -- A service still retrying is not a failure, but it is not nothing either.
+    -- Naming it here means the one word at the bottom is never at odds with a
+    -- line above it.
+    local waiting = {}
+    for _, row in ipairs(machine.supervisor:health()) do
+      if row.state ~= "running" and not row.gaveUp then
+        waiting[#waiting + 1] = row.id
+      end
+    end
+    if #waiting > 0 then
+      print(("healthy, %s still starting"):format(table.concat(waiting, ", ")))
+    else
+      print("healthy")
+    end
+  end
   machine.supervisor:stop()
   return
 end
@@ -239,7 +274,7 @@ local function draw(state, clock)
   term.clear()
   term.setCursorPos(1, 1)
 
-  print(("ICOS 2 server - %d device(s)"):format(#rows))
+  print(("ICOS server - %d device(s)"):format(#rows))
   print(("%-2s %-4s %-9s %-7s %-5s %s"):format("", "id", "label", "health", "wire", "goal"))
 
   for index, row in ipairs(rows) do
@@ -313,7 +348,7 @@ local function want(context, mode)
 end
 
 if watching then
-  print("ICOS 2 - " .. machine.role .. " - hold Ctrl-T to stop")
+  print("ICOS - " .. machine.role .. " - hold Ctrl-T to stop")
 
   -- The repaint rides on the event loop's own `pull`, which `boot.run` takes as
   -- a parameter precisely so the loop can be driven from outside. The event is
@@ -365,7 +400,7 @@ if watching then
   return
 end
 
-print("ICOS 2 - " .. machine.role .. " - hold Ctrl-T to stop")
+print("ICOS - " .. machine.role .. " - hold Ctrl-T to stop")
 
 local outcome, reason = boot.run(machine)
 
