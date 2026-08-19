@@ -729,6 +729,37 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 6: the other half of the rolling update
+
+`os/server/services/bridge.lua` closed the gap where an ICOS 2 *server* could not hear an
+ICOS 1 fleet. `os/turtle/legacy.lua` closes the same hole in the other direction — and §12
+says **this** direction happens first: *"turtles update before the base does."* The updater
+deploys by manifest and a fleet upgrades a machine at a time, so the ordinary case during a
+rolling update is a new turtle talking to an old base.
+
+Without it that turtle was invisible three ways at once. Its heartbeat went out on `icos`,
+so it vanished from the roster it had been on a minute earlier. It listened only on `icos`,
+so no recall reached it. And its mine request went out on `icos`, so it was never given a
+sector — it would idle, or dig where somebody else was digging, which is the collision D018
+exists to prevent, reintroduced by the upgrade meant to improve things.
+
+**It made dead code reachable.** `agent.receive` has always handled `kind == "command"`, and
+its header says why in as many words: a turtle that ignored commands in that window would
+ignore recall, which is a safety control. That reasoning was right and the branch could
+never run — the turtle neither spoke nor listened on the protocol those commands arrive on.
+It was written for a window it could not observe.
+
+Both protocols are sent always, not detected. A turtle could notice whether an ICOS 2 server
+has answered recently and drop the legacy copy, saving one broadcast every two seconds — at
+the cost of a mode, a timeout, and a turtle that flips back to legacy every time it walks
+out of range. The switch that ends the dual run is **deleting the file**: one decision,
+taken once, by a person who can see the whole fleet's build numbers.
+
+One spec in that file asserts something slightly unusual — that `boot` actually assigns
+`context.orders`. Two tests below it set that by hand, and would pass perfectly while the
+composition root had never wired it and every command was dropped in the world. That is the
+same class of failure the file exists to fix, one level up.
+
 ### Phase 6: closing the log loop
 
 Every service in `os/` returns what it did rather than writing it down, and every one of

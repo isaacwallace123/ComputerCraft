@@ -51,6 +51,7 @@
 local agent = require("os.turtle.agent")
 local control = require("os.turtle.control")
 local jobs = require("domain.turtle.jobs")
+local legacyLink = require("os.turtle.legacy")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
 local wire = require("domain.protocol.message")
@@ -251,8 +252,16 @@ turtleOs.controls = service.define({
   end,
 })
 
+--- The services a turtle runs.
+---
+--- `legacy` is the odd one and is temporary by design: it is the turtle's
+--- `ccfleet` side, and it exists only for the window in which an upgraded turtle
+--- is talking to a base that has not been upgraded yet. §12 says that window is
+--- the normal case during a rolling update, because turtles update before the
+--- base does. The switch that ends the dual run is deleting
+--- `os/turtle/legacy.lua`, which is one decision taken once.
 function turtleOs.services()
-  return { turtleOs.job, turtleOs.heartbeat, turtleOs.controls }
+  return { turtleOs.job, turtleOs.heartbeat, turtleOs.controls, legacyLink.service }
 end
 
 ---------------------------------------------------------------------------
@@ -318,10 +327,21 @@ function turtleOs.boot(ports, options)
   -- than at the top of the file because it reaches for `fs` through the config
   -- adapter, and a spec that only wanted to check supervision should not have
   -- to own a filesystem.
+  -- How the legacy loop reaches the order path without requiring this file and
+  -- making a cycle. A function on the context rather than a require, which is
+  -- the same shape `context.handlers` uses and for the same reason.
+  context.orders = turtleOs.orders
+
   local site = require("os.turtle.site")
   site.attach({
     broadcast = function(body)
       context.transport.broadcast(wire.stamp({ kind = "mine", body = body }), turtleOs.PROTOCOL)
+
+      -- And on the old protocol, so a turtle under an un-upgraded base is still
+      -- given a sector. Without this an upgraded turtle either idles or digs
+      -- where somebody else is digging, which is the collision D018 exists to
+      -- prevent, reintroduced by the upgrade meant to improve things.
+      legacyLink.mine(context, body)
       -- `transport.broadcast` reports nothing - the port says so, because a
       -- broadcast has no addressee to have reached. So "did this get out" is
       -- answered by whether the radio is open at all, which `os/kernel/boot.lua`
