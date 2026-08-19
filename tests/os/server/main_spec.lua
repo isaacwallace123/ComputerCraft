@@ -113,12 +113,18 @@ it("a server makes itself findable under the name ICOS 1 devices look for", func
   expect.truthy(found, "hosted on the ICOS 1 protocol")
 end)
 
-it("the bridge and ICOS 1 agree on the base name", function()
-  -- Two files spell this string, because an ICOS 2 service may not require
-  -- `legacy/net.lua` - it opens modems and reads `peripheral`. This is what
-  -- stops the two spellings drifting, which is a failure with no error message.
-  expect.equal(bridge.HOSTNAME, require("legacy.net").HOSTNAME, "the same hostname")
-  expect.equal(bridge.PROTOCOL, require("legacy.net").PROTOCOL, "on the same protocol")
+it("the bridge still answers to the name ICOS 1 devices call", function()
+  -- This used to compare against `legacy/net.lua`, which is deleted. The
+  -- constant did not stop mattering when the file did: it is fixed by what is
+  -- **installed on the turtles**, not by anything in this repository, and every
+  -- device still running ICOS 1 looks up "base" on "ccfleet".
+  --
+  -- So it is asserted as a literal now, which is the honest form. Changing
+  -- either value is not a rename - it is a deployment that has to reach every
+  -- device first, and a test that compared two files in one repo would have
+  -- said nothing about that.
+  expect.equal(bridge.HOSTNAME, "base", "the hostname deployed turtles resolve")
+  expect.equal(bridge.PROTOCOL, "ccfleet", "on the protocol they speak")
 end)
 
 it("a server with no saved state starts empty rather than refusing", function()

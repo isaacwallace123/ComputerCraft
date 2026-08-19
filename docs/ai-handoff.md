@@ -60,7 +60,7 @@ different tradeoff:
 
 ## Where to make changes
 
-**Two systems live in this tree.** `src/legacy/` is ICOS 1 — what a running fleet executes
+**One system lives in this tree.** ICOS 1 is deleted. What a running fleet executes
 today. Everything else is ICOS 2, which is built but, for the turtle and server
 composition roots, not yet what a machine boots into. Where both exist the live one is
 marked, because changing the wrong one produces a passing build and no change in the world
@@ -68,10 +68,10 @@ marked, because changing the wrong one produces a passing build and no change in
 
 | Goal | Start here |
 | --- | --- |
-| boot, role detection, what a machine runs on power-up | `src/startup.lua`, `src/legacy/boot.lua` (live), `src/os/kernel/boot.lua`, `src/os/kernel/roles.lua` |
+| boot, role detection, what a machine runs on power-up | `src/startup.lua`, `src/os/kernel/boot.lua`, `src/os/kernel/roles.lua`, `src/os/kernel/splash.lua` |
 | giving a machine a role, a name and a job | `src/commands/setup.lua`, `src/os/kernel/node.lua` |
-| desktop/page/taskbar/input surfaces | `src/legacy/shell/desktop.lua`, `src/legacy/apps.lua` (live); `src/os/client/shell.lua` |
-| monitor selection/scaling | `src/legacy/shell/display.lua` (live); `src/adapters/cc/display.lua` |
+| desktop/page/taskbar/input surfaces | `src/os/client/shell.lua`, `src/os/kernel/console.lua` |
+| monitor selection/scaling | `src/adapters/cc/display.lua` |
 | which surface an event belongs to, on a machine with two screens | `src/adapters/cc/input.lua` (`terminal`, `monitor`) |
 | the base station's own two screens | `server.desktop` and `server.wall` in `src/os/server/main.lua` |
 | telling a machine where it is | `src/commands/locate.lua`, `src/adapters/cc/locator.lua` |
@@ -80,13 +80,13 @@ marked, because changing the wrong one produces a passing build and no change in
 | a text input on any page | `Field` in `src/ui/components/controls.lua` |
 | what a turtle is doing, and changing its settings | `src/apps/job/app.lua` |
 | validating a job's settings, and rendering them as a form | `src/domain/turtle/settings.lua` |
-| device list/detail/configuration | `src/legacy/apps/devices.lua` (live); `src/apps/devices/app.lua`, `src/apps/devices/view.lua` |
-| console command | `src/legacy/console.lua` |
-| Rednet transport | `src/legacy/net.lua` (live); `src/ports/transport.lua`, `src/adapters/cc/transport.lua` |
+| device list/detail/configuration | `src/apps/devices/app.lua`, `src/apps/devices/view.lua` |
+| console command | `src/apps/console/app.lua` |
+| Rednet transport | `src/ports/transport.lua`, `src/adapters/cc/transport.lua`, `src/domain/protocol/message.lua` |
 | a message shape, the protocol name, the wire version | `src/domain/protocol/message.lua` |
 | keeping ICOS 1 devices working under an ICOS 2 server | `src/os/server/services/bridge.lua` |
-| turtle command or heartbeat | `src/legacy/miner/network.lua`, `src/legacy/miner/context.lua` (live); `src/os/turtle/main.lua`, `src/os/turtle/agent.lua` |
-| park/deploy/update lifecycle | `src/domain/turtle/lifecycle.lua` (the decisions), `src/legacy/miner/runtime.lua` (the effects, live), `src/os/turtle/control.lua` |
+| turtle command or heartbeat | `src/os/turtle/main.lua`, `src/os/turtle/agent.lua`, `src/os/turtle/context.lua` |
+| park/deploy/update lifecycle | `src/domain/turtle/lifecycle.lua` (the decisions), `src/os/turtle/runner.lua` (the effects), `src/os/turtle/control.lua` |
 | what an ICOS 2 turtle actually runs as its job | `src/os/turtle/engine.lua`, wired from `boot.WIRING` |
 | the job loop itself - park, deploy, cycle, recall | `src/os/turtle/runner.lua` (shared by both) |
 | new prospecting profile | `src/os/turtle/jobs/prospecting/profiles.lua` plus a small definition |
@@ -98,12 +98,12 @@ marked, because changing the wrong one produces a passing build and no change in
 | fuel values/selection | `src/os/turtle/device/fuel.lua`, `src/os/turtle/device/fuel/catalog.lua` |
 | which jobs exist and what they need | `src/domain/turtle/jobs.lua` |
 | shared mine geometry | `src/domain/mine/plan.lua` |
-| sector leases and frontiers | `src/domain/mine/registry.lua` (pure); `src/legacy/fleet/coordinator.lua` + `src/legacy/mine/registry.lua` (live); `src/os/server/services/leases.lua` |
+| sector leases and frontiers | `src/domain/mine/registry.lua` (pure); `src/os/server/services/leases.lua` |
 | chunk maths - coordinates, footprints, connectivity | `src/domain/chunk/grid.lua` |
 | which general holds which chunk, and which miner works where | `src/domain/fleet/coverage.lua` (pure), `src/os/server/services/coverage.lua` |
 | a turtle that holds a chunk loaded | `src/os/turtle/jobs/support/general.lua` |
 | turtle sector claiming | `src/os/turtle/site.lua` (shared by both, protocol injected) |
-| device roster, last known position | `src/legacy/fleet/roster.lua` (live), `src/domain/fleet/registry.lua` |
+| device roster, last known position | `src/domain/fleet/registry.lua` |
 | what a device should be doing | `src/domain/fleet/desired.lua`, `src/os/server/services/reconcile.lua` |
 | drop-offs and which one to use | `src/domain/depot/list.lua`, `src/domain/depot/select.lua` |
 | auto-recovery rules | `src/domain/fleet/policy.lua`, `src/os/server/services/policy.lua` |
@@ -137,20 +137,28 @@ thirty-three broken rows out of forty — every one of them pointing at a file t
 restructure moved — which made the first thing `AGENTS.md` tells an agent to read the
 least reliable thing in the repository.
 
-## Retiring ICOS 1
+## ICOS 1 is gone
 
-The goal is that `src/legacy/` ceases to exist. Four files outside it still reach in —
-`startup.lua`, `install.lua`, `update.lua`, and `os/turtle/engine.lua` — and **that list
-should only ever get shorter**. Everything else in `legacy/` is reachable only from inside
-it and dies with its last caller.
+`src/legacy/` is deleted. It went in the order §14 set out: the turtle runtime first
+because it was the piece most likely to need a second attempt, then the apps and commands,
+then setup, then `startup.lua` last because every other step made it smaller.
 
-Order, and the reasoning, are in [`icos-2.md`](icos-2.md) §14. The short version: the
-turtle runtime first because it is the piece most likely to need a second attempt, mine
-configuration next because ICOS 2 has none and a fleet without a mine cannot deploy, then
-the shell and apps, then setup, then `startup.lua` last because every other step makes it
-smaller.
+**What that does and does not mean.** The tree has one architecture in it and no file is
+waiting to be replaced. It does **not** mean ICOS 1 has stopped existing: every turtle in
+the world is still running the build that was installed on it, and will be until it takes
+an update. Two things in this repository exist only for those devices and must not be
+tidied away as dead code:
 
-Do not add a new dependency on `legacy/` from outside it.
+- `os/server/services/bridge.lua` — a second inbox on `ccfleet`, so an ICOS 2 server can
+  hear an ICOS 1 fleet.
+- `os/turtle/legacy.lua` — the same in reverse, because §12 says turtles update before the
+  base does, so a new turtle talking to an old base is the ordinary case.
+
+Both carry a wire constant fixed by what is *deployed*, not by anything here: the hostname
+`base` on the protocol `ccfleet`. Changing either is a deployment, not a rename.
+
+They are deleted when every device reports a build that no longer needs them — which is a
+thing to check on the Devices page, not to assume.
 
 ## Change checklist
 

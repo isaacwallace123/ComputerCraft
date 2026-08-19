@@ -62,27 +62,22 @@ it("natural order handles the awkward cases", function()
   )
 end)
 
-it("the roster lists turtles in natural order", function()
+it("a fleet sorts into natural order, so miner-2 comes before miner-10", function()
+  -- This used to check `legacy/fleet/roster.lua`, which sorted with
+  -- `util.naturalLess` and is now deleted. The rule outlived the file: a roster
+  -- ordered by string comparison puts miner-10 second and buries miner-2 at the
+  -- bottom, which is the ordering somebody reads a fleet in.
   scenario.new({ groundY = 64 })
-  local roster = require("legacy.fleet.roster")
+  local util = require("lib.util")
 
-  local devices = {}
-  for id = 1, 12 do
-    devices[tostring(id)] = {
-      snap = { label = "miner-" .. id, role = "miner" },
-      lastSeen = os.epoch("utc"),
-    }
-  end
-
-  local sorted = roster.sorted(devices)
   local labels = {}
-  for _, node in ipairs(sorted) do
-    labels[#labels + 1] = node.snap.label
+  for id = 1, 12 do
+    labels[#labels + 1] = "miner-" .. id
   end
 
-  expect.equal(labels[1], "miner-1", "first row")
-  expect.equal(labels[2], "miner-2", "miner-10 no longer jumps the queue")
-  expect.equal(labels[9], "miner-9", "ninth row")
-  expect.equal(labels[10], "miner-10", "tenth row")
-  expect.equal(labels[12], "miner-12", "last row")
+  table.sort(labels, util.naturalLess)
+
+  expect.equal(labels[1], "miner-1", "one first")
+  expect.equal(labels[2], "miner-2", "then two, not ten")
+  expect.equal(labels[12], "miner-12", "and twelve last")
 end)
