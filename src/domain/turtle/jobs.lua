@@ -117,6 +117,21 @@ jobs.CATALOGUE = {
     summary = "Collects a named block until the hold is full.",
     needs = { "dig", "fuel", "modem" },
   },
+  -- The first job that is not mining, and the payoff for D036: adding it was
+  -- one module and this entry. Nothing else in the tree needed to know - setup
+  -- offers whatever the catalogue lists, the base assigns from the same list,
+  -- and `os/turtle/main.lua` resolves `module` when the turtle starts work.
+  --
+  -- No modem. A field does not need coordinating: two farming turtles on one
+  -- plot is a slow farm, while two mining turtles in one shaft is a collision,
+  -- so this is one of the jobs that keeps running when the base is unreachable.
+  {
+    id = "crops",
+    label = "Tend a crop field",
+    module = "os.turtle.jobs.farming.crops",
+    summary = "Harvests what is ripe, replants it, and waits for the rest to grow.",
+    needs = { "dig", "place", "fuel" },
+  },
   {
     id = "general",
     label = "Chunk loader",

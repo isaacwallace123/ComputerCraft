@@ -729,6 +729,44 @@ A missing file means generation zero, which means the next order looks new. That
 safe direction: worst case a turtle re-applies an order it had already applied, and every
 mode is idempotent precisely so that costs nothing.
 
+### Phase 7: the first turtle that is not a miner
+
+`os/turtle/jobs/farming/crops.lua` is the payoff for D036. Adding it was **one module and
+one catalogue entry** — setup offers whatever the catalogue lists, the base assigns from the
+same list, and `engine.new()` requires `module` when the turtle starts work. Nothing else in
+the tree needed to know a farming turtle exists.
+
+It shares everything a mining job uses: the same navigation, fuel reserve, depot rules and
+recall. Three things are genuinely different.
+
+**A farm is never finished.** A quarry clears its area and stops; a farm walks its plot,
+waits, and walks it again. `domain/farm/plot.lua` *wraps* the cell index rather than ending,
+so the run loop has one branch where a mine has two.
+
+**It does not stand on the crops.** The turtle travels one block above the field and
+inspects downward. Walking on farmland turns it back into dirt under a full-grown crop —
+destroying the crop and the soil in one step, while the farm keeps running and quietly
+produces less every pass. That is the worst shape a bug can have.
+
+**Maturity is per crop, and verified rather than remembered.** Wheat, carrots and potatoes
+run `age` 0–7 and ripen at 7; beetroot and nether wart run 0–3. A single hard-coded 7 leaves
+a beetroot field walked over forever; a single hard-coded 3 harvests wheat at less than half
+growth — which looks like the farm working, because it does produce something.
+
+An unknown crop is **never** harvested. The direction of that failure is the point: a crop
+that does not get farmed is noticed and fixed, while a field of seedlings destroyed at age 0
+is noticed after it has happened.
+
+Two details that break a farm silently if reversed: seeds are kept and produce delivered
+(deliver the seeds and it stops replanting; keep the produce and it fills in one sweep), and
+carrots and potatoes replant from *themselves* — there is no `minecraft:carrot_seeds`, so a
+farm looking for one finds nothing and leaves bare farmland behind it.
+
+The rest interval is slept five seconds at a time rather than in one call, so a recall
+arriving mid-rest is noticed in seconds instead of minutes. A turtle that ignored orders
+while resting would look unresponsive for exactly as long as its rest setting — which is the
+setting somebody would then turn down, for the wrong reason.
+
 ### Phase 6: the other half of the rolling update
 
 `os/server/services/bridge.lua` closed the gap where an ICOS 2 *server* could not hear an
