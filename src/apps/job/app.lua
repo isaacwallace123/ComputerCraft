@@ -88,8 +88,22 @@ function app.status(snapshot)
   -- distance home. A single measure against tank capacity would answer neither -
   -- a turtle with 40k fuel and a 90k round trip is not two-thirds full, it is
   -- short, and a capacity bar would show it comfortable.
-  local fraction = 1
-  if not unlimited then
+  -- An empty tank is never full, whatever the denominator says.
+  --
+  -- This defaulted the fraction to 1 and only lowered it when a denominator was
+  -- available - so a `general` turtle, whose job declares no fuel requirement,
+  -- drew a full green bar on zero fuel. The default was "assume fine", which is
+  -- the wrong direction for the one indicator somebody checks before sending a
+  -- machine away from home.
+  --
+  -- `nil` now means "cannot tell", and the page draws that as an empty track
+  -- rather than a reassuring one. Unknown and fine are different answers.
+  local fraction = nil
+  if unlimited then
+    fraction = 1
+  elseif fuel <= 0 then
+    fraction = 0
+  else
     local needed = parked and tonumber(snapshot.fuelRequired) or tonumber(snapshot.distanceHome)
     if needed and needed > 0 then
       fraction = math.max(0, math.min(1, fuel / needed))
@@ -123,7 +137,12 @@ end
 --- so flagging it would be raising an alarm about a decision already taken. The
 --- moment to notice is before it leaves.
 function app.short(status)
-  return status.parked and not status.unlimited and status.fuelFraction < 1
+  if status.unlimited or not status.parked then
+    return false
+  end
+  -- Unknown counts as short. A turtle whose job cannot say what it needs, with
+  -- an empty tank, is not a turtle to reassure somebody about.
+  return status.fuelFraction == nil or status.fuelFraction < 1
 end
 
 --- The colour the phase is drawn in.
@@ -226,7 +245,7 @@ function app.mount(scope, context, options)
         scope:Meter({
           Grow = 1,
           Value = scope:Computed(function(use)
-            return use(status).fuelFraction
+            return use(status).fuelFraction or 0
           end),
           Tint = scope:Computed(function(use)
             return app.short(use(status)) and T.warn or T.good

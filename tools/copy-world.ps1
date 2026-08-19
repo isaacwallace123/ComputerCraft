@@ -62,6 +62,41 @@ Get-ChildItem $src -Force | Where-Object { -not $_.Name.StartsWith(".") } | ForE
   Copy-Item $_.FullName -Destination $root -Recurse -Force
 }
 
+# Strip comment-only lines, keeping the line count.
+#
+# A CC computer gets 1,000,000 bytes and this tree is 1,096,626 of which 55% is
+# comments. The first machine to find that out was a turtle that could not write
+# its own `.location` because the disk was full - a failure that says nothing
+# about the real cause and points at the file it happened to be writing.
+#
+# The comments are for the repository, not the device. But the **line numbers**
+# are for the device: `apps/job/app.lua:207` in an error message is the single
+# most useful thing this system has produced in a world, and it is only useful
+# while it matches the file somebody opens here. So each comment line becomes an
+# empty line rather than disappearing - one byte instead of sixty, and line 207
+# is still line 207.
+$stripped = 0
+Get-ChildItem $root -Recurse -File -Filter *.lua | ForEach-Object {
+  $lines = [System.IO.File]::ReadAllLines($_.FullName)
+  $out = foreach ($line in $lines) {
+    if ($line.TrimStart().StartsWith("--")) { "" } else { $line }
+  }
+  [System.IO.File]::WriteAllLines($_.FullName, $out)
+  $stripped++
+}
+
+# Measured after the write, not from the cached FileInfo - which is what the
+# first version did, and it reported "saving 0 KB" while having just halved the
+# tree.
+$size = (Get-ChildItem $root -Recurse -File -Force | Measure-Object -Property Length -Sum).Sum
+$limit = 1000000
+$colour = if ($size -gt $limit) { "Red" } else { "Green" }
+Write-Host ("Stripped comments from {0} files - {1} KB of {2} KB used" -f
+  $stripped, [math]::Round($size / 1024), [math]::Round($limit / 1024)) -ForegroundColor $colour
+if ($size -gt $limit) {
+  Write-Host "  OVER the computer_space_limit - writes on this machine will fail" -ForegroundColor Red
+}
+
 $files = (Get-ChildItem $root -Recurse -File -Force | Where-Object { -not $_.Name.StartsWith(".") }).Count
 Write-Host "Copied $files files to computer $Id" -ForegroundColor Green
 

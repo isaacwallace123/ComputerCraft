@@ -37,6 +37,7 @@
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
 local config = require("adapters.cc.config")
+local host = require("domain.gps.host")
 local locator = require("adapters.cc.locator")
 local util = require("lib.util")
 
@@ -78,6 +79,19 @@ local function position()
     return math.floor(x), math.floor(y), math.floor(z)
   end
   print("none")
+
+  -- Why, not just that. "none" is accurate and tells somebody nothing: the
+  -- usual cause is not a broken radio but a constellation that does not exist
+  -- yet, and the fix is to run this on three more machines rather than to
+  -- investigate this one.
+  --
+  -- Every machine in ICOS hosts GPS once it knows where it is, so the four are
+  -- any four - a base, a client, two parked turtles. There is no such thing as a
+  -- dedicated GPS computer here, which is the part somebody coming from ICOS 1
+  -- would not expect.
+  print(("Trilateration needs %d machines that already"):format(host.QUORUM))
+  print("know where they are. Set this one by hand, and")
+  print("every machine after the fourth locates itself.")
 
   print("")
   print("Press F3 and read the 'Block:' line while")

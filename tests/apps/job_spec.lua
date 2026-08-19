@@ -109,3 +109,29 @@ it("it is still the page a turtle shows, and only that", function()
   end
   expect.truthy(surfaces.launcher, "on a turtle's own screen")
 end)
+
+it("an empty tank is never drawn as full, whatever the job declares", function()
+  -- The `general` job declares no fuel requirement, and the fraction defaulted
+  -- to 1 whenever no denominator was available - so a chunk loader with zero
+  -- fuel drew a full green bar. The default was "assume fine", which is the
+  -- wrong direction for the one indicator somebody checks before sending a
+  -- machine away from home.
+  local empty = app.status({ parked = true, fuel = 0 })
+  expect.equal(empty.fuelFraction, 0, "empty is empty")
+  expect.truthy(app.short(empty), "and flagged")
+end)
+
+it("a fraction that cannot be computed is unknown, not fine", function()
+  -- No requirement declared and fuel aboard: nothing here can say whether that
+  -- is enough. Unknown and fine are different answers, and only one of them is
+  -- safe to draw as a full bar.
+  local unknown = app.status({ parked = true, fuel = 500 })
+  expect.falsy(unknown.fuelFraction, "no fraction")
+  expect.truthy(app.short(unknown), "and treated as short while parked")
+end)
+
+it("an unlimited world is still full", function()
+  local free = app.status({ parked = true, fuel = -1 })
+  expect.equal(free.fuelFraction, 1, "full")
+  expect.falsy(app.short(free), "and never short")
+end)
