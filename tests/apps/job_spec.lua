@@ -75,59 +75,37 @@ it("progress is clamped, so a job reporting nonsense cannot overdraw the meter",
 end)
 
 ---------------------------------------------------------------------------
--- What its buttons do
+-- What it does not do
 ---------------------------------------------------------------------------
 
-it("deploying raises the same flag an order from the base raises", function()
-  local context = { flags = {} }
-  app.order(context, "deploy")
-
-  -- The whole point. `os/turtle/control.lua` sets exactly this flag when a
-  -- desired-state deploy arrives, so the local button and the remote order take
-  -- the identical path through `Runner:wait` - and there is no second way for a
-  -- turtle to be started.
-  expect.truthy(context.flags.deploy, "the runner will see it")
+it("the turtle's own page has no controls at all", function()
+  -- It had four: deploy, recall, a settings editor and a job picker, all
+  -- writing the control flags an order from the base writes. They worked, and
+  -- they were the wrong idea.
+  --
+  -- A fleet has one place decisions are made and it is the server. A turtle
+  -- that could be given a different target depth by somebody standing in front
+  -- of it is a turtle whose settings no longer match the fleet's - and the base
+  -- cannot know, because a local edit is not a message. Two sources of truth
+  -- for one number, and the one that loses is the one nobody is looking at.
+  --
+  -- It also did not fit: a stepper under four status rows and two meters on a
+  -- 39x13 screen came out half off the bottom edge with buttons nothing could
+  -- reach. That was the symptom; this is the cause.
+  expect.falsy(app.order, "no order function")
+  expect.falsy(app.save, "no settings writer")
+  expect.falsy(app.fields, "and no form to write them from")
 end)
 
-it("recalling raises the recall flag", function()
-  local context = { flags = {} }
-  app.order(context, "recall")
-  expect.truthy(context.flags.recall, "the job stops when it is safe to")
-end)
+it("it is still the page a turtle shows, and only that", function()
+  -- Removing the controls must not remove the page. Somebody walks to a turtle
+  -- to find out what it is doing, and that question still has an answer.
+  expect.equal(app.manifest.id, "job", "registered")
+  expect.falsy(app.manifest.requiresInput, "and needs no keyboard")
 
-it("a turtle with no control flags is left alone rather than erroring", function()
-  -- A page mounted on a client is looking at somebody else's turtle and has no
-  -- flags to write. Returning nil is the honest answer; raising would take the
-  -- screen down for asking.
-  expect.falsy(app.order({}, "deploy"), "nothing to raise")
-end)
-
----------------------------------------------------------------------------
--- The form is the job's own declaration
----------------------------------------------------------------------------
-
-it("the form renders whatever the job declares, and nothing else", function()
-  local settings = require("domain.turtle.settings")
-  local hollow = require("os.turtle.jobs.mining.hollow")
-
-  local rows = settings.rows(hollow.settingFields, { distance = 32, targetY = -20 })
-  expect.equal(#rows, #hollow.settingFields, "one row per declared field")
-  expect.equal(rows[1].value, 32, "showing what the job holds")
-
-  -- A job that gains a field gains a row, and nobody edits the page. That is the
-  -- property `setup(ui)` did not have: it hand-wrote the same fields again, so
-  -- the two lists could disagree and only one of them was ever checked.
-  expect.truthy(rows[1].label ~= nil, "with the label a person reads")
-end)
-
-it("a saved change goes through the same validator a remote order does", function()
-  local hollow = require("os.turtle.jobs.mining.hollow")
-
-  -- The form's Save calls `module.configure`, which is what the base calls when
-  -- it sends settings over the radio. One code path, so a value the screen
-  -- accepts is one the fleet would accept and the reverse.
-  local job = { distance = 32, targetY = -20, width = 8, length = 8, cell = 5 }
-  local ok, why = hollow.configure(job, { width = 9999 })
-  expect.falsy(ok, "refused locally too")
-  expect.contains(why, "width", "with the same sentence")
+  local surfaces = {}
+  for _, name in ipairs(app.manifest.surfaces) do
+    surfaces[name] = true
+  end
+  expect.truthy(surfaces.launcher, "on a turtle's own screen")
 end)
