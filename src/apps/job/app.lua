@@ -204,7 +204,11 @@ local function statusRows(scope, state)
   rows[#rows + 1] = scope:Muted({
     Height = 1,
     Text = scope:Computed(function(use)
-      return format.fit(use(state.status).detail, 38)
+      -- `ellipsis`, not `fit`. This called `format.fit`, which does not exist:
+      -- `fit` is `lib/util.lua`'s, and `ui/format.lua` is the framework's own.
+      -- Truncating with ".." is also the better behaviour - a detail line cut
+      -- mid-word with no mark reads as the whole message.
+      return format.ellipsis(use(state.status).detail, 38)
     end),
   })
 

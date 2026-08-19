@@ -127,6 +127,27 @@ else {
   Write-Host "  every require resolves"
 }
 
+Write-Host "== module calls ==" -ForegroundColor Cyan
+
+# A require that resolves says the file exists. It says nothing about whether
+# the function being called on it does - and `format.fit`, a call to a function
+# that has never existed, shipped past every check here and was found by a
+# turtle in a world refusing to draw. Python because the tooling already needs
+# it and the parsing is a page of regex rather than a page of PowerShell.
+$python = Get-Command python3 -ErrorAction SilentlyContinue
+if (-not $python) { $python = Get-Command python -ErrorAction SilentlyContinue }
+
+if ($python) {
+  Push-Location $repo
+  & $python.Source "tools/check-exports.py"
+  $callsOk = $LASTEXITCODE -eq 0
+  Pop-Location
+  if (-not $callsOk) { $failed = $true }
+}
+else {
+  Write-Host "  skipped (no python on PATH)" -ForegroundColor DarkGray
+}
+
 Write-Host ""
 if ($failed) {
   Write-Host "FAILED - fix the path, or the map is worse than no map" -ForegroundColor Red
