@@ -157,21 +157,23 @@ end)
 --- Build one session's tree and render it. Returns nothing; it either throws or
 --- it does not, which is the whole assertion.
 local function draw(open, entries, options)
+  options = options or {}
   local scope = ui.scoped()
   local state = {
     open = scope:Value(open),
     selected = scope:Value(1),
     holding = scope:Value(2),
     tick = scope:Value(0),
-    tabs = (options or {}).tabs or {},
+    tabs = options.tabs or {},
     wanted = scope:Value(nil),
+    closing = scope:Value(nil),
   }
 
   local root = host.mount({
     screen = screenPort.null(51, 19),
     scope = scope,
     build = function(inner)
-      return desktop.build(inner, {
+      return desktop.build(inner, options.context or {
         label = "test",
         clock = {
           now = function()
@@ -181,12 +183,18 @@ local function draw(open, entries, options)
             return 13.5
           end,
         },
-      }, state, entries, { width = 51, height = 19 })
+      }, state, entries, {
+        width = 51,
+        height = 19,
+        role = options.role,
+        surface = options.surface,
+      })
     end,
   })
 
   root:render()
   scope:destroy()
+  return root
 end
 
 it("the wall draws, sprites and all", function()
@@ -303,4 +311,71 @@ it("every hidden app still ships, because the bar can open it", function()
   for _, entry in ipairs(appRegistry.family("operations", "server", "desktop")) do
     expect.truthy(modules[entry.module], entry.id .. " is in a section but not in modules()")
   end
+end)
+
+it("an open section page draws the bar that reaches its siblings", function()
+  -- The bug this exists for drew nothing and reported nothing. `build` was
+  -- called with a fresh options table that never carried `role`, so the section
+  -- lookup defaulted to "client" - and Fleet is not a client app, so the family
+  -- came back empty and the bar quietly did not render. Mine, Automation and
+  -- Job became unreachable, with no error anywhere and a page that looked
+  -- entirely normal.
+  --
+  -- A filter whose failure mode is an empty list needs a test that counts what
+  -- reached the tree, not one that checks it did not throw.
+  local appRegistry = require("apps.registry")
+  local entries = appRegistry.available("server", "desktop")
+
+  local index = nil
+  for position, entry in ipairs(entries) do
+    if entry.id == "fleet" then
+      index = position
+    end
+  end
+  expect.truthy(index ~= nil, "fleet is on a server's wall")
+
+  local ctx = require("support.fleet").context()
+  local context = ctx.context or ctx
+  context.clock.time = context.clock.time or function()
+    return 13.5
+  end
+
+  local scope = ui.scoped()
+  local state = {
+    open = scope:Value(index),
+    selected = scope:Value(1),
+    holding = scope:Value(nil),
+    tick = scope:Value(0),
+    tabs = { index },
+    wanted = scope:Value(nil),
+    closing = scope:Value(nil),
+  }
+
+  local tree = desktop.build(scope, context, state, entries, {
+    width = 51,
+    height = 19,
+    role = "server",
+    surface = "desktop",
+  })
+
+  local found = {}
+  local function walk(node)
+    if type(node) ~= "table" then
+      return
+    end
+    if type(node.Text) == "string" then
+      found[(node.Text:gsub("%s", ""))] = true
+    end
+    for _, child in ipairs(node.Children or {}) do
+      walk(child)
+    end
+  end
+  walk(tree)
+  scope:destroy()
+
+  for _, entry in ipairs(appRegistry.family("operations", "server", "desktop")) do
+    expect.truthy(found[entry.sectionName], entry.sectionName .. " is not on the section bar")
+  end
+
+  expect.truthy(found.x, "and every open tab has a close control")
 end)

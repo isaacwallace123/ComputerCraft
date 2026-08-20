@@ -288,12 +288,36 @@ end
 --- The active one is painted in the page's own background so that it reads as
 --- continuous with the content below it. That is the whole of what makes a strip
 --- of words look like tabs, and it costs nothing.
-local function tab(scope, label, active, onPick)
-  return scope:Text({
-    Text = " " .. label .. " ",
-    Background = active and T.background or T.chrome,
-    Color = active and T.foreground or T.chromeFg,
-    OnClick = onPick,
+local function tab(scope, label, active, onPick, onClose)
+  local background = active and T.background or T.chrome
+
+  if onClose == nil then
+    return scope:Text({
+      Text = " " .. label .. " ",
+      Background = background,
+      Color = active and T.foreground or T.chromeFg,
+      OnClick = onPick,
+    })
+  end
+
+  -- Two nodes, because a cell can only belong to one click target. The label
+  -- opens and the `x` closes, and they have to be separately hittable or the
+  -- close is a corner of the tab somebody finds by accident.
+  return scope:Row({
+    Children = {
+      scope:Text({
+        Text = " " .. label,
+        Background = background,
+        Color = active and T.foreground or T.chromeFg,
+        OnClick = onPick,
+      }),
+      scope:Text({
+        Text = "x",
+        Background = background,
+        Color = active and T.mutedFg or T.chromeFg,
+        OnClick = onClose,
+      }),
+    },
   })
 end
 
@@ -334,13 +358,25 @@ local function bar(scope, context, state, entries, options)
     local manifest = desktop.entryAt(entries, index) or { id = "?" }
     children[#children + 1] = tab(
       scope,
-      format.ellipsis(manifest.name or manifest.id, 6),
+      format.ellipsis(manifest.name or manifest.id, 5),
       scope:Computed(function(use)
         return use(state.open) == index
       end),
       options.readOnly and nil or function()
         state.wanted:set(index)
-      end
+      end,
+      options.readOnly and nil
+        or function()
+          state.closing:set(index)
+
+          -- Closing the page you are looking at goes home; closing any other one
+          -- stays where you are. Both end the session, because the strip is built
+          -- from a list the session captured and a change to it cannot be seen
+          -- without rebuilding.
+          state.wanted:set(
+            reactive.peek(state.open) == index and "home" or reactive.peek(state.open) or "home"
+          )
+        end
     )
   end
 
@@ -582,6 +618,11 @@ function desktop.run(context, options)
       -- the loop after `host.run` returns, so a click on a tab and a keypress
       -- end a session the same way.
       wanted = scope:Value(nil),
+
+      -- A tab somebody pressed the `x` on. Read after the session ends, for the
+      -- same reason `wanted` is: the strip is built from a list this session
+      -- captured, so removing an entry from it cannot show up until the next one.
+      closing = scope:Value(nil),
     }
 
     local root = host.mount({
@@ -594,6 +635,15 @@ function desktop.run(context, options)
           height = height,
           readOnly = options.readOnly,
           capacity = options.capacity,
+
+          -- Carried through, not defaulted inside `build`. The section bar asks
+          -- the registry which pages share a section *for this machine*, and a
+          -- missing role silently answers "none" - so the bar drew nothing and
+          -- Mine, Automation and Job became unreachable rather than merely
+          -- unstyled. A filter whose failure mode is an empty list has to be
+          -- given the real value.
+          role = options.role or "client",
+          surface = options.surface or "desktop",
         })
       end,
     })
@@ -760,6 +810,11 @@ function desktop.run(context, options)
       -- client whose screen has stopped should be remounted, not left showing
       -- its last frame.
       return
+    end
+
+    local closing = reactive.peek(state.closing)
+    if closing ~= nil then
+      tabs = desktop.closed(tabs, closing)
     end
 
     if wanted == "home" then

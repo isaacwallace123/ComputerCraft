@@ -322,6 +322,55 @@ function screen.digest(rows, label)
   return table.concat(parts, "\2")
 end
 
+--- The two things a person standing in front of a turtle can ask it for.
+---
+--- Both exist because the automatic path can fail in ways only somebody looking
+--- at the machine can resolve. `locate` re-measures a turtle that has been
+--- picked up and put down somewhere else - `calibrate.needed` refuses that on
+--- its own, correctly, because a turtle re-deriving a position it already has
+--- would spend a move on every boot. `facing` is the manual answer for a turtle
+--- boxed in on all four sides, where no amount of retrying will ever work.
+---
+--- Keys rather than only clicks: a plain turtle's terminal raises no mouse
+--- events at all, so a control that could only be clicked would be a control
+--- that does not exist on half the fleet.
+screen.ACTIONS = {
+  { key = "l", label = "locate" },
+  { key = "f", label = "facing" },
+}
+
+--- The footer text, and where each action sits on it.
+---
+--- Returned together so that drawing and hit-testing cannot disagree about
+--- where a word is - which is the bug every hand-placed control has once.
+function screen.footer()
+  local text, spans = "", {}
+  for _, action in ipairs(screen.ACTIONS) do
+    local piece = ("[%s] %s  "):format(action.key:upper(), action.label)
+    spans[#spans + 1] = { from = #text + 1, to = #text + #piece, action = action }
+    text = text .. piece
+  end
+  return text, spans
+end
+
+--- Which action a click landed on, or nil.
+---
+--- `y` must be the footer row, which the caller knows from the screen height.
+--- Pure, so the mapping between a cell and an action is a spec rather than
+--- something only discoverable by clicking a real turtle.
+function screen.hit(x, y, height)
+  if y ~= height then
+    return nil
+  end
+  local _, spans = screen.footer()
+  for _, span in ipairs(spans) do
+    if x >= span.from and x <= span.to then
+      return span.action.key
+    end
+  end
+  return nil
+end
+
 --- Draw, and say whether anything was drawn.
 function screen.draw(port, rows, label, last)
   local digest = screen.digest(rows, label)
@@ -346,12 +395,17 @@ function screen.draw(port, rows, label, last)
 
   local y = 4
   for _, row in ipairs(rows) do
-    if y > height then
+    -- One short of the bottom: the last row belongs to the actions, and a
+    -- status line that overwrote them would remove the only two controls the
+    -- machine has exactly when there is most to say.
+    if y >= height then
       break
     end
     screen.field(port, y, row.label, row.value, row.colour)
     y = y + 1
   end
+
+  screen.line(port, height, format.pad(" " .. screen.footer(), width, "left"), T.mutedFg, T.muted)
 
   return true, digest
 end
@@ -378,9 +432,18 @@ end
 ---
 --- Cancelling is always possible and always means "leave it alone". The page
 --- then says so, and the automatic path keeps trying in the background.
-function screen.askFacing(context)
+function screen.askFacing(context, options)
+  options = options or {}
   local nav = context.nav
-  if nav == nil or nav.hasOrigin() or context.screen == nil then
+  if nav == nil or context.screen == nil then
+    return false
+  end
+
+  -- Normally refused for a turtle that already knows, because re-asking a
+  -- question the machine has answered is how a good answer gets replaced by a
+  -- typed one. `force` is somebody pressing the button, which is the case where
+  -- they can see something the turtle cannot - that it is facing the other way.
+  if nav.hasOrigin() and not options.force then
     return false
   end
 
@@ -412,8 +475,9 @@ function screen.askFacing(context)
   end
 
   -- The automatic path may have won while the question was on screen. Its answer
-  -- is measured and this one is typed, so it keeps its own.
-  if nav.hasOrigin() then
+  -- is measured and this one is typed, so it keeps its own - unless the typed
+  -- one was asked for on purpose, in which case it is the correction.
+  if nav.hasOrigin() and not options.force then
     return false
   end
 

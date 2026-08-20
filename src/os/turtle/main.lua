@@ -54,6 +54,7 @@ local gps = require("os.kernel.services.gps")
 local peer = require("domain.protocol.peer")
 local jobs = require("domain.turtle.jobs")
 local legacyLink = require("os.turtle.legacy")
+local screen = require("os.turtle.screen")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
 local switches = require("os.kernel.switches")
@@ -351,6 +352,63 @@ turtleOs.controls = service.define({
   end,
 })
 
+--- The two controls drawn along the bottom of a turtle's screen.
+---
+--- `L` re-measures where it is; `F` asks which way it faces. Both exist because
+--- the automatic path fails in ways only somebody standing in front of the
+--- machine can resolve: a turtle that has been picked up and put down has an
+--- origin it believes and which is wrong, and a turtle boxed in on all four
+--- sides will never work out its heading however long it retries.
+---
+--- Event-driven rather than polled, like every other service here. `input.pull`
+--- parks the coroutine until something happens, so a turtle nobody is standing
+--- in front of costs nothing at all.
+---
+--- Keys *and* clicks: a plain turtle's terminal raises no mouse events, so keys
+--- are the only control that works on the whole fleet, and a click is the one
+--- an advanced turtle's owner will try first.
+turtleOs.buttons = service.define({
+  id = "buttons",
+  requires = { "input" },
+  critical = false,
+
+  run = function(context)
+    while true do
+      local event, a, b, c = context.input.pull()
+      local pressed = nil
+
+      if event == "char" then
+        pressed = tostring(a):lower()
+      elseif event == "mouse_click" or event == "monitor_touch" then
+        -- Written out rather than `context.screen and context.screen.size()`,
+        -- which collapses two return values into one and hands the hit test a
+        -- nil height - so every click would miss.
+        if context.screen ~= nil then
+          local _, height = context.screen.size()
+          pressed = screen.hit(b, c, height)
+        end
+      end
+
+      if pressed == "l" then
+        -- A flag rather than a call. `calibrate.run` moves the turtle, and the
+        -- locate service already owns the claim that stops two coroutines
+        -- driving one turtle at the same time - doing it here would be the
+        -- second driver.
+        context.relocate = true
+        if context.log then
+          context.log.info("locate: asked from the turtle")
+        end
+      elseif pressed == "f" then
+        screen.askFacing(context, { force = true })
+      end
+
+      if coroutine.isyieldable() then
+        coroutine.yield()
+      end
+    end
+  end,
+})
+
 --- Find out where this turtle is, from the constellation.
 ---
 --- A service rather than a step in boot, and the difference matters: it needs a
@@ -390,15 +448,29 @@ turtleOs.locate = service.define({
       -- The lesson is the one this file keeps relearning: a machine that is
       -- doing nothing on purpose and a machine that is stuck look identical
       -- unless the first one says so.
+      -- Somebody pressed the button on the turtle. A re-measure is wanted even
+      -- though it already has an origin, which is the one case `calibrate.needed`
+      -- says no to - and it says no for a good reason (a turtle that re-derived
+      -- a position it had would spend a move on every boot). A person standing
+      -- in front of the machine asking for it is the exception, because they can
+      -- see something this turtle cannot: that it has been picked up and moved.
+      local asked = context.relocate == true
+
       if nav == nil then
         context.locateWhy = "no navigator on this machine"
-      elseif not calibrate.needed(nav) then
+      elseif not (calibrate.needed(nav) or asked) then
         context.locateWhy = nil
       elseif not (context.node and context.node.parked) then
         context.locateWhy = "not while it is working"
       end
 
-      if nav ~= nil and calibrate.needed(nav) and context.node and context.node.parked then
+      if
+        nav ~= nil
+        and (calibrate.needed(nav) or asked)
+        and context.node
+        and context.node.parked
+      then
+        context.relocate = nil
         tries = tries + 1
 
         -- Set before the attempt, not after. `gps.locate` waits on the radio, so
@@ -517,6 +589,7 @@ function turtleOs.services()
     turtleOs.job,
     turtleOs.heartbeat,
     turtleOs.controls,
+    turtleOs.buttons,
     turtleOs.locate,
     legacyLink.service,
     gps.service,

@@ -417,3 +417,46 @@ it("the prompt only appears once the automatic attempt has given up", function()
 
   screen.askFacing = real
 end)
+
+---------------------------------------------------------------------------
+-- The two controls along the bottom
+---------------------------------------------------------------------------
+
+it("the footer and the hit test agree about where each word is", function()
+  -- Every hand-placed control gets this wrong once: the word is drawn in one
+  -- place and the click is tested in another, and it looks like the button
+  -- simply does not work. One function returns both, so they cannot disagree.
+  local text, spans = screen.footer()
+  expect.contains(text, "[L] locate")
+  expect.contains(text, "[F] facing")
+
+  for _, span in ipairs(spans) do
+    local word = text:sub(span.from, span.to)
+    expect.contains(word, span.action.label, "the span covers its own label")
+  end
+end)
+
+it("a click on the bottom row picks the action under it", function()
+  local height = 13
+  expect.equal(screen.hit(2, height, height), "l", "on the word locate")
+  expect.equal(screen.hit(14, height, height), "f", "on the word facing")
+  expect.equal(screen.hit(2, height - 1, height), nil, "one row up is the status page")
+  expect.equal(screen.hit(200, height, height), nil, "and past the end is nothing")
+end)
+
+it("asking for a facing is refused unless somebody asked on purpose", function()
+  -- Re-asking a question the machine has already answered is how a measured
+  -- heading gets replaced by a typed one. The exception is the button, where
+  -- the person pressing it can see something the turtle cannot.
+  local located = {
+    screen = { size = function() return 39, 13 end },
+    nav = { hasOrigin = function() return true end },
+    locator = { saved = function() return nil end },
+  }
+
+  expect.falsy(screen.askFacing(located), "it already knows")
+
+  -- With `force` it gets past the origin check and stops at the next one - no
+  -- saved fix to anchor a heading to - rather than at the first.
+  expect.falsy(screen.askFacing(located, { force = true }), "and still needs a position")
+end)
