@@ -149,6 +149,50 @@ local function urlFor(ref, name)
   )
 end
 
+--- Blank every comment-only line, keeping the line count.
+---
+--- **The tree in the repository does not fit on a CC computer.** It is about
+--- 1.2 MB and `computer_space_limit` is 1,000,000 bytes by default, which is
+--- not something you can raise on somebody else's server. Roughly half of it is
+--- comments, and the comments are for the repository rather than for the
+--- device: stripped, it is around 550 KB.
+---
+--- `tools\build.ps1` does this for a world you can reach with a file copy. This
+--- does it for every machine that updates over the network, which is the only
+--- route a real server has - and without it an update downloads sixty files,
+--- fills the disk part-way through, and leaves a machine that boots into a
+--- half-written tree.
+---
+--- Blanked rather than deleted, and the reason is worth keeping: an error that
+--- says `apps/job/app.lua:207` is the most useful thing this system produces in
+--- a world, and it is only useful while line 207 here is line 207 there. One
+--- byte instead of sixty, and the line numbers still match the source somebody
+--- opens to fix it.
+---
+--- The rule is exactly `build.ps1`'s - leading whitespace, then two dashes - so
+--- a machine that was updated over the network and one that was copied from a
+--- build hold byte-identical files, and the fingerprint below can still be
+--- compared between them.
+local function strip(name, body)
+  if not name:match("%.lua$") then
+    return body
+  end
+
+  local out = {}
+  local position = 1
+  while true do
+    local stop = body:find("\n", position, true)
+    local line = stop and body:sub(position, stop - 1) or body:sub(position)
+    out[#out + 1] = line:match("^%s*%-%-") and "" or line
+    if not stop then
+      break
+    end
+    position = stop + 1
+  end
+
+  return table.concat(out, "\n")
+end
+
 local function readLocal(path)
   local handle = fs.exists(path) and fs.open(path, "r")
   if not handle then
@@ -277,6 +321,14 @@ for index, name in ipairs(files) do
   draw("downloading", index - 1, total, name)
 
   local body, err = get(urlFor(ref, name))
+  if body then
+    -- Stripped once, here, so everything downstream - the unchanged check, the
+    -- checksum, the write and the verify pass - is talking about the same bytes.
+    -- Checksumming what was downloaded and writing something else would make the
+    -- verify pass report every file as broken.
+    body = strip(name, body)
+  end
+
   if not body then
     remember(name, tostring(err):sub(1, 12), T.destructive)
     failed = failed + 1
