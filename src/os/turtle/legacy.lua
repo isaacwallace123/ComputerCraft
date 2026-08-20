@@ -88,6 +88,14 @@ function legacy.beat(context)
   if not legacy.needed(context) then
     return nil
   end
+
+  -- Not while something else is driving the turtle. `context.snapshot` reads the
+  -- turtle's fuel, and a turtle call issued while another coroutine is waiting
+  -- for a `turtle_response` can take that response instead - see
+  -- `turtleOs.snapshot` for the failure it produced.
+  if context.busy then
+    return nil
+  end
   local snapshot = context.snapshot()
   context.transport.broadcast(wire.wrap("status", snapshot, context.clock.now()), legacy.PROTOCOL)
   return snapshot

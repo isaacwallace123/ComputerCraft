@@ -158,6 +158,27 @@ end
 --- reckoning to report, and `located` is left alone - it means "can be deployed",
 --- which still requires the heading.
 function turtleOs.snapshot(context)
+  -- Nothing reads the turtle while something else is driving it.
+  --
+  -- CC turtle calls are asynchronous underneath: `turtle.forward()` queues a
+  -- task and waits for a `turtle_response`. Two coroutines calling turtle
+  -- methods at once can each receive the other's answer, and the symptom is
+  -- exactly what the fleet's logs showed - `blocked: Out of fuel` on a turtle
+  -- holding 51,200 fuel, over and over.
+  --
+  -- The readers are this file's own: the screen polls the snapshot every second
+  -- and the heartbeat every two, both of which call `turtle.getFuelLevel`, while
+  -- the locate service is stepping the machine one block forward. So the mover
+  -- claims it, and the readers hand back the last picture until it lets go.
+  --
+  -- Cooperative, and exact rather than hopeful: a coroutine only yields at
+  -- points it chooses, the flag is set before the first turtle call and cleared
+  -- after the last, and every reader in between is resumed by the supervisor and
+  -- checks it.
+  if context.busy and context.lastSnapshot then
+    return context.lastSnapshot
+  end
+
   local snap = context.snapshot() or {}
 
   if type(snap.world) ~= "table" and context.locator then
@@ -177,6 +198,7 @@ function turtleOs.snapshot(context)
     end
   end
 
+  context.lastSnapshot = snap
   return snap
 end
 
@@ -385,7 +407,11 @@ turtleOs.locate = service.define({
         -- "locating..." managed to mean three different things at once.
         context.locateWhy = ("asking the constellation (%d)"):format(tries)
 
+        -- Claim the turtle for the length of the attempt. See `turtleOs.snapshot`
+        -- for what happens when two coroutines drive one turtle.
+        context.busy = true
         local found, why = calibrate.run(context.body, context.locator)
+        context.busy = nil
         if found then
           -- Both files in one call. Two that disagreed about which way home is
           -- would be a turtle mining confidently in the wrong direction.

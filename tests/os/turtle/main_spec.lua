@@ -188,3 +188,60 @@ it("a turtle does not bind its radio to another turtle", function()
   machine.supervisor:step({ "icos_tick" })
   expect.equal(peer.address(context.peer, now), 5, "and the base's reply does")
 end)
+
+it("nothing reads the turtle while something else is driving it", function()
+  -- CC turtle calls are asynchronous underneath: `turtle.forward()` queues a
+  -- task and waits for a `turtle_response`. Two coroutines calling turtle
+  -- methods at once can each receive the other's answer, and the symptom is what
+  -- the fleet's logs showed - `blocked: Out of fuel`, over and over, on a turtle
+  -- holding 51,200 fuel.
+  --
+  -- The readers are this file's own: the screen polls every second and the
+  -- heartbeat every two, and both read the fuel level.
+  local reads = 0
+  local context = {
+    snapshot = function()
+      reads = reads + 1
+      return { label = "miner-6", fuel = 51200 }
+    end,
+  }
+
+  local first = turtleOs.snapshot(context)
+  expect.equal(reads, 1)
+  expect.equal(first.label, "miner-6")
+
+  -- Claimed. The reader gets the last picture rather than touching the machine.
+  context.busy = true
+  local during = turtleOs.snapshot(context)
+  expect.equal(reads, 1, "the turtle was not asked")
+  expect.equal(during.label, "miner-6", "and the caller still got a snapshot")
+
+  -- Released.
+  context.busy = nil
+  turtleOs.snapshot(context)
+  expect.equal(reads, 2)
+end)
+
+it("the ICOS 1 link also keeps its hands off a turtle in use", function()
+  local legacy = require("os.turtle.legacy")
+  local peer = require("domain.protocol.peer")
+
+  local reads = 0
+  local context = {
+    peer = peer.empty(),
+    busy = true,
+    clock = {
+      now = function()
+        return 0
+      end,
+    },
+    transport = { broadcast = function() end },
+    snapshot = function()
+      reads = reads + 1
+      return {}
+    end,
+  }
+
+  expect.equal(legacy.beat(context), nil, "it said nothing")
+  expect.equal(reads, 0, "and read nothing")
+end)
