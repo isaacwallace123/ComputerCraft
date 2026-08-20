@@ -72,13 +72,17 @@ local function refuse(body, message)
 end
 
 --- The reply every successful action sends: what happened, and the state after.
-local function confirm(state, body, entry, note)
+---
+--- `message` carries the sentence on both a success and a refusal, rather than
+--- one field for each. Two names for "something to show the person who pressed
+--- the button" is two things for a page to check and one of them to forget.
+local function confirm(state, body, entry, message)
   return {
     kind = bank.KIND,
     ok = true,
     requestId = body and body.requestId,
     entry = entry,
-    note = note,
+    message = message,
     ledger = ledger.digest(state, bank.DIGEST),
   }
 end
@@ -267,7 +271,7 @@ function bank.handle(context, sender, message)
 
   persist.flush(context, bank.SECTION)
 
-  -- `reason` is "already applied" on a replay, and it goes back as a note on a
+  -- `reason` is "already applied" on a replay, and it goes back on a
   -- *successful* reply rather than as a refusal. That is the whole idempotence
   -- contract seen from the client's side: asking twice is safe, and the second
   -- answer is the same as the first.

@@ -194,7 +194,7 @@ function app.mount(scope, context, options)
     if type(replies) == "table" then
       for _, reply in ipairs(replies) do
         if type(reply) == "table" and reply.kind == "bank" then
-          note:set(reply.message or reply.note or (reply.ok and "done" or "refused"))
+          note:set(reply.message or (reply.ok and "done" or "refused"))
         end
       end
     end
