@@ -98,9 +98,34 @@ it("the page counts restarts rather than the failure counter", function()
   -- Failures resets to zero the moment a service comes back, so a service that
   -- has crashed forty times today and is up right now shows zero - which is
   -- true and useless.
-  local columns = services.columns()
-  local last = columns[#columns]
-  expect.equal(last.Key, "restarts", "restarts, not failures")
+  local keys = {}
+  for _, column in ipairs(services.columns()) do
+    keys[column.Key] = true
+  end
+  expect.truthy(keys.restarts, "restarts, not failures")
+  expect.falsy(keys.failures)
+end)
+
+it("the page says how long a service held the machine", function()
+  -- The supervisor has always recorded this and nothing ever showed it, so
+  -- "the machine feels slow" had no answer on the machine. CC gives every
+  -- computer in a world a shared budget of ten milliseconds a tick, so a
+  -- service taking twenty is not slightly expensive - it is the whole tick.
+  local keys = {}
+  for _, column in ipairs(services.columns()) do
+    keys[column.Key] = true
+  end
+  local T = require("ui.theme").TOKENS
+  expect.truthy(keys.peak, "there is a column for it")
+
+  expect.equal(services.peak(nil), "", "nothing measured is blank, not zero")
+  expect.equal(services.peak(0), "", "and so is a service that has never run")
+  expect.equal(services.peak(3.25), "3.2")
+  expect.equal(services.peak(140), "140", "past a hundred the decimal is noise")
+
+  expect.equal(services.peakTone({ slowest = 1 }), T.mutedFg, "cheap is not worth colour")
+  expect.equal(services.peakTone({ slowest = 8 }), T.warn, "past one computer's allowance")
+  expect.equal(services.peakTone({ slowest = 25 }), T.destructive, "past the whole world's tick")
 end)
 
 it("a turtle gets the Services page without a turtle version being written", function()

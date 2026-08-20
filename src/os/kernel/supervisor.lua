@@ -271,6 +271,9 @@ end
 function Supervisor:step(event)
   local now = self.clock.now()
 
+  -- Where the last clock reading was taken. See the note beside `elapsed`.
+  local cursor = now
+
   for _, entry in ipairs(self.order) do
     if
       entry.state == "waiting"
@@ -284,8 +287,6 @@ function Supervisor:step(event)
     if entry.state == "running" and entry.thread then
       local name = event and event[1]
       if not entry.primed or entry.filter == nil or entry.filter == name or name == "terminate" then
-        local started = self.clock.now()
-
         -- The first resume passes the context, because that is what `run` was
         -- declared to take. Every resume after it passes the event, because by
         -- then the coroutine is parked inside a `pullEvent` and that is what it
@@ -299,7 +300,20 @@ function Supervisor:step(event)
           results = { coroutine.resume(entry.thread, self.context or {}) }
         end
 
-        local elapsed = self.clock.now() - started
+        -- One clock reading per service that ran, not two.
+        --
+        -- This used to stamp before and after each resume, which is `1 + 2N`
+        -- calls to `os.epoch` per event on a machine with N services - and on a
+        -- server that is eleven services woken by every heartbeat on the fleet.
+        -- Reading once and diffing against a cursor gives the same number for
+        -- half the calls.
+        --
+        -- The measurement is also slightly more honest this way: it now includes
+        -- the loop's own work between two services, which is time the machine
+        -- spent and nobody was being charged for.
+        local at = self.clock.now()
+        local elapsed = at - cursor
+        cursor = at
         if elapsed > entry.slowest then
           entry.slowest = elapsed
         end

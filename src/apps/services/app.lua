@@ -147,8 +147,47 @@ function app.rows(supervisor, now)
   for _, row in ipairs(rows) do
     row.status = app.status(row)
     row.detail = row.lastError and tostring(row.lastError) or ""
+    row.peak = app.peak(row.slowest)
   end
   return rows
+end
+
+--- The longest this service has ever held the machine, in milliseconds.
+---
+--- The number that answers "why is everything slow", and it was being recorded
+--- and shown to nobody. CC gives all the computers in a world a shared budget -
+--- `max_main_global_time`, ten milliseconds a tick by default, across however
+--- many machines are running - so a service that takes twenty is not slightly
+--- expensive, it is the whole world's tick.
+---
+--- Blank rather than zero when nothing has been measured. A service that has
+--- never been resumed has no peak, and printing `0` would claim it is free.
+function app.peak(slowest)
+  local value = tonumber(slowest)
+  if value == nil or value <= 0 then
+    return ""
+  end
+  if value >= 100 then
+    return ("%d"):format(value)
+  end
+  return ("%.1f"):format(value)
+end
+
+--- How alarming a peak is.
+---
+--- Twenty milliseconds is a whole server tick and five is what one computer is
+--- allowed by default, so those are the two thresholds. They are properties of
+--- Minecraft rather than of this fleet, which is why they are named here rather
+--- than tuned.
+function app.peakTone(row)
+  local value = tonumber(row.slowest) or 0
+  if value >= 20 then
+    return T.destructive
+  end
+  if value >= 5 then
+    return T.warn
+  end
+  return T.mutedFg
 end
 
 --- One line summarising the machine.
@@ -185,6 +224,11 @@ function app.columns()
     -- is up right now shows zero - which is true and useless. Restarts counts
     -- the times it actually had to be brought back.
     { Title = "Up", Width = 4, Key = "restarts", Align = "right" },
+
+    -- The slowest single resume, in milliseconds. The supervisor has always
+    -- recorded it and nothing has ever shown it, which meant "the machine feels
+    -- slow" had no answer on the machine.
+    { Title = "ms", Width = 5, Key = "peak", Align = "right", Tone = app.peakTone },
   }
 end
 
