@@ -122,17 +122,23 @@ function roles.check(role, capabilities)
   end
 
   if role == roles.SERVER then
-    if capabilities.turtle and not capabilities.chunkLoaded then
-      -- Allowed, and worth saying out loud: a Chunky Turtle can be a GPS host
-      -- and keep the shared host chunk loaded (D022). A plain turtle cannot,
-      -- because a server that unloads is a constellation with three hosts.
-      return true, "a turtle server must be chunk-loaded to stay a GPS host"
-    end
     if not capabilities.modem then
       return false, "a server needs a wireless or ender modem"
     end
     if not capabilities.located then
       return false, "a server must know where it is before it can host GPS"
+    end
+
+    -- Allowed, and worth saying out loud: a Chunky Turtle can be a GPS host and
+    -- keep the shared host chunk loaded (D022). A plain turtle cannot, because a
+    -- server that unloads is a constellation with three hosts.
+    --
+    -- Warned rather than refused, and *after* the two checks above rather than
+    -- instead of them. This used to return early, so a turtle server with no
+    -- modem and no position passed the one function whose job is to catch
+    -- exactly that.
+    if capabilities.turtle and not capabilities.chunkLoaded then
+      return true, "a turtle server must be chunk-loaded to stay a GPS host"
     end
     return true
   end
@@ -213,13 +219,31 @@ roles.OFFERED = {
   {
     key = roles.CLIENT,
     label = "Client",
-    detail = "Screens and controls. Holds no authority",
+    detail = "Screens and GPS. Holds no authority",
     offer = function(caps)
-      return caps.turtle ~= true and caps.pocket ~= true
+      -- Offered on a turtle, and that is not a loophole.
+      --
+      -- A GPS constellation needs four hosts, and the cheapest host is a machine
+      -- that sits still and answers - which a parked turtle is. Making somebody
+      -- choose Server for that would put a fleet authority on four machines to
+      -- get four beacons, and four authorities is four registries, four sets of
+      -- sector leases, and two turtles in one shaft.
+      --
+      -- A turtle client never moves, because a client has no job runner: the
+      -- only thing that drives a turtle is the turtle OS, and this is not it.
+      -- See `os/kernel/boot.lua` - the role picks the operating system, and the
+      -- hardware only decides which roles are on the menu.
+      return caps.pocket ~= true
     end,
     warn = function(caps)
       if not caps.modem then
         return "no modem: it will show nothing until one is attached"
+      end
+      if caps.turtle then
+        if not caps.located then
+          return "run `commands/locate`: a GPS host has to know where it is"
+        end
+        return "this turtle will sit still: a client has no job and never moves"
       end
       if not caps.monitor then
         return "no monitor: the dashboard will draw on this screen"
@@ -250,8 +274,8 @@ roles.OFFERED = {
 ---
 --- Never empty for any real machine: every form factor matches at least one
 --- entry, which is what stops setup showing somebody a list with nothing in it
---- and no way forward. A turtle gets Turtle and Server; a pocket gets Handheld;
---- a computer gets Server and Client.
+--- and no way forward. A turtle gets Turtle, Server and Client; a pocket gets
+--- Handheld; a computer gets Server and Client.
 function roles.offered(capabilities)
   capabilities = capabilities or {}
   local out = {}

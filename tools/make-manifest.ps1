@@ -45,8 +45,19 @@ function Get-Closure([string]$entry) {
     if (-not (Test-Path $path)) {
       throw "$entry needs $relative, which does not exist"
     }
-    foreach ($match in [regex]::Matches((Get-Content $path -Raw), 'require\("([\w\.]+)"\)')) {
+    $text = Get-Content $path -Raw
+    foreach ($match in [regex]::Matches($text, 'require\("([\w\.]+)"\)')) {
       $queue.Enqueue($match.Groups[1].Value.Replace(".", "/") + ".lua")
+    }
+
+    # And anything run by *name*, which `require` never sees.
+    #
+    # `startup.lua` does `shell.run("commands/setup.lua")`. A walk that followed
+    # only `require` dropped every command from every role, so the first machine
+    # installed from a role list booted to "No such program" - on the one path
+    # nobody exercises until a computer is new.
+    foreach ($match in [regex]::Matches($text, 'shell\.run\(\s*"([\w/\.]+)"')) {
+      $queue.Enqueue($match.Groups[1].Value)
     }
   }
 
@@ -89,6 +100,17 @@ function Get-Seeds([string]$role) {
     if ($roles -contains $role) {
       $seeds += $module.Replace(".", "/") + ".lua"
     }
+  }
+
+  # Every command, on every machine.
+  #
+  # These are programs a person types, and there is no walk that can tell you
+  # what somebody is about to type. `locate` in particular is the one thing a
+  # machine that cannot host GPS is told to run, so a role that shipped without
+  # it would be a role that reports a problem and withholds the fix. Five small
+  # files against that.
+  foreach ($command in Get-ChildItem (Join-Path $src "commands") -File -Filter *.lua) {
+    $seeds += "commands/" + $command.Name
   }
 
   # A turtle picks its job at runtime from a catalogue of module names, so every

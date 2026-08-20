@@ -262,6 +262,24 @@ if (Test-Path $manifestPath) {
     foreach ($name in $set) {
       if ($listed -notcontains $name) { $roleDrift += "$role wants $name, which is not in the build" }
     }
+
+    # Everything a shipped file runs by *name* has to be shipped with it.
+    #
+    # `require` is followed by the closure walk; `shell.run("commands/setup.lua")`
+    # is not, and a role that shipped without it booted to "No such program" -
+    # on the one path nobody exercises until a computer is new. Checked per role
+    # rather than globally, because the whole point of a role list is that it is
+    # allowed to be missing things.
+    foreach ($name in $set) {
+      $path = Join-Path $repo "src/$name"
+      if (-not (Test-Path $path)) { continue }
+      foreach ($match in [regex]::Matches((Get-Content $path -Raw), 'shell\.run\(\s*"([\w/\.]+)"')) {
+        $wanted = $match.Groups[1].Value
+        if ($set -notcontains $wanted) {
+          $roleDrift += "$role ships $name, which runs $wanted, which $role does not have"
+        }
+      }
+    }
   }
 
   $shippedDirs = @(($listed | Where-Object { $_ -match "/" } |

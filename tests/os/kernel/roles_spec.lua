@@ -54,11 +54,20 @@ it("every form factor is offered something", function()
   end
 end)
 
-it("a turtle is offered turtle, and not client", function()
+it("a turtle is offered everything except the handheld", function()
+  -- Client used to be withheld from a turtle, on the reasoning that a turtle is
+  -- a thing that moves. It is a thing that moves *when it is running the turtle
+  -- OS* - the role picks the operating system, and a client has no job runner,
+  -- so a turtle client sits exactly as still as a computer does.
+  --
+  -- What that buys is a GPS host that is not a fleet authority. A constellation
+  -- needs four, and offering only Server for the job would put four registries
+  -- and four sets of sector leases in the world to get four beacons.
   local offered = keysOf(roles.offered(caps({ turtle = true })))
   expect.truthy(offered[roles.TURTLE], "turtle")
-  expect.falsy(offered[roles.CLIENT], "a turtle is not a client")
-  expect.falsy(offered[roles.MOBILE], "nor a handheld")
+  expect.truthy(offered[roles.CLIENT], "and a client, which is a turtle that only hosts GPS")
+  expect.truthy(offered[roles.SERVER], "and a server, chunk loading permitting")
+  expect.falsy(offered[roles.MOBILE], "but never a handheld")
 end)
 
 it("a pocket computer is offered only the handheld", function()
@@ -250,4 +259,41 @@ it("a handheld with no modem is warned, not refused", function()
   expect.contains(note, "modem", "with a warning")
 
   expect.falsy(roles.check(roles.MOBILE, { pocket = false }), "but a computer is not a handheld")
+end)
+
+it("a turtle may be a GPS host without becoming a fleet authority", function()
+  -- A constellation needs four hosts, and the cheapest host is a machine that
+  -- sits still and answers. Making somebody choose Server for that would put a
+  -- fleet authority on four machines to get four beacons - and four authorities
+  -- is four registries, four sets of sector leases, and two turtles in one
+  -- shaft.
+  local caps = { turtle = true, modem = true, wireless = true, located = true }
+  local offered = {}
+  for _, entry in ipairs(roles.offered(caps)) do
+    offered[entry.key] = true
+  end
+
+  expect.truthy(offered[roles.CLIENT], "a turtle may be a client")
+  expect.truthy(offered[roles.TURTLE], "and still a turtle")
+  expect.truthy(offered[roles.SERVER], "and still a server")
+  expect.falsy(offered[roles.MOBILE], "but never a handheld")
+end)
+
+it("a turtle server is still held to what a server needs", function()
+  -- The check returned early for a turtle, before looking at the modem or the
+  -- position - so a turtle server with neither passed the one function whose
+  -- whole job is to catch that.
+  local blind = roles.check(roles.SERVER, { turtle = true })
+  expect.falsy(blind, "no modem is still no modem")
+
+  local lost = roles.check(roles.SERVER, { turtle = true, modem = true })
+  expect.falsy(lost, "and a host that does not know where it is cannot host")
+
+  local ok, why = roles.check(roles.SERVER, {
+    turtle = true,
+    modem = true,
+    located = true,
+  })
+  expect.truthy(ok, "with both, it is allowed")
+  expect.contains(why, "chunk-loaded", "and warned about the thing that is left")
 end)

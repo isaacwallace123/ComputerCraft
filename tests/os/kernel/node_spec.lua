@@ -147,7 +147,7 @@ end)
 -- The menu
 ---------------------------------------------------------------------------
 
-it("a turtle is offered turtle and server, with the caveat attached", function()
+it("a turtle is offered every role it can actually be", function()
   local caps = { turtle = true, modem = true, wireless = true, located = true, chunkLoaded = false }
   local offered = node.choices(caps)
 
@@ -159,6 +159,12 @@ it("a turtle is offered turtle and server, with the caveat attached", function()
   expect.truthy(byKey[roles.TURTLE], "it can be a turtle")
   expect.truthy(byKey[roles.SERVER], "and a chunk-loaded one can be a server (D022)")
   expect.contains(byKey[roles.SERVER].warn, "Chunky", "warned about the chunk it must keep loaded")
+
+  -- And a client, which is what a GPS-only turtle is. A constellation needs
+  -- four hosts; making somebody pick Server for each would put four fleet
+  -- authorities in the world to get four beacons.
+  expect.truthy(byKey[roles.CLIENT], "and a client, which is a turtle that only hosts GPS")
+  expect.contains(byKey[roles.CLIENT].warn, "never moves", "and told what that means")
 end)
 
 it("a computer with no modem is offered the server role, and told what it needs", function()
