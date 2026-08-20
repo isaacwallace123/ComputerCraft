@@ -135,6 +135,7 @@ marked, because changing the wrong one produces a passing build and no change in
 | the 1 MB disk limit, and what fits under it | `tools/build.ps1`, the `size` section of `tools/check.ps1` |
 | seeing the new UI on real hardware | `src/apps/showcase/main.lua`, then run apps/showcase in game |
 | updater/bootstrap | `bootstrap.lua`, `src/update.lua`, `tools/make-manifest.ps1` |
+| what an update deletes, and what it must not | `src/lib/prune.lua`, `tests/lib/prune_spec.lua` |
 | version automation | `.github/workflows/icos-version.yml`, `src/lib/version.lua` |
 
 Every path in this table is checked by `tools\check-docs.ps1`. It was allowed to rot to

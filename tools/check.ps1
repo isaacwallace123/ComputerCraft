@@ -9,6 +9,7 @@
   - lua-language-server --check   type and nil-safety errors
   - selene                        lint against the CC: Tweaked standard library
   - stylua --check                formatting
+  - manifest.json                 still a description of the tree
   - build.ps1 -MeasureOnly        does the tree still fit on a CC computer
 
   Anything not installed is skipped with a note rather than failing the run.
@@ -195,6 +196,71 @@ if ($stylua) {
 }
 else {
   Write-Host "  skipped (install the johnnymorganz.stylua extension)" -ForegroundColor DarkGray
+}
+
+# Is the manifest still a description of the tree?
+#
+# Two lists that go stale silently, and both have. `files` is what `update.lua`
+# downloads: a new module missing from it simply never reaches a machine, and the
+# first symptom is a require failing in world. `bootstrap` is what a fresh
+# install fetches before `update` can run, and it named three files that the
+# D039 restructure had deleted - so installing onto a new computer 404'd, on the
+# one path nobody exercises until they need it.
+#
+# Neither is checkable by reading the manifest, because a stale manifest is a
+# perfectly well-formed one. It has to be compared against the tree.
+Write-Host "== manifest ==" -ForegroundColor Cyan
+$manifestPath = Join-Path $repo "src\manifest.json"
+if (Test-Path $manifestPath) {
+  $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+  $onDisk = @(Get-ChildItem (Join-Path $repo "src") -Recurse -File -Filter *.lua |
+      ForEach-Object { $_.FullName.Substring((Join-Path $repo "src").Length + 1).Replace("\", "/") } |
+      Sort-Object)
+
+  $listed = @($manifest.files)
+  $missing = @($onDisk | Where-Object { $listed -notcontains $_ })
+  $extra = @($listed | Where-Object { $onDisk -notcontains $_ })
+
+  foreach ($name in $missing) { Write-Host "  not in the manifest: $name" -ForegroundColor Red }
+  foreach ($name in $extra) { Write-Host "  in the manifest but not on disk: $name" -ForegroundColor Red }
+
+  # The bootstrap set, recomputed the same way `make-manifest.ps1` computes it.
+  $seen = [System.Collections.Generic.HashSet[string]]::new()
+  $queue = [System.Collections.Generic.Queue[string]]::new()
+  $queue.Enqueue("update.lua")
+  $broken = @()
+  while ($queue.Count -gt 0) {
+    $relative = $queue.Dequeue()
+    if (-not $seen.Add($relative)) { continue }
+    $path = Join-Path $repo "src\$relative"
+    if (-not (Test-Path $path)) { $broken += $relative; continue }
+    foreach ($match in [regex]::Matches((Get-Content $path -Raw), 'require\("([\w\.]+)"\)')) {
+      $queue.Enqueue($match.Groups[1].Value.Replace(".", "/") + ".lua")
+    }
+  }
+  $wantBootstrap = @($seen | Sort-Object)
+  $haveBootstrap = @($manifest.bootstrap | Sort-Object)
+  $bootstrapDrift = @(Compare-Object $wantBootstrap $haveBootstrap)
+
+  foreach ($name in $broken) { Write-Host "  update.lua requires a missing $name" -ForegroundColor Red }
+  foreach ($row in $bootstrapDrift) {
+    Write-Host ("  bootstrap list {0} {1}" -f
+      $(if ($row.SideIndicator -eq "<=") { "is missing" } else { "should not have" }),
+      $row.InputObject) -ForegroundColor Red
+  }
+
+  if ($missing.Count -or $extra.Count -or $broken.Count -or $bootstrapDrift.Count) {
+    Write-Host "  run: .\tools\make-manifest.ps1" -ForegroundColor Yellow
+    $failed = $true
+  }
+  else {
+    Write-Host ("  {0} files listed, {1} of them needed to bootstrap" -f
+      $listed.Count, $haveBootstrap.Count)
+  }
+}
+else {
+  Write-Host "  src\manifest.json is missing" -ForegroundColor Red
+  $failed = $true
 }
 
 # Does the tree still fit on a CC computer?

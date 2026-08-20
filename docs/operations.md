@@ -12,6 +12,14 @@ Leave the token blank for the public repository. The configured default branch i
 `master`, not `main`. After download, choose a role and label; setup reboots the
 machine automatically.
 
+`bootstrap.lua` fetches `src/manifest.json`, installs the handful of files listed there as
+`bootstrap` - the transitive requires of `update.lua`, computed by
+`tools\make-manifest.ps1` - and hands over to `update.lua` for the rest. That list used to
+be four literal filenames in `bootstrap.lua`, and the D039 restructure deleted three of
+them: every check passed, every machine that already had ICOS kept updating, and only a
+fresh install was broken. `tools\check.ps1` now compares the manifest against the tree on
+every run.
+
 For a private repository, use `tools\print-bootstrap.ps1` on the development computer
 and paste its generated Lua command into the in-game `lua` prompt. Do not publish the
 token-bearing command.
@@ -343,6 +351,33 @@ manifest generation, checks, commit, and push, so do not run it merely to verify
 
 Installed machines check for updates on boot when `.node.autoUpdate` is enabled. You
 can also use Update on the base or update/update-all in Devices.
+
+### What an update does to the disk
+
+Two things worth knowing, because both are new and both are about the 1 MB limit.
+
+**Comments are stripped on the way in.** The tree in the repository is about 1.2 MB and
+`computer_space_limit` is 1,000,000 bytes, which is not something you can raise on
+somebody else's server. `update.lua` blanks every comment-only line as each file arrives,
+which takes it to around 550 KB. Blanked rather than deleted, so `apps/job/app.lua:207` in
+an error still points at line 207 of the file you open here. It is the same rule
+`tools\build.ps1` applies, and the two produce byte-identical files - which is what keeps
+the fingerprint on the update screen comparable between a machine that updated over the
+network and one that was copied from a build.
+
+**Files this build does not have are deleted, before the download.** An updater that only
+wrote would leave a machine holding both trees, and a machine coming from ICOS 1 would
+hold `core/`, `fleet/`, `miner/`, `mine/`, `jobs/` and `turtle/` on top of the 550 KB it
+just fetched. That does not fit, so the download fills the disk part-way and the machine
+boots into half a tree.
+
+Only directories ICOS has ever shipped are considered, and nothing beginning with a dot is
+ever touched - so a program you wrote on the computer is safe, and so is every file the OS
+persists. The rules are `src/lib/prune.lua`; the update screen reports the count as
+`removed`.
+
+Updating a live ICOS 1 machine to a current build removes 59 files and keeps its `.node`,
+`.nav`, `.mine`, `.log` and saved position.
 
 ## Starting a coordinated quarry
 

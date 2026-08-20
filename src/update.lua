@@ -9,8 +9,17 @@
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
+-- Every require this program will ever make, at the top.
+---
+--- Not a style preference. `prune()` below deletes files while this is running,
+--- and a `require` after that point would be a require of something that may
+--- have just been removed and not yet downloaded. Loading them here puts them in
+--- `package.loaded`, where the disk cannot reach them.
 local console = require("os.kernel.console")
 local config = require("adapters.cc.config")
+local sound = require("adapters.cc.sound")
+local ccScreen = require("adapters.cc.screen")
+local prune = require("lib.prune")
 
 local CONFIG_PATH = ".update"
 local RESULT_PATH = ".update-result"
@@ -236,7 +245,7 @@ end
 --- that could not draw its own failure would be the worst possible thing to be
 --- unable to draw - it runs at the moment the files it is drawing with are
 --- being replaced.
-local screen = console.new(require("adapters.cc.screen").new(term))
+local screen = console.new(ccScreen.new(term))
 local T = console.TOKENS
 
 --- Repaint the whole screen. Cheap enough to call per file, and redrawing
@@ -317,6 +326,61 @@ local expected = {}
 local changed, unchanged, failed = 0, 0, 0
 local bytes = 0
 
+-- ------------------------------------------------------------------ pruning
+
+--- Every file under a directory, skipping anything ICOS persists.
+local function walk(dir, into)
+  for _, name in ipairs(fs.list(dir)) do
+    local path = dir == "" and name or (dir .. "/" .. name)
+    if not prune.persisted(path) then
+      if fs.isDir(path) then
+        walk(path, into)
+      else
+        into[#into + 1] = path
+      end
+    end
+  end
+end
+
+--- Delete what this build does not have, before downloading what it does.
+---
+--- Before rather than after, and the order is the point: pruning afterwards
+--- cannot help a disk that filled up during the download. The cost is that an
+--- update which then fails over the network leaves a partial old tree - but that
+--- machine was going to end up with a partial *new* tree anyway, and this one is
+--- fixed by running `update` again.
+---
+--- Safe to do while running, because everything this program needs is already
+--- required and therefore already in `package.loaded`. That is why every require
+--- in this file is at the top of it.
+---
+--- The decision is `lib/prune.lua`'s and the filesystem is this function's. Only
+--- one of those two can be a spec, and it is the one that decides.
+local function sweep()
+  local found = {}
+  for _, root in ipairs(prune.roots(files)) do
+    if fs.exists(root) and fs.isDir(root) then
+      walk(root, found)
+    end
+  end
+  for _, name in ipairs(prune.RETIRED_FILES) do
+    if fs.exists(name) and not fs.isDir(name) then
+      found[#found + 1] = name
+    end
+  end
+
+  local removed = 0
+  for _, path in ipairs(prune.stale(files, found)) do
+    if not fs.isReadOnly(path) and pcall(fs.delete, path) then
+      removed = removed + 1
+    end
+  end
+  return removed
+end
+
+draw("cleaning", 0, 1, "removing files this build does not have")
+local pruned = sweep()
+
 for index, name in ipairs(files) do
   draw("downloading", index - 1, total, name)
 
@@ -383,6 +447,7 @@ config.save(RESULT_PATH, {
   message = ok and "update verified" or "update verification failed",
   changed = changed,
   unchanged = unchanged,
+  removed = pruned,
   failed = failed,
   commit = ref,
 })
@@ -395,16 +460,20 @@ screen:line(4, "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (bra
 
 screen:line(6, ("%-10s %d"):format("updated", changed), changed > 0 and T.good or T.mutedFg)
 screen:line(7, ("%-10s %d"):format("unchanged", unchanged), T.mutedFg)
-screen:line(8, ("%-10s %d"):format("failed", failed), failed > 0 and T.destructive or T.mutedFg)
+-- Reported rather than done quietly. A machine coming from a build with a
+-- different shape deletes a few hundred files here, and somebody watching an
+-- update remove most of a fleet OS is owed the number.
+screen:line(8, ("%-10s %d"):format("removed", pruned), pruned > 0 and T.warn or T.mutedFg)
+screen:line(9, ("%-10s %d"):format("failed", failed), failed > 0 and T.destructive or T.mutedFg)
 
 screen:line(
-  10,
+  11,
   ("%-10s %d/%d files, %dkB"):format("verified", verified, total, math.floor(bytes / 1024)),
   ok and T.good or T.destructive
 )
-screen:line(11, ("%-10s %s"):format("fingerprint", hex(fingerprint)), T.accent)
+screen:line(12, ("%-10s %s"):format("fingerprint", hex(fingerprint)), T.accent)
 
-local row = 13
+local row = 14
 for _, problem in ipairs(broken) do
   if row >= height - 1 then
     break
@@ -432,12 +501,12 @@ screen:present()
 
 -- A tone, because an automatic update runs unattended and the thing somebody
 -- wants to know from across the room is whether it worked.
-require("adapters.cc.sound").play(ok and "confirm" or "error")
+sound.play(ok and "confirm" or "error")
 
 -- Sound is optional: a machine with no speaker just updates quietly, and a
 -- missing module must never be able to break updating itself.
 pcall(function()
-  require("adapters.cc.sound").play(ok and "ready" or "error")
+  sound.play(ok and "ready" or "error")
 end)
 
 if ok and rebootAfter then

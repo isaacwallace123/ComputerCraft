@@ -1,5 +1,18 @@
 {
-    "generated":  "2026-08-19T23:39:39-04:00",
+    "generated":  "2026-08-19T23:50:49-04:00",
+    "bootstrap":  [
+                      "adapters/cc/config.lua",
+                      "adapters/cc/screen.lua",
+                      "adapters/cc/sound.lua",
+                      "lib/prune.lua",
+                      "os/kernel/console.lua",
+                      "ports/contract.lua",
+                      "ports/screen.lua",
+                      "ui/format.lua",
+                      "ui/render/buffer.lua",
+                      "ui/theme.lua",
+                      "update.lua"
+                  ],
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -63,6 +76,7 @@
                   "domain/turtle/lifecycle.lua",
                   "domain/turtle/settings.lua",
                   "icos.lua",
+                  "lib/prune.lua",
                   "lib/util.lua",
                   "lib/version.lua",
                   "os/client/desktop.lua",
