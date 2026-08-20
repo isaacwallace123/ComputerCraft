@@ -128,22 +128,22 @@ it("the page says how long a service held the machine", function()
   expect.equal(services.peakTone({ slowest = 25 }), T.destructive, "past the whole world's tick")
 end)
 
-it("a turtle gets the Services page without a turtle version being written", function()
-  -- The whole benefit of filtering by surface. Somebody standing in front of a
-  -- stopped turtle wants "job: gave up - bedrock", and that page appeared by
-  -- declaring the surface rather than by being ported.
-  local available = registry.available("turtle", "launcher")
+it("a client gets the Services page without a client version being written", function()
+  -- The whole benefit of filtering by role. A client shows almost nothing
+  -- technical, and this is the one page it keeps - "which of my machine's own
+  -- services stopped" is not a fleet question - and it appeared by declaring the
+  -- role rather than by being ported.
+  local available = registry.available("client", "desktop")
   local ids = {}
   for _, entry in ipairs(available) do
     ids[entry.id] = true
   end
   expect.truthy(ids.services, "the diagnostic page is there")
 
-  -- Devices is deliberately not there: a turtle showing a fleet roster would be
-  -- a turtle drawing something it has no copy of.
-  for _, entry in ipairs(available) do
-    expect.falsy(entry.id == "devices", "no fleet roster on a turtle")
-  end
+  -- Devices is deliberately not there: a client showing a fleet roster would be
+  -- a client drawing something it has no copy of, and this is the machine for
+  -- somebody who does not run the fleet.
+  expect.falsy(ids.devices, "no fleet roster on a client")
 end)
 
 it("a turtle's supervisor is on its context, so the page has something to read", function()

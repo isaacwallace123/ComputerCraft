@@ -43,6 +43,7 @@ local client = require("os.client.main")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
 local wire = require("domain.protocol.message")
+local peer = require("domain.protocol.peer")
 
 local mobile = {}
 
@@ -86,8 +87,18 @@ mobile.sync = service.define({
 
   run = function(context)
     while true do
-      context.transport.broadcast(wire.stamp({ kind = mobile.REQUEST }), mobile.PROTOCOL)
+      peer.send(
+        context.peer,
+        context.transport,
+        wire.stamp({ kind = mobile.REQUEST }),
+        mobile.PROTOCOL,
+        context.clock.now()
+      )
       local sender, message, protocol = context.transport.receive(mobile.PROTOCOL, mobile.SYNC)
+
+      if sender ~= nil and protocol == mobile.PROTOCOL then
+        peer.remember(context.peer, sender, context.clock.now())
+      end
 
       local heard = sender ~= nil
         and protocol == mobile.PROTOCOL

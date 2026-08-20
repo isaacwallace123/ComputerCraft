@@ -98,17 +98,25 @@ it("the turtle's own page has no controls at all", function()
   expect.falsy(app.fields, "and no form to write them from")
 end)
 
-it("it is still the page a turtle shows, and only that", function()
-  -- Removing the controls must not remove the page. Somebody walks to a turtle
-  -- to find out what it is doing, and that question still has an answer.
+it("the base still has a page for one turtle, and the turtle no longer runs it", function()
+  -- The question "what is this turtle doing" still has an answer; the machine
+  -- that answers it changed. A turtle draws `os/turtle/screen.lua` now - one
+  -- page, no framework - because the framework cost about three milliseconds and
+  -- eighteen modules out of a budget every computer in the world shares.
   local entry = registry.find("job")
-  expect.truthy(entry ~= nil, "registered")
+  expect.truthy(entry ~= nil, "the base station page is still registered")
 
-  local surfaces = {}
-  for _, name in ipairs((entry or {}).surfaces or {}) do
-    surfaces[name] = true
+  local roles = {}
+  for _, name in ipairs((entry or {}).roles or {}) do
+    roles[name] = true
   end
-  expect.truthy(surfaces.launcher, "on a turtle's own screen")
+  expect.truthy(roles.server, "on the base")
+  expect.falsy(roles.turtle, "and not on the turtle itself")
+
+  -- And nothing at all is offered on a turtle's own screen, which is what makes
+  -- the saving real rather than cosmetic: no registry walk, no app modules, no
+  -- `ui.init`.
+  expect.equal(#registry.available("turtle", "launcher"), 0)
 end)
 
 it("an empty tank is never drawn as full, whatever the job declares", function()

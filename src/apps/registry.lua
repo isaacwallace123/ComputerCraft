@@ -125,24 +125,24 @@ registry.APPS = {
     name = "Services",
     glyph = "\15", -- sun: what is running
     module = "apps.services.app",
-    roles = { "server", "client", "turtle", "mobile" },
-    surfaces = { "desktop", "monitor", "handheld", "launcher" },
+    roles = { "server", "client", "mobile" },
+    surfaces = { "desktop", "monitor", "handheld" },
   },
   {
     id = "logs",
     name = "Logs",
     glyph = "\29", -- lines: a record
     module = "apps.logs.app",
-    roles = { "server", "turtle" },
-    surfaces = { "desktop", "monitor", "launcher" },
+    roles = { "server" },
+    surfaces = { "desktop", "monitor" },
   },
   {
     id = "hardware",
     name = "Hardware",
     glyph = "\247", -- plug: what is attached
     module = "apps.hardware.app",
-    roles = { "server", "turtle" },
-    surfaces = { "desktop", "monitor", "launcher" },
+    roles = { "server" },
+    surfaces = { "desktop", "monitor" },
   },
 
   ---------------------------------------------------------------------------
@@ -154,8 +154,8 @@ registry.APPS = {
     name = "Job",
     glyph = "\18", -- up-down arrow: a shaft being worked
     module = "apps.job.app",
-    roles = { "turtle", "server" },
-    surfaces = { "launcher", "desktop" },
+    roles = { "server" },
+    surfaces = { "desktop" },
   },
 }
 

@@ -50,26 +50,12 @@
 local agent = require("os.turtle.agent")
 local control = require("os.turtle.control")
 local gps = require("os.kernel.services.gps")
-local ticker = require("os.kernel.services.ticker")
+local peer = require("domain.protocol.peer")
 local jobs = require("domain.turtle.jobs")
-local reactive = require("ui.state.reactive")
 local legacyLink = require("os.turtle.legacy")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
 local wire = require("domain.protocol.message")
-
---- The value every page recomputes from.
----
---- One scope for the machine's whole life, holding one number. It is never
---- destroyed, which is correct rather than a leak: the thing it belongs to is
---- the machine, and the machine stopping is the process ending.
----
---- Owned here rather than by a page, so every page advances together and none of
---- them has to invent a clock of its own - which is what they were all doing,
---- each with a `Value(0)` that nothing incremented.
-local function machineTick()
-  return reactive.scoped():Value(0)
-end
 
 local turtleOs = {}
 
@@ -171,9 +157,18 @@ turtleOs.heartbeat = service.define({
   run = function(context)
     while true do
       local snapshot = context.snapshot()
-      context.transport.broadcast(
+
+      -- To the base if we know which computer it is, and to everybody only
+      -- until it has answered once. A broadcast wakes every machine in range and
+      -- makes each one resume every service it has to discard the message; see
+      -- `domain/protocol/peer.lua` for why that is the fleet's problem and not
+      -- just this turtle's.
+      peer.send(
+        context.peer,
+        context.transport,
         wire.stamp(agent.heartbeat(context.state, snapshot)),
-        turtleOs.PROTOCOL
+        turtleOs.PROTOCOL,
+        context.clock.now()
       )
 
       -- A short receive rather than a sleep, so a reply is picked up as soon as
@@ -182,6 +177,8 @@ turtleOs.heartbeat = service.define({
       local sender, message, protocol =
         context.transport.receive(turtleOs.PROTOCOL, turtleOs.HEARTBEAT)
       if sender ~= nil and protocol == turtleOs.PROTOCOL then
+        -- Whoever answered is who to ask next time.
+        peer.remember(context.peer, sender, context.clock.now())
         turtleOs.orders(context, message)
 
         -- Anything else that needs to see a message registers here, for the
@@ -273,8 +270,17 @@ turtleOs.controls = service.define({
 --- `ccfleet` side, and it exists only for the window in which an upgraded turtle
 --- is talking to a base that has not been upgraded yet. §12 says that window is
 --- the normal case during a rolling update, because turtles update before the
---- base does. The switch that ends the dual run is deleting
---- `os/turtle/legacy.lua`, which is one decision taken once.
+--- base does. It now falls silent on its own once an ICOS 2 base answers, so the
+--- cost of keeping it is nothing on a converged fleet.
+---
+--- **No ticker.** Every other machine has one because its pages recompute from a
+--- value that has to move; a turtle's screen is `os/turtle/screen.lua`, which
+--- redraws when what it says changes and not on a clock. Keeping it would be a
+--- queued event every second that wakes every service on the machine so that
+--- nothing can look at it - and on a shared budget, so that nothing on any other
+--- machine can either.
+---
+--- That also takes `ui/state/reactive.lua` off the turtle entirely.
 function turtleOs.services()
   return {
     turtleOs.job,
@@ -282,7 +288,6 @@ function turtleOs.services()
     turtleOs.controls,
     legacyLink.service,
     gps.service,
-    ticker.service,
   }
 end
 
@@ -326,7 +331,6 @@ function turtleOs.boot(ports, options)
     -- and says so, because the first thing somebody does is reboot it.
     screen = ports.screen,
     input = ports.input,
-    tick = machineTick(),
     saveLocation = ports.saveLocation,
 
     -- A turtle owns nothing the fleet cares about, so its pages ask over the
@@ -345,22 +349,27 @@ function turtleOs.boot(ports, options)
     node = options.node or {},
     flags = options.flags or {},
 
+    -- Who answered last, so the next heartbeat is a message rather than a shout.
+    peer = peer.empty(),
+
     snapshot = options.snapshot or function()
       return {}
     end,
     runJob = options.runJob or function() end,
 
-    -- The launcher, not a stub. A turtle whose controls service does nothing is
-    -- a turtle somebody has to diagnose by reading a log file over the top of a
-    -- program that is still running.
+    -- One page, drawn straight at the screen port - not the desktop.
+    --
+    -- The framework costs about three milliseconds and eighteen modules to load,
+    -- keeps a reactive graph, a layout solver and a double buffer alive for the
+    -- life of the machine, and re-solves a tree whenever the tick moves. What it
+    -- bought here was an app switcher for four pages on a 39x13 screen that
+    -- somebody looks at after walking to a stopped turtle.
+    --
+    -- That is not a trade worth making at any price, and CC charges it to a
+    -- budget the whole world shares - so a turtle drawing a desktop is spending
+    -- the base station's time. See `os/turtle/screen.lua`.
     runControls = options.runControls or function(inner)
-      return require("os.client.desktop").run(inner, {
-        role = "turtle",
-        surface = "launcher",
-        -- A turtle's screen is 39x13 with the job's own status above it, so the
-        -- table gets what is left rather than a client's eight rows.
-        capacity = 5,
-      })
+      return require("os.turtle.screen").run(inner)
     end,
   }
 

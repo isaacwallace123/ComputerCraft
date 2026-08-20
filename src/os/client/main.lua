@@ -37,6 +37,7 @@
 --- by hand.
 
 local gps = require("os.kernel.services.gps")
+local peer = require("domain.protocol.peer")
 local ticker = require("os.kernel.services.ticker")
 local reactive = require("ui.state.reactive")
 local registry = require("domain.fleet.registry")
@@ -155,9 +156,20 @@ client.sync = service.define({
 
   run = function(context)
     while true do
-      context.transport.broadcast(wire.stamp({ kind = client.REQUEST }), client.PROTOCOL)
+      -- Addressed to the server once it has answered once. Every three seconds
+      -- forever is the most frequent thing a client does, and as a broadcast it
+      -- woke every machine in range to deliver a question one of them wanted.
+      peer.send(
+        context.peer,
+        context.transport,
+        wire.stamp({ kind = client.REQUEST }),
+        client.PROTOCOL,
+        context.clock.now()
+      )
+
       local sender, message, protocol = context.transport.receive(client.PROTOCOL, client.SYNC)
       if sender ~= nil and protocol == client.PROTOCOL then
+        peer.remember(context.peer, sender, context.clock.now())
         client.absorb(context, message)
       end
     end
@@ -222,6 +234,10 @@ function client.boot(ports, options)
     -- whenever the machine was last on - which on a monitor in a corner could
     -- be days. Three seconds of blankness is the honest alternative.
     state = { fleet = registry.empty() },
+
+    -- Which computer answered the last mirror request. See
+    -- `domain/protocol/peer.lua`: a broadcast is charged to everybody.
+    peer = peer.empty(),
 
     tick = machineTick(),
 

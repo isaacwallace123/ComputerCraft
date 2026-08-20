@@ -121,15 +121,19 @@ it("only two levels are coloured, because a log of all colours has none", functi
   expect.equal(logs.tone("info"), T.foreground, "and the majority stays plain")
 end)
 
-it("Logs reaches every surface, including the one that needs it most", function()
-  -- `edit .log` on a turtle whose screen is thirteen rows and whose program is
-  -- still running is not a thing anybody does at 2am.
-  local onTurtle = registry.available("turtle", "launcher")
-  local found = false
-  for _, entry in ipairs(onTurtle) do
-    if entry.id == "logs" then
-      found = true
-    end
+it("Logs is a base station page, and a turtle has no pages at all", function()
+  -- It used to be on a turtle too, and that was the right call while a turtle
+  -- ran the UI framework. It does not any more: the framework costs about three
+  -- milliseconds and eighteen modules, charged to a budget every computer in the
+  -- world shares, to give a 39x13 screen an app switcher.
+  --
+  -- What a turtle shows is `os/turtle/screen.lua` - one page, drawn straight at
+  -- the port. Reading a turtle's log is what the base is for.
+  expect.equal(#registry.available("turtle", "launcher"), 0, "a turtle offers no apps")
+
+  local onServer = {}
+  for _, entry in ipairs(registry.available("server", "desktop")) do
+    onServer[entry.id] = true
   end
-  expect.truthy(found, "a turtle can read its own log")
+  expect.truthy(onServer.logs, "and the base still reads them")
 end)

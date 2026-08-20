@@ -42,6 +42,7 @@
 --- lived here would be a rule that applies to half of a rolling update, which is
 --- how one system becomes two.
 
+local peer = require("domain.protocol.peer")
 local service = require("os.kernel.service")
 local wire = require("domain.protocol.message")
 
@@ -63,7 +64,30 @@ legacy.HEARTBEAT = 2
 --- hands over ICOS 1's own `ctx:snapshot()`, so the two protocols carry
 --- identical contents and differ only in the wrapper. That is what makes this a
 --- translation rather than a second implementation.
+--- Whether this turtle still needs to speak ICOS 1 at all.
+---
+--- No, once an ICOS 2 server has answered it. `domain/protocol/peer.lua` holds
+--- the address of whoever replied to the last heartbeat, and a turtle with a
+--- live ICOS 2 base has nothing left to say to an ICOS 1 one - §12's dual run is
+--- over for that device, whatever the rest of the fleet is doing.
+---
+--- Worth its own function because the cost is not small. This loop *broadcasts*,
+--- so every beat wakes every computer in range and makes each resume every
+--- service it has to discard the message - and it beat every two seconds
+--- alongside the ICOS 2 heartbeat, which means each turtle was waking the whole
+--- world twice as often as it needed to. On a shared ten-millisecond budget
+--- (see `domain/protocol/peer.lua`) that is other machines' time.
+---
+--- Self-disabling rather than a setting. A flag would be a thing somebody has to
+--- know to turn off, and the machine already has the evidence.
+function legacy.needed(context)
+  return peer.address(context.peer, context.clock.now()) == nil
+end
+
 function legacy.beat(context)
+  if not legacy.needed(context) then
+    return nil
+  end
   local snapshot = context.snapshot()
   context.transport.broadcast(wire.wrap("status", snapshot, context.clock.now()), legacy.PROTOCOL)
   return snapshot
@@ -130,6 +154,10 @@ legacy.service = service.define({
     while true do
       legacy.beat(context)
 
+      -- Still listening even when it has stopped speaking. Hearing an ICOS 1
+      -- base costs nothing this turtle can avoid - the message arrives whether
+      -- or not it is read - and a turtle that stopped reading would be a turtle
+      -- that ignores a recall from the only base that can still send one.
       local sender, envelope, protocol =
         context.transport.receive(legacy.PROTOCOL, legacy.HEARTBEAT)
       if sender ~= nil and protocol == legacy.PROTOCOL then
