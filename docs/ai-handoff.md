@@ -107,6 +107,10 @@ marked, because changing the wrong one produces a passing build and no change in
 | what a device should be doing | `src/domain/fleet/desired.lua`, `src/os/server/services/reconcile.lua` |
 | drop-offs and which one to use | `src/domain/depot/list.lua`, `src/domain/depot/select.lua` |
 | auto-recovery rules | `src/domain/fleet/policy.lua`, `src/os/server/services/policy.lua` |
+| accounts, balances, and the audit trail | `src/domain/bank/ledger.lua` (pure), `src/os/server/services/bank.lua`, `src/apps/bank/app.lua` |
+| what is plugged in, and which mods are reachable | `src/ports/peripherals.lua`, `src/adapters/cc/peripherals.lua`, `src/domain/hardware/kinds.lua`, `src/apps/hardware/app.lua` |
+| disk drives and floppies | `src/apps/disks/app.lua` |
+| how a page asks for something to change | `src/os/kernel/request.lua` |
 | a server-side service, or a new one | `src/os/server/main.lua`, `src/os/server/services/` |
 | running services, restarts, health | `src/os/kernel/supervisor.lua`, `src/os/kernel/service.lua`, `src/apps/services/app.lua` |
 | the log, and what reads it | `src/ports/log.lua`, `src/adapters/cc/log.lua`, `src/apps/logs/app.lua` |

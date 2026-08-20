@@ -125,6 +125,40 @@ icons.gps = sprite.new({
   "...77...",
 })
 
+--- Hardware: a chip with legs.
+icons.hardware = sprite.new({
+  "..3..3..",
+  ".077770.",
+  "30777703",
+  "30777703",
+  ".077770.",
+  "..3..3..",
+})
+
+--- Disks: a floppy, with its shutter and its label.
+icons.disks = sprite.new({
+  "00000000",
+  "0.7777.0",
+  "0.7777.0",
+  "00000000",
+  "0.0000.0",
+  "0.0000.0",
+})
+
+--- The bank: a vault door, and what is behind it.
+---
+--- A building with columns would be the obvious drawing and is unreadable at
+--- eight pixels - the columns land on alternate pixels and read as noise. A
+--- disc with a handle is one shape, and one shape is what survives this size.
+icons.bank = sprite.new({
+  ".000000.",
+  "0.7777.0",
+  "07.77.70",
+  "07.77.70",
+  "0.7777.0",
+  ".000000.",
+})
+
 ---------------------------------------------------------------------------
 -- Ores
 ---------------------------------------------------------------------------

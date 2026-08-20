@@ -92,6 +92,11 @@ function shell.apps()
     require("apps.automation.app"),
     require("apps.operations.app"),
     require("apps.gps.app"),
+    -- The other half of what a base is for. §2 calls a server the fleet's
+    -- authority; the bank is the second thing it is authoritative about, and it
+    -- is on this list rather than a list of its own because a person opening a
+    -- window does not care which service owns the state behind it.
+    require("apps.bank.app"),
     require("apps.hardware.app"),
     require("apps.disks.app"),
     require("apps.console.app"),

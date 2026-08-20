@@ -328,6 +328,11 @@ function turtleOs.boot(ports, options)
     input = ports.input,
     tick = machineTick(),
     saveLocation = ports.saveLocation,
+
+    -- A turtle owns nothing the fleet cares about, so its pages ask over the
+    -- radio like a client's do. See `os/kernel/request.lua` for why this is a
+    -- function on the context rather than each page reaching for the transport.
+    request = require("os.kernel.request").remote(ports.transport, wire.NAME),
     log = ports.log,
 
     -- What this turtle has already carried out, read from disk. A missing file

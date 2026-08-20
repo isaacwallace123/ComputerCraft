@@ -39,7 +39,10 @@ end)
 it("a modded block is classified by what it does, not by who made it", function()
   -- The point of matching on the bare type: nothing in KNOWN names this mod, and
   -- the block still classifies as storage.
-  expect.equal(kinds.classify({ ["sophisticatedstorage:barrel"] = true, inventory = true }), "storage")
+  expect.equal(
+    kinds.classify({ ["sophisticatedstorage:barrel"] = true, inventory = true }),
+    "storage"
+  )
 end)
 
 it("storage loses to anything more specific", function()

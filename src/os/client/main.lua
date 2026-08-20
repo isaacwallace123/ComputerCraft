@@ -40,6 +40,7 @@ local gps = require("os.kernel.services.gps")
 local ticker = require("os.kernel.services.ticker")
 local reactive = require("ui.state.reactive")
 local registry = require("domain.fleet.registry")
+local request = require("os.kernel.request")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
 local wire = require("domain.protocol.message")
@@ -107,6 +108,17 @@ function client.absorb(context, message)
   if type(message.mine) == "table" then
     context.state.mine = message.mine
   end
+
+  -- Same rule, and it matters more here. A mirror arriving from a server with no
+  -- bank must not blank the balances a page is showing: "we have not heard"
+  -- reads as zero, and zero in a bank is a specific and alarming claim.
+  if type(message.bank) == "table" then
+    context.state.bank = message.bank
+  end
+  -- The audit is different: nil is a real answer. It means no vault is named or
+  -- the chest is unreachable, and holding on to the last count would leave a
+  -- page reporting a chest nobody can see any more.
+  context.state.vault = message.vault
 
   context.syncedAt = context.clock.now()
   return true
@@ -212,6 +224,11 @@ function client.boot(ports, options)
     state = { fleet = registry.empty() },
 
     tick = machineTick(),
+
+    -- How a page asks for something to change: over the radio, because a client
+    -- owns nothing. The server's own copy of this delivers locally instead, and
+    -- the page cannot tell which machine it is on - see `os/kernel/request.lua`.
+    request = request.remote(ports.transport, wire.NAME),
 
     -- The default is the real desktop, not a stub. A client whose screen
     -- service does nothing is a client that boots, reports healthy, and shows a

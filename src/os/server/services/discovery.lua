@@ -24,6 +24,7 @@
 --- message that can be missed.
 
 local desired = require("domain.fleet.desired")
+local ledger = require("domain.bank.ledger")
 local persist = require("os.server.services.persist")
 local policyService = require("os.server.services.policy")
 local registry = require("domain.fleet.registry")
@@ -133,6 +134,17 @@ function discovery.handle(context, sender, message)
       -- small table that changes when a person changes it, and a second round
       -- trip would double a client's traffic to learn nothing new.
       mine = context.state.mine,
+      -- A digest rather than the ledger. The books hold two hundred and fifty
+      -- journal entries and a page has room for six, so sending all of them
+      -- three times a minute to every client would be radio traffic spent on
+      -- rows nobody can see. `applied` is left behind on purpose: it is how the
+      -- server refuses to apply a request twice, and a client holding a copy
+      -- would be holding a promise it cannot keep.
+      bank = context.state.bank and ledger.digest(context.state.bank) or nil,
+      -- The vault audit rides along because it is three numbers and it is the
+      -- one thing about the bank that is *not* on disk - an observation about
+      -- right now, which a client cannot derive from anything else it has.
+      vault = context.state.vault,
       now = context.clock.now(),
     }
   end

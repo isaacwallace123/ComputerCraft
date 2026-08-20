@@ -32,6 +32,7 @@
 local desired = require("domain.fleet.desired")
 local plan = require("domain.mine.plan")
 local registry = require("domain.fleet.registry")
+local request = require("os.kernel.request")
 local theme = require("ui.theme")
 
 local T = theme.TOKENS
@@ -138,9 +139,11 @@ function app.mount(scope, context, options)
     return context.state and context.state.mine or nil
   end)
 
+  local ask = request.of(context, options.protocol)
+
   local function send(message)
-    if message and context.transport then
-      context.transport.broadcast(message, options.protocol or "icos")
+    if message then
+      ask(message)
     end
     return message
   end

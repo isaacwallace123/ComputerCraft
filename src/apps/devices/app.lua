@@ -37,8 +37,8 @@
 
 local desired = require("domain.fleet.desired")
 local registry = require("domain.fleet.registry")
+local request = require("os.kernel.request")
 local view = require("apps.devices.view")
-local wire = require("domain.protocol.message")
 
 local app = {}
 
@@ -186,10 +186,12 @@ function app.mount(scope, context, options)
   local selected = options.selected or scope:Value(nil)
 
   --- Sending is the only thing in this file that talks to anything.
+  local ask = request.of(context, options.protocol)
+
   local function want(device, mode, extra)
     local message = app.intent(device, mode, extra)
-    if message and context.transport then
-      context.transport.broadcast(wire.stamp(message), options.protocol or wire.NAME)
+    if message then
+      ask(message)
     end
     return message
   end

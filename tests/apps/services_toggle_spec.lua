@@ -105,6 +105,10 @@ end)
 
 it("off is drawn as muted, not as a warning", function()
   local T = require("ui.theme").TOKENS
-  expect.equal(app.tone({ disabled = true, critical = true }), T.mutedFg, "deliberate is not a fault")
+  expect.equal(
+    app.tone({ disabled = true, critical = true }),
+    T.mutedFg,
+    "deliberate is not a fault"
+  )
   expect.equal(app.tone({ gaveUp = true, critical = true }), T.destructive, "and a fault still is")
 end)

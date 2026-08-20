@@ -58,6 +58,10 @@ desktop.GLYPHS = {
   automation = "\24", -- up arrow: something acting on its own
   operations = "\30", -- triangle: the mine
   console = "\16", -- caret: a prompt
+  gps = "\10", -- ring: a beacon putting out circles
+  hardware = "\254", -- filled square: a block that is plugged in
+  disks = "\254", -- the same square, because 437 has no floppy
+  bank = "\9", -- ring: a vault door
 }
 
 --- How many columns of icons fit, and how wide each is.

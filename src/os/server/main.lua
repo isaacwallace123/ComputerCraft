@@ -19,10 +19,12 @@
 --- in `.node` onto one of four operating systems. `icos` starts the same thing
 --- by hand.
 
+local bank = require("os.server.services.bank")
 local bridge = require("os.server.services.bridge")
 local coverage = require("domain.fleet.coverage")
 local coverageService = require("os.server.services.coverage")
 local depotList = require("domain.depot.list")
+local ledger = require("domain.bank.ledger")
 local discovery = require("os.server.services.discovery")
 local gps = require("os.kernel.services.gps")
 local leases = require("os.server.services.leases")
@@ -31,6 +33,7 @@ local mine = require("domain.mine.registry")
 local persist = require("os.server.services.persist")
 local policy = require("os.server.services.policy")
 local reconcile = require("os.server.services.reconcile")
+local request = require("os.kernel.request")
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
 local reactive = require("ui.state.reactive")
@@ -77,6 +80,11 @@ server.PATHS = {
   -- and a claim lost to a crash during somebody else's write is a chunk the
   -- server has forgotten is occupied.
   coverage = ".coverage",
+  -- The books. Its own file for the reason the others are, and then one more:
+  -- it is the only state here that no device in the world can re-report. A
+  -- registry rebuilds from the next heartbeat and a chunk claim from the next
+  -- general; a balance rebuilds from nothing.
+  bank = ".bank",
 }
 
 --- The state a server holds, empty.
@@ -96,6 +104,10 @@ server.NORMALISE = {
   -- arithmetic on nil the first time a general reports, and unlike the device
   -- registry nothing in the world re-reports a chunk claim.
   coverage = coverage.normalise,
+  -- And here it matters most. A half-written ledger is arithmetic on nil at the
+  -- first transfer, and there is no second copy of somebody's savings to fall
+  -- back on - so every balance comes back through a floor and a clamp.
+  bank = ledger.normalise,
 }
 
 function server.state()
@@ -104,6 +116,7 @@ function server.state()
     depots = depotList.empty(),
     mine = mine.empty(),
     coverage = coverage.empty(),
+    bank = ledger.empty(),
   }
 end
 
@@ -152,6 +165,7 @@ end
 ---   gps         the constellation beacon                   built
 ---   policy      conservative auto-recovery                 built
 ---   coverage    post generals, spread miners across them   built
+---   bank        the ledger, and the vault audit             built
 ---   logrotate   keep the log from filling the disk          built
 ---
 --- `bridge` is a second inbox, not a second reader of the first: it receives on
@@ -168,6 +182,7 @@ function server.services()
     gps.service,
     policy.service,
     coverageService.service,
+    bank.service,
     ticker.service,
     logrotate.service,
   }
@@ -181,7 +196,7 @@ end
 --- discovers, which keeps "what reads the radio" answerable by reading one
 --- function.
 function server.handlers()
-  return { leases.handle }
+  return { leases.handle, bank.handle }
 end
 
 --- The two screens a base station has, and why it has two.
@@ -312,6 +327,11 @@ function server.boot(ports, options)
       })
     end,
   }
+
+  -- Closed over the context it is part of, which is why it cannot be written in
+  -- the table literal above.
+  context.request =
+    request.loopback(context, discovery.dispatch, ports.transport and ports.transport.id() or 0)
 
   for _, definition in ipairs(server.services()) do
     sup:add(definition)

@@ -27,8 +27,8 @@
 local commands = require("apps.console.commands")
 local plan = require("domain.mine.plan")
 local registry = require("domain.fleet.registry")
+local request = require("os.kernel.request")
 local view = require("apps.console.view")
-local wire = require("domain.protocol.message")
 
 local app = {}
 
@@ -72,11 +72,7 @@ function app.execute(context, intent)
   end
 
   local function send(message)
-    if not context.transport then
-      return false
-    end
-    context.transport.broadcast(wire.stamp(message), wire.NAME)
-    return true
+    return request.of(context)(message) and true or false
   end
 
   if intent.kind == "help" then

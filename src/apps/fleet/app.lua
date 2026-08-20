@@ -33,8 +33,8 @@
 
 local desired = require("domain.fleet.desired")
 local registry = require("domain.fleet.registry")
+local request = require("os.kernel.request")
 local view = require("apps.fleet.view")
-local wire = require("domain.protocol.message")
 
 local app = {}
 
@@ -142,10 +142,16 @@ function app.mount(scope, context, options)
 
   local selected = options.selected or scope:Value(nil)
 
+  -- Through the context rather than the transport, because on the base station
+  -- itself a broadcast reaches nobody: rednet does not loop back, so these
+  -- buttons worked from any other computer and did nothing on the machine that
+  -- owns the fleet. See `os/kernel/request.lua`.
+  local ask = request.of(context, options.protocol)
+
   local function want(id, mode)
     local message = app.intent(id, mode)
-    if message and context.transport then
-      context.transport.broadcast(wire.stamp(message), options.protocol or wire.NAME)
+    if message then
+      ask(message)
     end
     return message
   end

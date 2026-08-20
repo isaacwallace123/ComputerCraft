@@ -27,6 +27,7 @@
 --- something that already failed for a reason that may have gone away by itself.
 
 local policyRules = require("domain.fleet.policy")
+local request = require("os.kernel.request")
 local theme = require("ui.theme")
 
 local T = theme.TOKENS
@@ -118,10 +119,12 @@ function app.mount(scope, context, options)
     return context.state and context.state.policy or nil
   end)
 
+  local ask = request.of(context, options.protocol)
+
   local function send(key, value)
     local message = app.intent(key, value)
-    if message and context.transport then
-      context.transport.broadcast(message, options.protocol or "icos")
+    if message then
+      ask(message)
     end
     return message
   end
