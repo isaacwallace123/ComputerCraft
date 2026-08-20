@@ -165,7 +165,7 @@ function app.mount(scope, context, options)
   rows[#rows + 1] = scope:Spacer({ Height = 1 })
   rows[#rows + 1] = scope:Muted({
     Height = 1,
-    Text = "World coordinates, as F3 shows them. Moving the mine clears every sector.",
+    Text = "World coordinates, as F3 shows them.",
     Color = T.warn,
   })
 

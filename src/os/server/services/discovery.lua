@@ -29,6 +29,7 @@ local ledger = require("domain.bank.ledger")
 local persist = require("os.server.services.persist")
 local policyService = require("os.server.services.policy")
 local registry = require("domain.fleet.registry")
+local relay = require("domain.fleet.relay")
 local service = require("os.kernel.service")
 local wire = require("domain.protocol.message")
 
@@ -172,6 +173,16 @@ function discovery.handle(context, sender, message)
   local known = registry.get(context.state.fleet, sender) ~= nil
   local record = registry.observe(context.state.fleet, sender, snapshot, now)
 
+  -- A general speaking for its crew as well as for itself.
+  --
+  -- One message carrying four turtles' status instead of four, which is the
+  -- point of `domain/fleet/relay.lua`: rednet has no routing, so every unicast
+  -- is a physical broadcast that wakes every computer in range, and a base
+  -- answering twenty a second has no tick budget left for anything else. The
+  -- symptom was never a crash - it was a fleet reading offline while every
+  -- machine in it was working.
+  discovery.absorb(context, message.roster, now)
+
   -- New to us, so it has not heard the fleet's standing order.
   if not known then
     discovery.adopt(context, record)
@@ -216,6 +227,13 @@ function discovery.handle(context, sender, message)
     -- device holding a higher number from a previous run discards every order
     -- this one sends.
     desired = desired.reply(record, registry.epoch(context.state.fleet, now)),
+
+    -- What this general should be telling its crew.
+    --
+    -- Sent with the crew list so a general answers a miner's heartbeat out of
+    -- its own cache rather than asking upstream, which would make every order
+    -- take two round trips and put back the traffic the relay removes.
+    crewDesired = discovery.crewGoals(context, crew, now),
     general = coverage.generalOf(context.state.coverage, sender),
 
     -- Omitted rather than sent empty. Every miner in the fleet would otherwise
@@ -241,6 +259,68 @@ end
 --- put a device on the Devices page that does not exist - which is the one thing
 --- a fleet dashboard must never do, because the whole point of §6 is telling
 --- "there is no miner-7" from "we do not know where miner-7 is".
+--- Take a batch of crew reports a general carried in.
+---
+--- Each entry is applied exactly as if it had arrived on its own, with one
+--- difference that is the whole correctness argument: the age travels with the
+--- report and is subtracted here.
+---
+--- Stamping every entry with the moment the batch arrived would make a miner
+--- that went quiet twenty minutes ago read as online for as long as its general
+--- kept talking - the failure the staleness thresholds exist to catch,
+--- reintroduced one layer up. `relay.heardAt` is the subtraction.
+---
+--- Returns how many were taken. A general is not trusted to invent devices: an
+--- entry with no numeric id is skipped, because a bad batch that created roster
+--- entries would put machines on the fleet page that do not exist.
+function discovery.absorb(context, roster, now)
+  if type(roster) ~= "table" then
+    return 0
+  end
+
+  local taken = 0
+  for _, entry in ipairs(roster) do
+    local id = tonumber(entry.id)
+    if id ~= nil and type(entry) == "table" then
+      local heard = relay.heardAt(now, entry.age)
+      local record = registry.observe(context.state.fleet, id, entry.snapshot, heard)
+
+      -- Same as the direct path: what it has applied is what decides whether it
+      -- has caught up, and a relayed report carries it unchanged.
+      desired.observe(record, entry.applied, heard)
+      taken = taken + 1
+    end
+  end
+
+  if taken > 0 then
+    persist.mark(context, "fleet")
+  end
+  return taken
+end
+
+--- The goals a general should hand out to its crew, keyed by device id.
+---
+--- Stamped with the same epoch as any other reply, because a relayed goal is
+--- the same goal - a miner cannot tell whether the message came from the base
+--- or from its general, and must not need to.
+function discovery.crewGoals(context, crew, now)
+  if type(crew) ~= "table" or #crew == 0 then
+    return nil
+  end
+
+  local epoch = registry.epoch(context.state.fleet, now)
+  local out = nil
+  for _, member in ipairs(crew) do
+    local record = registry.get(context.state.fleet, member.id)
+    local goal = record and desired.reply(record, epoch)
+    if goal ~= nil then
+      out = out or {}
+      out[tostring(member.id)] = goal
+    end
+  end
+  return out
+end
+
 function discovery.want(context, message)
   if not desired.MODES[message.mode] then
     return {

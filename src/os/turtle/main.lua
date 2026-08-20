@@ -52,6 +52,7 @@ local calibrate = require("os.turtle.calibrate")
 local control = require("os.turtle.control")
 local gps = require("os.kernel.services.gps")
 local peer = require("domain.protocol.peer")
+local relay = require("domain.fleet.relay")
 local jobs = require("domain.turtle.jobs")
 local legacyLink = require("os.turtle.legacy")
 local screen = require("os.turtle.screen")
@@ -228,13 +229,22 @@ turtleOs.heartbeat = service.define({
       -- makes each one resume every service it has to discard the message; see
       -- `domain/protocol/peer.lua` for why that is the fleet's problem and not
       -- just this turtle's.
-      peer.send(
-        context.peer,
-        context.transport,
-        wire.stamp(agent.heartbeat(context.state, snapshot)),
-        turtleOs.PROTOCOL,
-        context.clock.now()
-      )
+      local now = context.clock.now()
+      local beat = agent.heartbeat(context.state, snapshot)
+
+      -- A general speaks for its crew as well as for itself. One message
+      -- carrying four turtles' status instead of four, which is what stops a
+      -- base spending its whole tick budget answering heartbeats. Absent on a
+      -- miner, and absent on a general with nobody - a field that said "I have
+      -- no crew" twice a second would be saying it by being there.
+      if context.relay ~= nil then
+        local batch = relay.batch(context.relay, now)
+        if #batch > 0 then
+          beat.roster = batch
+        end
+      end
+
+      peer.send(context.peer, context.transport, wire.stamp(beat), turtleOs.PROTOCOL, now)
 
       -- A short receive rather than a sleep, so a reply is picked up as soon as
       -- it lands instead of on the next tick of a timer that knows nothing
@@ -254,6 +264,17 @@ turtleOs.heartbeat = service.define({
           peer.remember(context.peer, sender, context.clock.now())
         end
 
+        -- A crew member reporting to its general.
+        --
+        -- Answered here rather than forwarded and waited on: the general holds
+        -- the goals the base sent down, so it can reply in the same breath. A
+        -- miner cannot tell this reply from the base's, and must not need to -
+        -- `peer.remember` binds it to whoever sent the last `desired`, which is
+        -- the same rule that bound it to the base and gives the failure path for
+        -- free. A general that stops answering is forgotten after
+        -- `peer.FORGET`, the miner shouts, and the base picks it up directly.
+        turtleOs.relayFor(context, sender, message)
+
         turtleOs.orders(context, message)
 
         -- Anything else that needs to see a message registers here, for the
@@ -268,6 +289,50 @@ turtleOs.heartbeat = service.define({
     end
   end,
 })
+
+--- Answer a crew member on behalf of the base.
+---
+--- Only a general does this, and only for a `status` from something that is not
+--- the base. Returns whether it relayed, so a spec can assert the split without
+--- a radio.
+---
+--- The reply is shaped exactly like the base's, because a miner must not be able
+--- to tell the difference - it applies a goal by generation and epoch, and both
+--- came from the base unchanged. A general that invented a goal, or stamped one
+--- with its own numbering, would be a second authority and the fleet would have
+--- two of them disagreeing.
+---
+--- A crew member with no goal yet is still answered. The reply carries the crew
+--- list and nothing else, which is what makes `peer.remember` bind the miner to
+--- this general - without it a miner whose goal has not been set would go on
+--- shouting at the base forever, which is the traffic this exists to remove.
+function turtleOs.relayFor(context, sender, message)
+  if context.relay == nil or type(message) ~= "table" then
+    return false
+  end
+  if message.kind ~= "status" and message.kind ~= "hello" then
+    return false
+  end
+
+  local now = context.clock.now()
+  if not relay.hear(context.relay, sender, message, now) then
+    return false
+  end
+
+  context.transport.send(
+    sender,
+    wire.stamp({
+      kind = "desired",
+      desired = relay.goalFor(context.relay, sender),
+
+      -- Who it works with, from this general's own copy. Sending it keeps a
+      -- relayed miner's screen as informative as a direct one's.
+      general = context.node and context.node.id or nil,
+    }),
+    turtleOs.PROTOCOL
+  )
+  return true
+end
 
 --- Act on one message. Returns what happened, or nil if it was not for us.
 ---
@@ -286,6 +351,21 @@ function turtleOs.orders(context, message)
   if type(message) == "table" then
     context.state.general = message.general
     context.state.crew = message.crew
+
+    -- The goals this general is to hand out, and who it is allowed to hand them
+    -- to. Both replaced rather than merged: the base's copy is authoritative,
+    -- and a general still relaying a miner that moved to another general would
+    -- have two generals reporting one device with different ages - so which the
+    -- base believed would depend on which message landed last.
+    if context.relay ~= nil and message.kind == "desired" then
+      relay.remember(context.relay, message.crewDesired)
+
+      local ids = {}
+      for _, member in ipairs(message.crew or {}) do
+        ids[#ids + 1] = member.id
+      end
+      relay.only(context.relay, ids)
+    end
   end
 
   local intent = agent.receive(context.state, message)
@@ -730,6 +810,18 @@ function turtleOs.boot(ports, options)
       return ports.radio ~= nil and ports.radio.open == true
     end,
   })
+
+  -- Only a general carries anybody. A miner with a relay would accept crew
+  -- reports it has no authority to answer, and two machines handing out goals
+  -- for one device is exactly the split-brain the base's single registry
+  -- exists to prevent.
+  --
+  -- Read from the node rather than passed in, so a turtle promoted to general
+  -- by a `set-job` starts relaying on its next boot without anything else being
+  -- told - which is the same place every other job difference is decided.
+  if context.node ~= nil and context.node.job == "general" then
+    context.relay = relay.empty()
+  end
 
   context.handlers = options.handlers
     or {

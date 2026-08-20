@@ -140,6 +140,21 @@ function desired.want(record, mode, options, now)
   goal.generation = (current and current.generation or 0) + 1
   goal.at = now
   record.desired = goal
+
+  -- A new goal is not a repeat, so the repeat throttle does not apply to it.
+  --
+  -- `reconcile` will not re-send a device it nudged within the last few seconds,
+  -- which is right for re-asserting a goal it already has and wrong for a goal
+  -- it has never seen: pressing Recall two seconds after a routine nudge left
+  -- the order sitting on the base until the throttle expired. Nothing was
+  -- broken and nothing said anything, and what somebody saw was a button that
+  -- did nothing for four seconds.
+  --
+  -- Cleared here rather than by each caller because there are four of them and
+  -- this is the one place that knows the goal actually changed.
+  record.nudgedAt = nil
+  record.commandedAt = nil
+
   return goal, true
 end
 

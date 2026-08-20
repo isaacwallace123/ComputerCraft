@@ -199,13 +199,8 @@ function devices.build(scope, options)
     end)
   end
 
-  local picking = scope:Value(false)
-
   local nothingSelected = scope:Computed(function(use)
-    -- Also hidden while the picker is up. They occupy the same column and are
-    -- never wanted together: you are either looking at one turtle or choosing
-    -- what all of them do.
-    return use(current) == nil or use(picking)
+    return use(current) == nil
   end)
 
   --- The panel, which is not there when there is nothing to put in it.
@@ -332,45 +327,78 @@ function devices.build(scope, options)
   ---
   --- The selection still does something - it drives the detail panel - so a row
   --- is a thing you look at rather than a thing you command.
-  --- The job picker, which replaces the detail panel while it is open.
+  --- Choosing what the fleet works on.
   ---
-  --- A card in the page rather than a floating window: the framework has no
-  --- overlay, and inventing one for a list of six items would be a lot of
-  --- machinery for something that fits beside the table. It takes the panel's
-  --- place because the two are never wanted at once - you are either looking at
-  --- one turtle or choosing what all of them do.
-  local jobRows = {}
-  for _, entry in ipairs(options.jobs or {}) do
-    jobRows[#jobRows + 1] = scope:Text({
-      Height = 1,
-      Text = format.ellipsis(entry.label or entry.id, 20),
-      Color = scope:Computed(function(use)
-        return use(options.job) == entry.id and T.accent or T.foreground
-      end),
-      OnClick = options.onJob and function()
-        options.onJob(entry.id)
-        picking:set(false)
-      end or nil,
-    })
-  end
+  --- The whole page, not a card beside the table. The first version was a
+  --- 22-cell panel in the detail column and every label came out cut in half -
+  --- "Coordinated area q..", "Coal and fuel hunt.." - which is a list you have
+  --- to already know the answer to in order to read. A job is picked rarely and
+  --- read carefully, so it gets the width.
+  ---
+  --- A `Table`, so arrow keys and enter work the way they do everywhere else
+  --- rather than being reimplemented here. The current job is marked with a
+  --- star in a column of its own: colour alone would say nothing on a monitor,
+  --- and putting it in the label would make the labels different widths.
+  local picking = scope:Value(false)
 
-  local picker = scope:Card({
-    Width = 22,
-    Padding = 1,
-    Gap = 0,
+  local jobRows = scope:Computed(function(use)
+    local active = use(options.job)
+    local out = {}
+    for _, entry in ipairs(options.jobs or {}) do
+      out[#out + 1] = {
+        id = entry.id,
+        mark = entry.id == active and "*" or "",
+        label = entry.label or entry.id,
+        summary = entry.summary or "",
+        active = entry.id == active,
+      }
+    end
+    return out
+  end)
+
+  local jobChoice = scope:Value(nil)
+
+  local picker = scope:Column({
+    Grow = 1,
     Hidden = scope:Computed(function(use)
       return not use(picking)
     end),
-    Children = (function()
-      local children = {
-        scope:Text({ Text = "Put the fleet on" }),
-        scope:Spacer({ Height = 1 }),
-      }
-      for _, row in ipairs(jobRows) do
-        children[#children + 1] = row
-      end
-      return children
-    end)(),
+    Children = {
+      scope:Table({
+        Grow = 1,
+        Rows = jobRows,
+        Selected = jobChoice,
+        Identity = function(row)
+          return row.id
+        end,
+        Capacity = options.capacity or 8,
+        Columns = {
+          {
+            Title = "",
+            Width = 1,
+            Key = "mark",
+            Tone = function()
+              return T.accent
+            end,
+          },
+          { Title = "Job", Width = 24, Key = "label" },
+          {
+            Title = "What it does",
+            Grow = 1,
+            Key = "summary",
+            Tone = function()
+              return T.mutedFg
+            end,
+          },
+        },
+        OnSelect = options.onJob and function(row)
+          if row ~= nil then
+            options.onJob(row.id)
+            picking:set(false)
+          end
+        end or nil,
+      }),
+    },
   })
 
   local actions = {}
@@ -416,11 +444,18 @@ function devices.build(scope, options)
       return ("%d known"):format(#use(roster))
     end),
     Children = {
+      -- The roster and the picker take turns having the page. They are never
+      -- wanted together - you are either watching the fleet or deciding what it
+      -- does - and sharing the width is what made the job labels unreadable.
       scope:Row({
         Grow = 1,
         Gap = 2,
-        Children = { list, detail, picker },
+        Hidden = scope:Computed(function(use)
+          return use(picking)
+        end),
+        Children = { list, detail },
       }),
+      picker,
     },
     Actions = actions,
   })

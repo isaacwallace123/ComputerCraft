@@ -162,3 +162,85 @@ it("a turtle that loses its origin does not lose its last known position", funct
   expect.equal(record.location.x, 138, "still known")
   expect.equal(record.locatedAt, 1000 * SECOND, "and dated to when it was true")
 end)
+
+---------------------------------------------------------------------------
+-- A general speaking for its crew
+---------------------------------------------------------------------------
+
+it("one message from a general puts its whole crew on the roster", function()
+  -- Rednet has no routing, so every unicast is a physical broadcast that wakes
+  -- every computer in range. Four turtles reporting separately is four wakeups
+  -- and four replies; this is one of each.
+  local ctx = context()
+  discovery.handle(ctx, 8, heartbeat())
+
+  discovery.handle(
+    ctx,
+    8,
+    heartbeat({
+      roster = {
+        { id = 4, age = 6, snapshot = { label = "miner-4", phase = "mining" } },
+        { id = 7, age = 0, snapshot = { label = "miner-7", phase = "returning" } },
+      },
+    })
+  )
+
+  local four = assert(registry.get(ctx.state.fleet, 4), "the general spoke for it")
+  local seven = assert(registry.get(ctx.state.fleet, 7))
+  expect.equal(four.snap.label, "miner-4")
+  expect.equal(seven.snap.phase, "returning")
+end)
+
+it("a relayed device does not look fresher than it is", function()
+  -- The property the whole design rests on. Stamping every entry with the
+  -- moment the batch arrived would keep a miner that went quiet twenty minutes
+  -- ago reading as online for as long as its general kept talking.
+  local ctx = context()
+  discovery.handle(ctx, 8, heartbeat())
+
+  local now = ctx.clock.now()
+  discovery.handle(ctx, 8, heartbeat({
+    roster = { { id = 4, age = 45, snapshot = { label = "miner-4", phase = "mining" } } },
+  }))
+
+  local record = assert(registry.get(ctx.state.fleet, 4))
+  expect.truthy(record.seenAt <= now - 44000, "backdated by the age it travelled with")
+  expect.equal(registry.health(record, now), "late", "which is what the base should think")
+
+  -- And it goes offline on the base's own schedule rather than being held alive.
+  ctx._clock.advance(30)
+  expect.equal(registry.health(record, ctx.clock.now()), "offline")
+end)
+
+it("a general is told what to tell its crew", function()
+  -- Without this a general would have to ask upstream for every order, which
+  -- makes each one take two round trips and puts back the traffic the relay
+  -- removes.
+  local ctx = context()
+  discovery.handle(ctx, 8, heartbeat({ snapshot = { job = "general" } }))
+  discovery.handle(ctx, 4, heartbeat())
+
+  -- Give the crew member a goal, and pair it with this general.
+  desired.want(registry.get(ctx.state.fleet, 4), "recall", nil, ctx.clock.now())
+
+  local crew = { { id = 4 } }
+  local goals = assert(discovery.crewGoals(ctx, crew, ctx.clock.now()), "something to hand out")
+  local forFour = assert(goals["4"], "and it is for the crew member")
+  expect.equal(forFour.mode, "recall")
+  expect.truthy(forFour.epoch ~= nil, "stamped with the base's run, not the general's")
+
+  expect.equal(discovery.crewGoals(ctx, {}, ctx.clock.now()), nil, "and nothing for an empty crew")
+end)
+
+it("a general cannot invent devices", function()
+  -- A bad batch that created roster entries would put machines on the fleet
+  -- page that do not exist, and nothing downstream could tell them from real
+  -- ones.
+  local ctx = context()
+  discovery.handle(ctx, 8, heartbeat())
+
+  local before = #registry.records(ctx.state.fleet)
+  expect.equal(discovery.absorb(ctx, { { id = "four" }, { age = 2 } }, ctx.clock.now()), 0)
+  expect.equal(discovery.absorb(ctx, "roster", ctx.clock.now()), 0)
+  expect.equal(#registry.records(ctx.state.fleet), before, "nobody was added")
+end)
