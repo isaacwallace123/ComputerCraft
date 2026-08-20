@@ -109,7 +109,15 @@ end
 local function placeRow(snapshot, state)
   local world = snapshot.world
   if type(world) == "table" and world.x then
-    return { label = "at", value = ("%d %d %d"):format(world.x, world.y or 0, world.z or 0) }
+    -- A `fix` is a GPS reading with no heading attached, which is a position a
+    -- person can use and a mining job cannot. Marked rather than hidden: a
+    -- turtle showing coordinates and refusing to deploy would otherwise be two
+    -- facts that look like a contradiction.
+    local place = ("%d %d %d"):format(world.x, world.y or 0, world.z or 0)
+    if snapshot.fix then
+      return { label = "at", value = place .. " (fix)", colour = T.mutedFg }
+    end
+    return { label = "at", value = place }
   end
 
   if state.locateWhy then
@@ -237,7 +245,15 @@ end
 
 --- Everything the screen should say right now.
 function screen.rows(context)
-  local snapshot = context.snapshot and context.snapshot() or {}
+  -- The decorated snapshot, so the screen and the base agree about where this
+  -- turtle is. `os/turtle/main.lua` folds in the saved fix when the navigator
+  -- has nothing to report; reading the raw one here would put a position on the
+  -- fleet page and "locating..." on the machine itself.
+  local snapshot = {}
+  if context.snapshot then
+    local turtleOs = require("os.turtle.main")
+    snapshot = turtleOs.snapshot(context) or {}
+  end
 
   -- What the screen reads, gathered from the two places it lives: the applied
   -- state the base wrote, and the machine's own transient notes. Assembled here

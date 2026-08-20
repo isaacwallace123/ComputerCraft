@@ -140,6 +140,37 @@ end
 -- Services
 ---------------------------------------------------------------------------
 
+--- What this turtle is doing, with the position it already knows folded in.
+---
+--- The engine's snapshot reports `world` from the navigator, which has one only
+--- once the turtle has been given an origin - a position *and a heading*. But
+--- `os/kernel/services/gps.lua` has been refreshing `.location` from the
+--- constellation every ten seconds all along, so a turtle that could not say
+--- where it was had the answer written on its own disk.
+---
+--- That produced the worst version of not knowing: three turtles reporting "no
+--- position" while `.location` held their coordinates, on a fleet page whose
+--- whole job is saying where things are.
+---
+--- The two are not the same fact and neither replaces the other. The navigator's
+--- position is dead reckoning and is what a mining job needs; the saved one is a
+--- fix and is what a person and a map need. So the fix fills in when there is no
+--- reckoning to report, and `located` is left alone - it means "can be deployed",
+--- which still requires the heading.
+function turtleOs.snapshot(context)
+  local snap = context.snapshot() or {}
+
+  if type(snap.world) ~= "table" and context.locator then
+    local saved = context.locator.saved()
+    if type(saved) == "table" and tonumber(saved.x) then
+      snap.world = { x = saved.x, y = saved.y, z = saved.z }
+      snap.fix = true
+    end
+  end
+
+  return snap
+end
+
 --- Say what this turtle is doing, and hear what it should be.
 ---
 --- One loop rather than two, unlike ICOS 1's `heartbeat` and `commands`. The
@@ -158,7 +189,7 @@ turtleOs.heartbeat = service.define({
 
   run = function(context)
     while true do
-      local snapshot = context.snapshot()
+      local snapshot = turtleOs.snapshot(context)
 
       -- To the base if we know which computer it is, and to everybody only
       -- until it has answered once. A broadcast wakes every machine in range and
@@ -315,8 +346,36 @@ turtleOs.locate = service.define({
 
   run = function(context)
     local nav = context.nav
+    local tries = 0
+
     while true do
+      -- Say why it is *not* trying, as plainly as why an attempt failed.
+      --
+      -- The screen said "locating..." on three turtles for an hour: no
+      -- position, no reason, and no failed service. That is what this loop looks
+      -- like when the condition below is false, and every one of the four things
+      -- it tests is invisible from outside - so each of them now names itself.
+      --
+      -- The lesson is the one this file keeps relearning: a machine that is
+      -- doing nothing on purpose and a machine that is stuck look identical
+      -- unless the first one says so.
+      if nav == nil then
+        context.locateWhy = "no navigator on this machine"
+      elseif not calibrate.needed(nav) then
+        context.locateWhy = nil
+      elseif not (context.node and context.node.parked) then
+        context.locateWhy = "not while it is working"
+      end
+
       if nav ~= nil and calibrate.needed(nav) and context.node and context.node.parked then
+        tries = tries + 1
+
+        -- Set before the attempt, not after. `gps.locate` waits on the radio, so
+        -- an attempt that never comes back would otherwise leave the screen
+        -- showing the state it was in before it started - which is exactly how
+        -- "locating..." managed to mean three different things at once.
+        context.locateWhy = ("asking the constellation (%d)"):format(tries)
+
         local found, why = calibrate.run(context.body, context.locator)
         if found then
           -- Both files in one call. Two that disagreed about which way home is

@@ -298,3 +298,21 @@ it("a service somebody switched off is not reported as a fault", function()
     nil
   )
 end)
+
+it("a turtle shows the fix it already has, marked as one", function()
+  -- `os/kernel/services/gps.lua` refreshes `.location` from the constellation
+  -- every ten seconds, so a turtle that reported "no position" had its own
+  -- coordinates written on its own disk. The navigator's position needs a
+  -- heading as well and is what a mining job runs on; the fix is what a person
+  -- and a map need.
+  --
+  -- Marked rather than hidden, because a turtle showing coordinates and
+  -- refusing to deploy is otherwise two facts that look like a contradiction.
+  local seen = values(screen.miner({ world = { x = 52, y = 1, z = 425 }, fix = true }, {}))
+  expect.contains(seen.at, "52 1 425")
+  expect.contains(seen.at, "fix")
+
+  -- Dead reckoning, once it has a heading, is reported plainly.
+  local reckoned = values(screen.miner({ world = { x = 52, y = 1, z = 425 } }, {}))
+  expect.equal(reckoned.at, "52 1 425")
+end)
