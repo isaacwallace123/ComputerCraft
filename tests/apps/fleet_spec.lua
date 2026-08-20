@@ -136,3 +136,55 @@ it("the fleet page is allowed on a monitor, and its actions are not forced on it
   -- one of them eventually wrong.
   expect.equal(fleetApp.manifest, nil, "the module describes nothing about itself")
 end)
+
+it("a screen is not on the fleet roster, because it takes no orders", function()
+  -- The roster is every machine that talks to the server, which since clients
+  -- started introducing themselves includes the screens - and a screen on a page
+  -- with Deploy and Recall on it is a row somebody will eventually click and
+  -- expect something from.
+  --
+  -- The test is the one the server already uses to decide who gets a goal.
+  -- A server context rather than the bare one: answering a mirror reaches the
+  -- policy service, which reads the disk.
+  local ctx = fleet.server()
+  discovery.handle(ctx, 7, heartbeat())
+  discovery.handle(ctx, 9, {
+    kind = "mirror",
+    snapshot = { label = "screen", role = "client", orders = false },
+  })
+
+  local rows = fleetApp.rows(ctx.state, ctx.clock.now())
+  expect.equal(#rows, 1, "the turtle, and only the turtle")
+  expect.equal(rows[1].label, "miner-7")
+end)
+
+it("a device that predates the field is still on the roster", function()
+  -- Absent means yes. Every turtle in the world was built before anything said
+  -- whether it took orders, and a missing field must not quietly empty the page.
+  local ctx = context()
+  discovery.handle(ctx, 7, heartbeat())
+  expect.equal(#fleetApp.rows(ctx.state, ctx.clock.now()), 1)
+end)
+
+it("the status column says parked, and why is a sentence for the panel", function()
+  -- The column is twelve cells and `parked: setup` arrives in it as
+  -- `parked: setu` - a word cut in half, on every row, saying less than the word
+  -- it was cut from.
+  local ctx = context()
+  discovery.handle(
+    ctx,
+    7,
+    heartbeat({
+      snapshot = {
+        label = "miner-7",
+        parked = true,
+        parkKind = "setup",
+        parkReason = "run `commands/locate` on this turtle before posting it",
+      },
+    })
+  )
+
+  local row = fleetApp.rows(ctx.state, ctx.clock.now())[1]
+  expect.equal(row.phase, "parked")
+  expect.contains(row.parkReason, "commands/locate", "and the reason is kept for the panel")
+end)

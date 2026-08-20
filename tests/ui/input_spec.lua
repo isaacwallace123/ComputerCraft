@@ -567,7 +567,7 @@ local function devicesPage(count)
   return root, screen, state
 end
 
-it("the fleet page shows a list, and an empty detail panel until something is picked", function()
+it("the fleet page shows a list, and no panel at all until something is picked", function()
   local root, screen = devicesPage(12)
 
   expect.contains(screen.rowText(2), "Fleet", "the title")
@@ -579,7 +579,11 @@ it("the fleet page shows a list, and an empty detail panel until something is pi
   end
   local body = table.concat(rows, " ")
   expect.contains(body, "miner-1", "the roster")
-  expect.contains(body, "No device selected", "and a detail panel that says so")
+  -- No panel, rather than an empty one. It used to sit there saying "No device
+  -- selected / pick one from the li" - twenty-two of fifty-one cells spent on an
+  -- instruction, cut off mid-word, permanently. A panel that appears when you
+  -- select something says the same thing by existing.
+  expect.falsy(body:find("No device selected", 1, true), "no placeholder panel")
 
   root:destroy()
 end)
@@ -626,7 +630,7 @@ it("the buttons act on the fleet, and do not wait for a selection", function()
   root:destroy()
 end)
 
-it("a selected device that leaves the roster empties the panel rather than lying", function()
+it("a selected device that leaves the roster takes its panel with it", function()
   local root, screen, state = devicesPage(12)
 
   root:handle("mouse_click", 1, 6, 8)
@@ -650,7 +654,9 @@ it("a selected device that leaves the roster empties the panel rather than lying
   for row = 5, 16 do
     panel[#panel + 1] = screen.rowText(row)
   end
-  expect.contains(table.concat(panel, " "), "No device selected", "the panel empties")
+  -- The panel goes rather than emptying. Showing a device that is no longer on
+  -- the roster, with nothing to say it is stale, is worse than showing nothing.
+  expect.falsy(table.concat(panel, " "):find("miner-2", 1, true), "the departed device is gone")
   root:destroy()
 end)
 

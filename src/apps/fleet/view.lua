@@ -177,10 +177,17 @@ function devices.build(scope, options)
     return use(current) == nil
   end)
 
+  --- The panel, which is not there when there is nothing to put in it.
+  ---
+  --- It used to sit empty with "No device selected / pick one from the li" -
+  --- twenty-two cells of a fifty-one cell page spent on an instruction, cut off
+  --- mid-word, permanently. A panel that appears when you select something says
+  --- the same thing by existing.
   local detail = scope:Card({
     Width = 22,
     Padding = 1,
     Gap = 0,
+    Hidden = nothingSelected,
     Children = {
       scope:Text({
         Text = about(function(device)
@@ -302,9 +309,15 @@ function devices.build(scope, options)
     })
   end
 
-  action("Deploy all", "primary", options.onDeploy)
-  action("Recall all", nil, options.onRecall)
-  action("Stop all", "destructive", options.onStop)
+  -- Plain words. They were "Deploy all", "Recall all", "Stop all", and the
+  -- "all" was doing no work: there is no other kind of deploy on this page, so
+  -- it read as a warning about something that is simply how the system works.
+  --
+  -- The selection is for looking, not for commanding - it drives the panel and
+  -- nothing else - so a button cannot mean two things depending on it.
+  action("Deploy", "primary", options.onDeploy)
+  action("Recall", nil, options.onRecall)
+  action("Stop", "destructive", options.onStop)
 
   return scope:Page({
     Title = options.title or "Fleet",

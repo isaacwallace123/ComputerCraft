@@ -37,6 +37,7 @@
 
 local desired = require("domain.fleet.desired")
 local registry = require("domain.fleet.registry")
+local reactive = require("ui.state.reactive")
 local request = require("os.kernel.request")
 local view = require("apps.fleet.view")
 
@@ -71,7 +72,11 @@ function app.row(record, now)
     -- twenty minutes is a claim the server cannot support.
     phase = "offline"
   elseif snap.parked then
-    phase = snap.parkKind and ("parked: " .. snap.parkKind) or "parked"
+    -- Just "parked". The column is twelve cells wide and `parked: setu` is what
+    -- `parked: setup` looks like in twelve cells - a word cut in half, on every
+    -- row, saying less than the word it was cut from. Why it is parked is a
+    -- sentence, and a sentence belongs in the detail panel.
+    phase = "parked"
   end
 
   return {
@@ -98,6 +103,12 @@ function app.row(record, now)
     -- one and the detail panel shows the other, and a page that had to
     -- re-derive convergence from a string would be a page that could disagree
     -- with the server about whether an order had landed.
+    -- Why it is parked, for the panel rather than the column.
+    parkReason = snap.parkReason or snap.parkKind,
+
+    -- Whether a fleet order means anything to it. See `app.commandable`.
+    orders = snap.orders,
+
     goal = record.desired and record.desired.mode or nil,
     converged = desired.converged(record),
   }
@@ -108,11 +119,28 @@ end
 --- The sort is `registry.byStaleness` rather than a local comparator, so the
 --- Fleet page, the console and this one cannot disagree about what "worst first"
 --- means - and so §6's rule is stated once.
+--- Is this a machine the fleet page is about?
+---
+--- The roster is every machine that talks to the server, which since clients
+--- started introducing themselves includes the screens - and a screen on a page
+--- with Deploy and Recall on it is a row somebody will eventually click and
+--- expect something from.
+---
+--- The test is the same one the server uses to decide who gets a goal: a device
+--- says whether it takes orders. Absent means yes, because every turtle in the
+--- world predates the field.
+function app.commandable(row)
+  return row.orders ~= false
+end
+
 function app.rows(state, now)
   local records = registry.records(state.fleet)
   local rows = {}
-  for index, record in ipairs(records) do
-    rows[index] = app.row(record, now)
+  for _, record in ipairs(records) do
+    local row = app.row(record, now)
+    if app.commandable(row) then
+      rows[#rows + 1] = row
+    end
   end
   table.sort(rows, function(a, b)
     if a.since ~= b.since then
@@ -202,8 +230,15 @@ function app.mount(scope, context, options)
     capacity = options.capacity or 8,
     title = "Fleet",
 
+    --- Clicking a row selects it; clicking it again lets it go.
+    ---
+    --- A list where the only way out of a selection is to pick a different one
+    --- is a list you cannot stop looking at. It matters more here than usual,
+    --- because the selection decides what the buttons act on: with a row chosen
+    --- they move that turtle, and with none they move the fleet.
     onSelect = function(device)
-      selected:set(device and device.id or nil)
+      local id = device and device.id or nil
+      selected:set(reactive.peek(selected) == id and nil or id)
     end,
   }
 

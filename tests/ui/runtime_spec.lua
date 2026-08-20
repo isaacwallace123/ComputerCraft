@@ -406,7 +406,7 @@ it("the Fleet screen renders, and a heartbeat costs one blit per changed cell", 
 
   expect.contains(screen.rowText(2), "Fleet", "the title")
   expect.contains(screen.rowText(2), "4 known", "and the derived count")
-  expect.contains(screen.rowText(19), "Deploy all", "actions at the foot")
+  expect.contains(screen.rowText(19), "Deploy", "actions at the foot")
 
   -- Rows 1-2 are the header, 3 the separator, 4 the body's top padding, 5 the
   -- column headings and 6 the gap under them, so the roster starts at 7.
