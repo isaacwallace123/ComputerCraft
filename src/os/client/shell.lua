@@ -95,6 +95,30 @@ function shell.apps()
   }
 end
 
+--- The event a ticking machine queues to wake its screen.
+---
+--- Every page derives what it shows from a `tick` value, and nothing advanced
+--- it - so a page computed once and held that picture for as long as it was
+--- open. The symptom was not "the screen is slow": it was a server whose Fleet
+--- page said one turtle while the client beside it said four. The server had
+--- rendered once, when one turtle was known, and never again.
+---
+--- ## Why an event and not a timeout
+---
+--- The first attempt gave `host.run` a timeout and bumped the tick from
+--- `onIdle`. That works on a real terminal, where `pull` waits a second before
+--- returning nothing - and spins at full speed on one whose input port returns
+--- instantly, which is a null port, a scripted one that has run out, and a
+--- machine whose keyboard has died. A refresh mechanism that turns a broken
+--- input into a hot loop is worse than no refresh.
+---
+--- So the clock lives in a service, where sleeping is what services do, and it
+--- queues an event. `host.run` is already an event loop: it wakes, the tree
+--- ignores an event it has no handler for, and the render at the bottom of the
+--- loop is the repaint. Nothing in the framework had to change, and a dead
+--- input port stays dead rather than becoming busy.
+shell.TICK_EVENT = "icos_tick"
+
 --- Build the shell's own state.
 ---
 --- Separated from `mount` so a spec can drive app switching without a screen,
@@ -185,6 +209,15 @@ function shell.run(context, options)
             entry.mount(inner, context, {
               readOnly = options.readOnly,
               capacity = options.capacity,
+
+              -- The machine's clock, not one the shell invents. Every app
+              -- defaulted to `scope:Value(0)` and nothing anywhere incremented
+              -- it, so every page computed once and held that picture for as
+              -- long as it was open.
+              --
+              -- `context.tick` is advanced by the ticker service, which is the
+              -- only thing in the system that knows what time it is.
+              tick = context.tick or state.tick,
             }),
             inner:Separator({}),
             shell.taskbar(inner, state),
@@ -207,6 +240,7 @@ function shell.run(context, options)
 
     host.run(session.root, context.input, {
       clock = context.clock,
+
       timeout = options.timeout,
       onEvent = function(name, key)
         -- The shell sees every event before the tree does, which is how it

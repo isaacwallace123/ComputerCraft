@@ -48,6 +48,19 @@ it("a machine whose services have all given up returns rather than spinning", fu
     return false, "no wireless modem"
   end
 
+  -- And the ticker, which is the fourth. It is the one service here that cannot
+  -- fail by itself - it needs only a clock, and a clock does not break - so a
+  -- machine with a dead screen, a dead radio and no modem would still have one
+  -- coroutine alive and `boot.run` would never reach its exit.
+  --
+  -- Breaking it deliberately is the honest way to test "everything gave up",
+  -- and it is worth knowing that the exit is only reachable when *literally*
+  -- nothing is left: a machine repainting a screen nobody can see is still, by
+  -- this definition, running.
+  machine.context.clock.sleep = function()
+    error("no clock", 0)
+  end
+
   local index = 0
   local outcome = osBoot.run(machine, function()
     index = index + 1

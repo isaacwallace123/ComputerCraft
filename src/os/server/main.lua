@@ -33,7 +33,22 @@ local policy = require("os.server.services.policy")
 local reconcile = require("os.server.services.reconcile")
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
+local reactive = require("ui.state.reactive")
 local supervisor = require("os.kernel.supervisor")
+local ticker = require("os.kernel.services.ticker")
+
+--- The value every page recomputes from.
+---
+--- One scope for the machine's whole life, holding one number. It is never
+--- destroyed, which is correct rather than a leak: the thing it belongs to is
+--- the machine, and the machine stopping is the process ending.
+---
+--- Owned here rather than by a page, so every page advances together and none of
+--- them has to invent a clock of its own - which is what they were all doing,
+--- each with a `Value(0)` that nothing incremented.
+local function machineTick()
+  return reactive.scoped():Value(0)
+end
 
 local server = {}
 
@@ -153,6 +168,7 @@ function server.services()
     gps.service,
     policy.service,
     coverageService.service,
+    ticker.service,
     logrotate.service,
   }
 end
@@ -237,6 +253,7 @@ function server.boot(ports, options)
     saveLocation = ports.saveLocation,
     serialise = ports.serialise,
     log = ports.log,
+    tick = machineTick(),
 
     state = state,
     paths = server.PATHS,

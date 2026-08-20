@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-19T19:59:33-04:00",
+    "generated":  "2026-08-19T20:44:38-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -67,6 +67,7 @@
                   "os/kernel/roles.lua",
                   "os/kernel/service.lua",
                   "os/kernel/services/gps.lua",
+                  "os/kernel/services/ticker.lua",
                   "os/kernel/splash.lua",
                   "os/kernel/supervisor.lua",
                   "os/mobile/main.lua",

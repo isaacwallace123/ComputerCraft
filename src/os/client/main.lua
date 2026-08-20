@@ -37,10 +37,25 @@
 --- by hand.
 
 local gps = require("os.kernel.services.gps")
+local ticker = require("os.kernel.services.ticker")
+local reactive = require("ui.state.reactive")
 local registry = require("domain.fleet.registry")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
 local wire = require("domain.protocol.message")
+
+--- The value every page recomputes from.
+---
+--- One scope for the machine's whole life, holding one number. It is never
+--- destroyed, which is correct rather than a leak: the thing it belongs to is
+--- the machine, and the machine stopping is the process ending.
+---
+--- Owned here rather than by a page, so every page advances together and none of
+--- them has to invent a clock of its own - which is what they were all doing,
+--- each with a `Value(0)` that nothing incremented.
+local function machineTick()
+  return reactive.scoped():Value(0)
+end
 
 local client = {}
 
@@ -152,7 +167,7 @@ client.screen = service.define({
 })
 
 function client.services()
-  return { client.sync, client.screen, gps.service }
+  return { client.sync, client.screen, gps.service, ticker.service }
 end
 
 --- Build a supervised client, ready to be stepped.
@@ -194,6 +209,8 @@ function client.boot(ports, options)
     -- whenever the machine was last on - which on a monitor in a corner could
     -- be days. Three seconds of blankness is the honest alternative.
     state = { fleet = registry.empty() },
+
+    tick = machineTick(),
 
     -- The default is the real desktop, not a stub. A client whose screen
     -- service does nothing is a client that boots, reports healthy, and shows a

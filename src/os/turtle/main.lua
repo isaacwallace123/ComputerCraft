@@ -50,11 +50,26 @@
 local agent = require("os.turtle.agent")
 local control = require("os.turtle.control")
 local gps = require("os.kernel.services.gps")
+local ticker = require("os.kernel.services.ticker")
 local jobs = require("domain.turtle.jobs")
+local reactive = require("ui.state.reactive")
 local legacyLink = require("os.turtle.legacy")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
 local wire = require("domain.protocol.message")
+
+--- The value every page recomputes from.
+---
+--- One scope for the machine's whole life, holding one number. It is never
+--- destroyed, which is correct rather than a leak: the thing it belongs to is
+--- the machine, and the machine stopping is the process ending.
+---
+--- Owned here rather than by a page, so every page advances together and none of
+--- them has to invent a clock of its own - which is what they were all doing,
+--- each with a `Value(0)` that nothing incremented.
+local function machineTick()
+  return reactive.scoped():Value(0)
+end
 
 local turtleOs = {}
 
@@ -261,7 +276,14 @@ turtleOs.controls = service.define({
 --- base does. The switch that ends the dual run is deleting
 --- `os/turtle/legacy.lua`, which is one decision taken once.
 function turtleOs.services()
-  return { turtleOs.job, turtleOs.heartbeat, turtleOs.controls, legacyLink.service, gps.service }
+  return {
+    turtleOs.job,
+    turtleOs.heartbeat,
+    turtleOs.controls,
+    legacyLink.service,
+    gps.service,
+    ticker.service,
+  }
 end
 
 ---------------------------------------------------------------------------
@@ -303,6 +325,7 @@ function turtleOs.boot(ports, options)
     -- and says so, because the first thing somebody does is reboot it.
     screen = ports.screen,
     input = ports.input,
+    tick = machineTick(),
     saveLocation = ports.saveLocation,
     log = ports.log,
 
