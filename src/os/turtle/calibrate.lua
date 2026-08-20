@@ -109,53 +109,109 @@ function calibrate.run(body, locator, options)
     end
   end
 
-  local blocked = nil
+  --- Probe the four horizontal directions from wherever the turtle is standing.
+  ---
+  --- `from` is a fix taken at *this* level. It is a parameter rather than the
+  --- outer `before` because the fallback probes a block higher, and comparing a
+  --- fix taken up there against one taken on the ground is a height change -
+  --- which `fix.headingFrom` correctly refuses, since that is exactly what two
+  --- fixes from different moments in a job look like.
+  ---
+  --- Returns the heading the turtle was facing when it started probing, or nil
+  --- and the reason the last attempt gave. It is left facing the way it began in
+  --- both cases.
+  local function probe(from)
+    local blocked = nil
 
-  for turns = 0, 3 do
-    local moved, reason = body.move("forward")
+    for turns = 0, 3 do
+      local moved, reason = body.move("forward")
 
-    if moved then
-      local after, secondWhy = calibrate.locate(locator, timeout)
+      if moved then
+        local after, secondWhy = calibrate.locate(locator, timeout)
 
-      -- Back first, and then decide. Reversing only on success would leave a
-      -- turtle that failed the second fix standing one block from where its
-      -- saved origin says it is.
-      local returned = body.move("back")
-      faceBack(turns)
+        -- Back first, and then decide. Reversing only on success would leave a
+        -- turtle that failed the second fix standing one block from where its
+        -- saved origin says it is.
+        local returned = body.move("back")
+        faceBack(turns)
 
-      if after == nil then
-        return nil, secondWhy
+        if after == nil then
+          return nil, secondWhy
+        end
+        if not returned then
+          return nil, "moved and could not step back - this turtle has shifted"
+        end
+
+        local heading, headingWhy = fix.headingFrom(from, after)
+        if heading == nil then
+          return nil, headingWhy
+        end
+
+        -- What it was facing before the turns, which is what everything else in
+        -- the system means by this turtle's heading.
+        return (heading - turns) % 4
       end
-      if not returned then
-        return nil, "moved forward and could not step back - this turtle has shifted"
-      end
 
-      local heading, headingWhy = fix.headingFrom(before, after)
-      if heading == nil then
-        return nil, headingWhy
+      blocked = reason
+      if turns < 3 then
+        -- Deliberately not dug through. A turtle that mined a block to find out
+        -- where it was would damage whatever it was parked in front of - a
+        -- chest, somebody's wall - to answer a question about itself.
+        body.turn("right")
       end
-
-      -- What it was facing before the turns, which is what everything else in
-      -- the system means by this turtle's heading.
-      return {
-        x = before.x,
-        y = before.y,
-        z = before.z,
-        heading = (heading - turns) % 4,
-      }
     end
 
-    blocked = reason
-    if turns < 3 then
-      -- Deliberately not dug through. A turtle that mined a block to find out
-      -- where it was would damage whatever it was parked in front of - a chest,
-      -- somebody's wall - to answer a question about itself.
-      body.turn("right")
+    faceBack(3)
+
+    -- CC's own words, not a paraphrase.
+    --
+    -- The first version said "boxed in on all four sides", which is a diagnosis
+    -- rather than an observation - and it was wrong on a turtle standing in the
+    -- open, where the real answer was in the reason string being thrown away.
+    -- "Out of fuel" and "Movement obstructed" call for completely different
+    -- things and this is the only place either of them is visible.
+    return nil, "blocked: " .. tostring(blocked or "cannot step")
+  end
+
+  local heading, blockedWhy = probe(before)
+
+  -- Boxed in at this level, which a turtle parked in a room usually is: walls on
+  -- two sides and a chest on a third. One block up is almost always clear.
+  --
+  -- The position reported is still the fix taken on the ground - the turtle
+  -- comes back down to it - but the *heading* is worked out from a fresh fix up
+  -- there, because a turtle that has changed height between two fixes has not
+  -- taken one step.
+  if heading == nil and body.move("up") then
+    local above = calibrate.locate(locator, timeout)
+
+    -- Written as an `if` rather than `above and probe(above) or nil`, because
+    -- `and`/`or` collapses two return values into one and the reason would come
+    -- back nil every time - which is how a diagnostic quietly stops diagnosing.
+    local higher, whyUp = nil, nil
+    if above ~= nil then
+      higher, whyUp = probe(above)
+    else
+      whyUp = "lost the fix a block up"
+    end
+
+    -- Down before deciding, for the same reason the horizontal probe steps back
+    -- before deciding: a turtle left a block above where its origin says it is
+    -- is worse than one that never tried.
+    body.move("down")
+
+    if higher ~= nil then
+      heading = higher
+    else
+      blockedWhy = whyUp or blockedWhy
     end
   end
 
-  faceBack(3)
-  return nil, "boxed in on all four sides: " .. tostring(blocked or "cannot step")
+  if heading == nil then
+    return nil, blockedWhy
+  end
+
+  return { x = before.x, y = before.y, z = before.z, heading = heading }
 end
 
 --- Does this turtle need calibrating?

@@ -38,8 +38,14 @@ local function world(options)
       self.moves[#self.moves + 1] = direction
 
       if direction == "forward" then
-        if options.blocked or options.blockedFacing == self.facing then
-          return false, "movement obstructed"
+        if options.blocked then
+          return false, "Out of fuel"
+        end
+        if options.groundBlocked and self.y == 64 then
+          return false, "Movement obstructed"
+        end
+        if options.blockedFacing == self.facing then
+          return false, "Movement obstructed"
         end
         self.x = self.x + STEP[self.facing].x
         self.z = self.z + STEP[self.facing].z
@@ -52,6 +58,19 @@ local function world(options)
         end
         self.x = self.x - STEP[self.facing].x
         self.z = self.z - STEP[self.facing].z
+        return true
+      end
+
+      if direction == "up" then
+        if options.ceiling then
+          return false, "movement obstructed"
+        end
+        self.y = self.y + 1
+        return true
+      end
+
+      if direction == "down" then
+        self.y = self.y - 1
         return true
       end
 
@@ -128,15 +147,33 @@ it("a turtle blocked in front turns and tries the other three ways", function()
   expect.equal(turtle.z, 0)
 end)
 
-it("a turtle boxed in on all four sides says so, still facing where it was", function()
-  -- A turtle that mined a block to find out where it was would damage whatever
-  -- it was parked in front of - a chest, somebody's wall - to answer a question
-  -- about itself.
-  local turtle = world({ blocked = true })
+it("a turtle boxed in at ground level goes up one and tries again", function()
+  -- Which a turtle parked in a room usually is: walls on two sides, a chest on
+  -- a third. One block up is almost always clear.
+  local turtle = world({ groundBlocked = true })
+
+  local found, why = calibrate.run(turtle.body, turtle.locator)
+  expect.truthy(found ~= nil, tostring(why))
+  found = found or {}
+
+  -- The position reported is the fix taken on the ground, not the one taken a
+  -- block higher: the turtle came back down to it.
+  expect.equal(found.y, 64)
+  expect.equal(turtle.y, 64, "and it is back at ground level")
+  expect.equal(turtle.facing, 0, "still pointing the way it was")
+end)
+
+it("a turtle that cannot move at all reports what the turtle API said", function()
+  -- The first version said "boxed in on all four sides", which is a diagnosis
+  -- rather than an observation - and it was wrong on a turtle standing in the
+  -- open, where the real answer was in the reason string it was discarding.
+  -- "Out of fuel" and "Movement obstructed" call for completely different
+  -- things, and this is the only place either of them is visible.
+  local turtle = world({ blocked = true, ceiling = true })
   local found, why = calibrate.run(turtle.body, turtle.locator)
 
   expect.equal(found, nil)
-  expect.contains(why, "boxed in")
+  expect.contains(why, "Out of fuel", "CC's own words, not a paraphrase")
   expect.equal(turtle.z, 0, "still where it was")
   expect.equal(turtle.facing, 0, "and still pointing the way it was")
 end)
