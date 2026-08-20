@@ -299,20 +299,30 @@ it("a service somebody switched off is not reported as a fault", function()
   )
 end)
 
-it("a turtle shows the fix it already has, marked as one", function()
+it("a turtle shows the position it already has", function()
   -- `os/kernel/services/gps.lua` refreshes `.location` from the constellation
   -- every ten seconds, so a turtle that reported "no position" had its own
-  -- coordinates written on its own disk. The navigator's position needs a
-  -- heading as well and is what a mining job runs on; the fix is what a person
-  -- and a map need.
-  --
-  -- Marked rather than hidden, because a turtle showing coordinates and
-  -- refusing to deploy is otherwise two facts that look like a contradiction.
-  local seen = values(screen.miner({ world = { x = 52, y = 1, z = 425 }, fix = true }, {}))
-  expect.contains(seen.at, "52 1 425")
-  expect.contains(seen.at, "fix")
+  -- coordinates written on its own disk.
+  local seen = values(screen.miner({ world = { x = 52, y = 1, z = 425 } }, {}))
+  expect.equal(seen.at, "52 1 425")
+end)
 
-  -- Dead reckoning, once it has a heading, is reported plainly.
-  local reckoned = values(screen.miner({ world = { x = 52, y = 1, z = 425 } }, {}))
-  expect.equal(reckoned.at, "52 1 425")
+it("the heading gets its own row, because it is a different missing thing", function()
+  -- This was a `(fix)` after the coordinates, and somebody had to ask what it
+  -- meant. It was jargon for "a GPS reading with no heading" - a sentence about
+  -- the heading, wearing a position's clothes.
+  --
+  -- GPS gives three numbers and withholds the fourth, a turtle needs all four to
+  -- dead reckon, and "why will this turtle not deploy" has its answer here and
+  -- nowhere else.
+  local known = values(screen.miner({ world = { x = 52, y = 1, z = 425 }, heading = 1 }, {}))
+  expect.equal(known.facing, "east")
+
+  local hunting = values(screen.miner({ world = { x = 52, y = 1, z = 425 } }, {}))
+  expect.equal(hunting.facing, "working it out", "and it says it is looking")
+
+  local stuck = values(screen.miner({ world = { x = 52, y = 1, z = 425 } }, {
+    locateWhy = "blocked: Movement obstructed",
+  }))
+  expect.contains(stuck.facing, "Movement obstructed", "or why it cannot")
 end)

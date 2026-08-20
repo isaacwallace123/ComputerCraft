@@ -164,7 +164,16 @@ function turtleOs.snapshot(context)
     local saved = context.locator.saved()
     if type(saved) == "table" and tonumber(saved.x) then
       snap.world = { x = saved.x, y = saved.y, z = saved.z }
-      snap.fix = true
+    end
+  end
+
+  -- Which way it faces in the world, which is the half GPS cannot supply and the
+  -- half a mining job cannot do without. Absent means it is still being worked
+  -- out; see the locate service below.
+  if context.nav and context.nav.origin then
+    local origin = context.nav.origin()
+    if type(origin) == "table" then
+      snap.heading = origin.heading
     end
   end
 

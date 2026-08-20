@@ -36,6 +36,7 @@
 --- (the fleet is managed from the base), so a screen with no input is not a
 --- reduction - it is the honest shape of the machine.
 
+local fix = require("domain.gps.fix")
 local format = require("ui.format")
 local theme = require("ui.theme")
 
@@ -109,21 +110,10 @@ end
 local function placeRow(snapshot, state)
   local world = snapshot.world
   if type(world) == "table" and world.x then
-    -- A `fix` is a GPS reading with no heading attached, which is a position a
-    -- person can use and a mining job cannot. Marked rather than hidden: a
-    -- turtle showing coordinates and refusing to deploy would otherwise be two
-    -- facts that look like a contradiction.
-    local place = ("%d %d %d"):format(world.x, world.y or 0, world.z or 0)
-    if snapshot.fix then
-      return { label = "at", value = place .. " (fix)", colour = T.mutedFg }
-    end
-    return { label = "at", value = place }
+    return { label = "at", value = ("%d %d %d"):format(world.x, world.y or 0, world.z or 0) }
   end
 
   if state.locateWhy then
-    -- Why, not just that. "no position" on a turtle standing under a working
-    -- constellation is a fact with no next step attached, and the reason was
-    -- going to the log - which a turtle no longer has a page for.
     return {
       label = "at",
       value = format.ellipsis(tostring(state.locateWhy), 30),
@@ -132,6 +122,34 @@ local function placeRow(snapshot, state)
   end
 
   return { label = "at", value = "locating...", colour = T.warn }
+end
+
+--- Which way it faces, or what it is doing about not knowing.
+---
+--- Its own row rather than a mark on the position, and the reason is that this
+--- said `(fix)` for a while and somebody had to ask what it meant. It was
+--- jargon for "a GPS reading with no heading", which is a sentence about the
+--- *heading* wearing a position's clothes.
+---
+--- The distinction is real and worth a row of a thirteen-row screen: GPS gives
+--- three numbers and withholds the fourth, a turtle needs all four to dead
+--- reckon, and "why will this turtle not deploy" has its answer here and
+--- nowhere else.
+local function headingRow(snapshot, state)
+  local heading = tonumber(snapshot.heading)
+  if heading ~= nil then
+    return { label = "facing", value = fix.compass(heading), colour = T.good }
+  end
+
+  if state.locateWhy then
+    return {
+      label = "facing",
+      value = format.ellipsis(tostring(state.locateWhy), 30),
+      colour = T.warn,
+    }
+  end
+
+  return { label = "facing", value = "working it out", colour = T.warn }
 end
 
 --- The lines a miner's screen shows, as data.
@@ -167,6 +185,9 @@ function screen.miner(snapshot, state)
   local place = placeRow(snapshot, state)
   row(place.label, place.value, place.colour)
 
+  local facing = headingRow(snapshot, state)
+  row(facing.label, facing.value, facing.colour)
+
   local goal = state.desired and state.desired.mode
   if goal then
     row("orders", tostring(goal))
@@ -196,8 +217,9 @@ function screen.general(snapshot, state)
   }
 
   -- A general with no position holds no chunk, and a general that holds no chunk
-  -- has no crew - so this row is the explanation for the one under it.
+  -- has no crew - so these two rows are the explanation for the one under them.
   rows[#rows + 1] = placeRow(snapshot, state)
+  rows[#rows + 1] = headingRow(snapshot, state)
 
   local crew = state.crew or {}
   rows[#rows + 1] = {
