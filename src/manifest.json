@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-19T20:44:38-04:00",
+    "generated":  "2026-08-19T21:11:12-04:00",
     "files":  [
                   "adapters/cc/beacon.lua",
                   "adapters/cc/body.lua",
@@ -58,6 +58,7 @@
                   "icos.lua",
                   "lib/util.lua",
                   "lib/version.lua",
+                  "os/client/desktop.lua",
                   "os/client/main.lua",
                   "os/client/shell.lua",
                   "os/kernel/boot.lua",
@@ -123,6 +124,7 @@
                   "ports/transport.lua",
                   "startup.lua",
                   "ui/components/controls.lua",
+                  "ui/components/desktop.lua",
                   "ui/components/graphics.lua",
                   "ui/components/layout.lua",
                   "ui/components/page.lua",
@@ -130,6 +132,7 @@
                   "ui/components/text.lua",
                   "ui/format.lua",
                   "ui/host.lua",
+                  "ui/icons.lua",
                   "ui/init.lua",
                   "ui/input.lua",
                   "ui/render/buffer.lua",

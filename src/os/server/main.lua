@@ -287,7 +287,7 @@ function server.boot(ports, options)
     wallInput = ports.wallInput,
 
     draw = options.draw or function(inner)
-      return require("os.client.shell").run(inner, { role = "server", surface = "desktop" })
+      return require("os.client.desktop").run(inner, { role = "server", surface = "desktop" })
     end,
 
     -- The wall gets its own context so the shell reads the right pair of ports,
@@ -300,6 +300,10 @@ function server.boot(ports, options)
       end
       wallContext.screen = inner.wall
       wallContext.input = inner.wallInput
+      -- The wall keeps the single-page shell rather than the desktop. A
+      -- display-only surface has nobody to move a selection or close a window,
+      -- so an icon grid there is a menu that cannot be used - what a monitor
+      -- wants is one page, left open.
       return require("os.client.shell").run(wallContext, {
         role = "server",
         surface = "monitor",

@@ -348,7 +348,7 @@ function turtleOs.boot(ports, options)
     -- a turtle somebody has to diagnose by reading a log file over the top of a
     -- program that is still running.
     runControls = options.runControls or function(inner)
-      return require("os.client.shell").run(inner, {
+      return require("os.client.desktop").run(inner, {
         role = "turtle",
         surface = "launcher",
         -- A turtle's screen is 39x13 with the job's own status above it, so the

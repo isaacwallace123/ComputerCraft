@@ -173,7 +173,7 @@ end
 --- Build a supervised client, ready to be stepped.
 ---
 --- `options.draw` is the seam: a spec passes a function and no screen, and a
---- machine gets `os/client/shell.lua`.
+--- machine gets `os/client/desktop.lua`.
 ---
 --- The shell is required *inside* the default rather than at the top of the
 --- file, which is the one deliberate piece of laziness here. Requiring it pulls
@@ -217,7 +217,7 @@ function client.boot(ports, options)
     -- black rectangle - and the supervisor would be right to call that running.
     -- A spec overrides it; a machine gets the shell.
     draw = options.draw or function(inner)
-      return require("os.client.shell").run(inner, options.shell)
+      return require("os.client.desktop").run(inner, options.shell)
     end,
   }
 
