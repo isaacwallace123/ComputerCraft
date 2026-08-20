@@ -103,19 +103,33 @@ function adapter.terminal()
   })
 end
 
---- Events for one named monitor, and nothing else.
+--- Events for one named monitor, plus the machine's own heartbeat.
 ---
 --- Touches on *this* wall and its own resize. No keys, no characters, no mouse -
 --- which is D020 as a property of the port rather than as a branch: a
 --- display-only surface is one that cannot be typed at, so no app running on it
 --- can act on a keystroke however it was written.
-function adapter.monitor(name)
+---
+--- The tick is the exception, and leaving it out was a real bug rather than a
+--- strict reading of the rule. A screen redraws when its loop wakes, and the
+--- only thing that wakes a wall nobody is touching is the ticker - so a monitor
+--- rendered its first frame and then showed it forever. A fleet dashboard frozen
+--- at the moment the base booted is worse than no dashboard, because it looks
+--- like a fleet rather than like a fault.
+---
+--- It is not a loophole in D020. The tick carries no input: it says "time
+--- passed", which is exactly what a display-only surface is allowed to know.
+--- `wake` is the name of the event that means "time passed", supplied by
+--- whoever built the ports rather than named here. An adapter that reached into
+--- `os/` for a kernel constant would be pointing the wrong way, and this file's
+--- whole job is to know about CC and nothing above it.
+function adapter.monitor(name, wake)
   return adapter.new({
     accept = function(event, surface)
       if event == "monitor_touch" or event == "monitor_resize" then
         return surface == name
       end
-      return false
+      return wake ~= nil and event == wake
     end,
   })
 end

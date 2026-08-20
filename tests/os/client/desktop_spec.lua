@@ -62,86 +62,81 @@ it("no arrangement leaves the declared order alone", function()
 end)
 
 it("a swap returns a new list, because nothing redraws otherwise", function()
-  local layout = { 1, 2, 3, 4 }
-  local moved = desktop.swap(layout, 1, 4)
+  local entries = apps("a", "b", "c", "d")
+  local moved = desktop.swap(entries, 1, 4)
 
-  expect.equal(moved[1], 4)
-  expect.equal(moved[4], 1)
-  expect.equal(moved[2], 2, "and nothing else slid")
+  expect.equal(ids(moved), "d,b,c,a")
 
   -- `reactive` compares by identity, so a list mutated in place is the same
   -- table it was: the value would be set, no listener would fire, and the icon
   -- would appear not to have moved.
-  expect.truthy(moved ~= layout, "a copy")
-  expect.equal(layout[1], 1, "the original is intact")
+  expect.truthy(moved ~= entries, "a copy")
+  expect.equal(ids(entries), "a,b,c,d", "the original is intact")
 end)
 
 it("a swap with a cell that is not there changes nothing", function()
-  local moved = desktop.swap({ 1, 2 }, 2, 9)
-  expect.equal(moved[1], 1)
-  expect.equal(moved[2], 2)
+  expect.equal(ids(desktop.swap(apps("a", "b"), 2, 9)), "a,b")
+end)
+
+---------------------------------------------------------------------------
+-- What is open
+---------------------------------------------------------------------------
+
+it("opening an app that is already open does not give it a second tab", function()
+  local tabs = desktop.opened(desktop.opened({}, 3), 3)
+  expect.equal(#tabs, 1)
+  expect.equal(tabs[1], 3)
+end)
+
+it("tabs keep the order they were opened in", function()
+  local tabs = desktop.opened(desktop.opened(desktop.opened({}, 5), 2), 9)
+
+  -- Not sorted, and not most-recent-first. A strip that reordered itself as you
+  -- used it would move the tab you were about to click.
+  expect.equal(tabs[1], 5)
+  expect.equal(tabs[2], 2)
+  expect.equal(tabs[3], 9)
+end)
+
+it("closing takes one tab out and leaves the rest in place", function()
+  local tabs = desktop.closed({ 5, 2, 9 }, 2)
+  expect.equal(#tabs, 2)
+  expect.equal(tabs[1], 5)
+  expect.equal(tabs[2], 9)
+end)
+
+it("closing something that is not open is not a crash", function()
+  expect.equal(#desktop.closed({ 5 }, 7), 1)
+end)
+
+---------------------------------------------------------------------------
+-- The grid
+---------------------------------------------------------------------------
+
+it("what the tiles do not use is split, not left on the right", function()
+  -- Four tiles of eleven with three gaps is forty-seven of fifty-one, so two
+  -- cells each side. The bug this pins was a wall flush against the left edge
+  -- with all four cells of slack piled on the right.
+  local columns, tile, margin = desktop.grid(51)
+  expect.equal(columns, 4)
+  expect.equal(tile, 11)
+  expect.equal(margin, 2)
+
+  -- A pocket computer: two columns, and whatever is left over is still shared.
+  local narrow, _, handheld = desktop.grid(26)
+  expect.equal(narrow, 2)
+  expect.equal(handheld, 1)
 end)
 
 it("the gap between rows is given up before the bottom row is", function()
-  -- Three rows of four-high tiles plus the bar and the hint is seventeen rows on
-  -- a nineteen-row terminal, so the gaps fit.
+  -- Three rows of four-high tiles plus the bar and the line under it is fifteen
+  -- rows on a nineteen-row terminal, so the gaps fit.
   expect.equal(desktop.spacing(19, 11, 4), 1, "eleven apps still breathe")
 
   -- Sixteen apps is four rows, and the gaps no longer fit. Dropping them is the
   -- right answer; the wrong one is what happened before this function existed,
   -- where the bottom row went off the screen and read as the app not existing.
   expect.equal(desktop.spacing(19, 16, 4), 0)
-
-  -- A pocket computer: two columns, twenty rows, and the same arithmetic.
-  expect.equal(desktop.spacing(20, 4, 2), 1)
-end)
-
-it("the whole desktop draws, sprites and all", function()
-  -- The one test here that renders. Every other failure in this file is
-  -- arithmetic; this one catches the class that arithmetic cannot - a bound
-  -- property the runtime cannot resolve, a sprite that is nil where a node
-  -- expects one, a layout that throws before anything reaches the screen.
-  --
-  -- That class has taken this system down twice in world, both times leaving a
-  -- machine that looked hung on its splash while every service behind it ran.
-  local scope = ui.scoped()
-  local state = {
-    selected = scope:Value(1),
-    open = scope:Value(nil),
-    tick = scope:Value(0),
-    layout = scope:Value({ 1, 2, 3 }),
-    holding = scope:Value(2),
-  }
-
-  local entries = {
-    page.fake("fleet", "Fleet", { "client" }, { "desktop" }),
-    page.fake("bank", "Bank", { "client" }, { "desktop" }),
-    -- An app with no picture of its own, which must fall back rather than hand
-    -- the Sprite node a nil.
-    page.fake("swarm", "Swarm", { "client" }, { "desktop" }),
-  }
-
-  local screen = screenPort.null(51, 19)
-  local root = host.mount({
-    screen = screen,
-    scope = scope,
-    build = function(inner)
-      return desktop.build(inner, { label = "test" }, state, entries, {
-        width = 51,
-        height = 19,
-      })
-    end,
-  })
-
-  root:render()
-
-  -- And again with the carried icon somewhere else, because a move is the one
-  -- interaction that changes what every tile is bound to.
-  state.layout:set(desktop.swap({ 1, 2, 3 }, 2, 3))
-  state.holding:set(3)
-  root:render()
-
-  scope:destroy()
 end)
 
 it("moving the selection stays on the grid", function()
@@ -153,4 +148,81 @@ it("moving the selection stays on the grid", function()
   -- Down from the last column of the second row lands on a cell that does not
   -- exist in the third, so it clamps to the last app rather than to nothing.
   expect.equal(desktop.move(8, 11, 4, 0, 1), 11)
+end)
+
+---------------------------------------------------------------------------
+-- Drawing
+---------------------------------------------------------------------------
+
+--- Build one session's tree and render it. Returns nothing; it either throws or
+--- it does not, which is the whole assertion.
+local function draw(open, entries, options)
+  local scope = ui.scoped()
+  local state = {
+    open = scope:Value(open),
+    selected = scope:Value(1),
+    holding = scope:Value(2),
+    tick = scope:Value(0),
+    tabs = (options or {}).tabs or {},
+    wanted = scope:Value(nil),
+  }
+
+  local root = host.mount({
+    screen = screenPort.null(51, 19),
+    scope = scope,
+    build = function(inner)
+      return desktop.build(inner, {
+        label = "test",
+        clock = {
+          now = function()
+            return 0
+          end,
+          time = function()
+            return 13.5
+          end,
+        },
+      }, state, entries, { width = 51, height = 19 })
+    end,
+  })
+
+  root:render()
+  scope:destroy()
+end
+
+it("the wall draws, sprites and all", function()
+  -- The one kind of test here that renders. Every other failure in this file is
+  -- arithmetic; this one catches the class that arithmetic cannot - a bound
+  -- property the runtime cannot resolve, a sprite that is nil where a node
+  -- expects one, a layout that throws before anything reaches the screen.
+  --
+  -- That class has taken this system down twice in world, both times leaving a
+  -- machine that looked hung on its splash while every service behind it ran.
+  draw(nil, {
+    page.fake("fleet", "Fleet", { "client" }, { "desktop" }),
+    page.fake("bank", "Bank", { "client" }, { "desktop" }),
+    -- An app with no picture of its own, which must fall back rather than hand
+    -- the Sprite node a nil.
+    page.fake("swarm", "Swarm", { "client" }, { "desktop" }),
+  }, { tabs = { 2 } })
+end)
+
+it("an open app draws with the bar above it", function()
+  draw(2, {
+    page.fake("fleet", "Fleet", { "client" }, { "desktop" }),
+    page.fake("bank", "Bank", { "client" }, { "desktop" }),
+  }, { tabs = { 2 } })
+end)
+
+it("a machine with no world clock draws no time rather than midnight", function()
+  local format = require("ui.format")
+
+  -- Nil is a real answer - a spec, a simulated run, anything not in Minecraft -
+  -- and "00:00" would be a time that is wrong rather than absent.
+  expect.equal(format.clock(nil), "")
+  expect.equal(format.clock(13.5), "13:30")
+  expect.equal(format.clock(0), "00:00")
+
+  -- Rounding the minutes can carry, and 13:60 is not a time.
+  expect.equal(format.clock(13.999), "14:00")
+  expect.equal(format.clock(24), "00:00", "the day wraps rather than clamping")
 end)

@@ -91,7 +91,13 @@ function boot.ports()
     built.wall = wall
     built.wallName = wallName
     built.wallSize = size
-    built.wallInput = require("adapters.cc.input").monitor(wallName)
+    -- Woken by the machine's own tick as well as by touches. A wall that only
+    -- woke on a touch drew its first frame and then showed it forever, and a
+    -- fleet dashboard frozen at boot looks like a fleet rather than like a
+    -- fault. The constant comes from here because this is the layer that knows
+    -- both halves; see `adapters/cc/input.lua`.
+    built.wallInput =
+      require("adapters.cc.input").monitor(wallName, require("os.kernel.services.ticker").EVENT)
   end
 
   return built

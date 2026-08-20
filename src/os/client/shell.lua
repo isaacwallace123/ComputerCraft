@@ -125,7 +125,10 @@ end
 --- ignores an event it has no handler for, and the render at the bottom of the
 --- loop is the repaint. Nothing in the framework had to change, and a dead
 --- input port stays dead rather than becoming busy.
-shell.TICK_EVENT = "icos_tick"
+--- Named by the service that queues it, not copied here. Two spellings of one
+--- constant is the failure `domain/protocol/message.lua` describes: both sides
+--- work perfectly and never hear each other, with nothing to hear.
+shell.TICK_EVENT = require("os.kernel.services.ticker").EVENT
 
 --- Build the shell's own state.
 ---
@@ -261,7 +264,11 @@ function shell.run(context, options)
           local target = key - 1
           if entries[target] and target ~= index then
             wanted = target
-            return true
+            -- Ends the session so the loop below can rebuild. Returning `true`
+            -- only consumed the key: the choice was recorded and the old app
+            -- kept drawing, because nothing read `wanted` until `host.run`
+            -- returned and `host.run` had no reason to return.
+            return host.STOP
           end
         end
         return false

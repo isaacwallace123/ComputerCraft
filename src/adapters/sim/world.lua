@@ -951,6 +951,13 @@ function world:ports()
     sleep = function(seconds)
       api.sleep(seconds)
     end,
+
+    --- No world hour, because there is no world. See `ports/clock.lua`: nil
+    --- means "nothing to show" and is distinct from midnight, which is why a
+    --- simulated clock does not invent one.
+    time = function()
+      return nil
+    end,
   })
 
   local storage = require("ports.storage").check({

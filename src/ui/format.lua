@@ -91,4 +91,31 @@ function format.ago(seconds)
   return math.floor(seconds / 86400) .. "d"
 end
 
+--- The world's hour as `HH:MM`. `nil` in, empty string out.
+---
+--- Here rather than through `textutils.formatTime`, which is a CC global and
+--- would put a Minecraft API inside `ui/` - the one layer `tools/check.ps1`
+--- refuses it in. It is four lines of arithmetic and it is the reason
+--- `ports/clock.lua` hands back a number rather than a formatted string.
+---
+--- Empty rather than "00:00" for nil, because a bar that showed midnight on
+--- every machine with no world clock would be showing a time that is wrong
+--- rather than absent.
+function format.clock(hours)
+  hours = tonumber(hours)
+  if hours == nil then
+    return ""
+  end
+  -- Wrapped rather than clamped: 24.0 is midnight, not one minute to.
+  hours = hours % 24
+  local minutes = math.floor((hours % 1) * 60 + 0.5)
+  local whole = math.floor(hours)
+  -- Rounding the minutes can carry into the hour, and 13:60 is not a time.
+  if minutes >= 60 then
+    minutes = 0
+    whole = (whole + 1) % 24
+  end
+  return ("%02d:%02d"):format(whole, minutes)
+end
+
 return format

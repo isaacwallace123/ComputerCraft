@@ -19,6 +19,16 @@ function adapter.new()
     sleep = function(seconds)
       sleep(seconds or 0)
     end,
+
+    --- The world's hour, 0-24, as a fraction.
+    ---
+    --- `os.time()` with no argument is the *local* in-game time, which is the
+    --- one somebody standing next to the computer would agree with. The "utc"
+    --- and "ingame" variants answer different questions and neither is the
+    --- question a clock in a title bar is asking.
+    time = function()
+      return os.time()
+    end,
   })
 end
 

@@ -1,64 +1,98 @@
---- The two shapes a desktop is made of: an icon you open, and a window it opens into.
+--- The tile a desktop is made of: an app you can see and open.
 ---
 --- Everything before this was a page filling a screen with a row of words under
 --- it. That is a launcher, not a desktop, and the difference is not decoration:
---- a launcher tells you what exists, a desktop tells you what you have *open*
---- and lets you leave it.
+--- a launcher tells you what exists, a desktop tells you what you have open and
+--- lets you leave it.
 ---
---- ## An icon is a tile, not a line of text
+--- ## Four rows, and none of them wasted
 ---
---- Three rows: a glyph, a name, and a gap. It is a `Card`, so it sits on its own
---- ground rather than on the wallpaper, and selecting one changes both its
---- background and its text - one token would leave the label at whatever
---- contrast it had, which on a monochrome terminal is no change at all.
+--- A picture, a blank line, and a name. The blank line is the one that looks
+--- like padding and is not: without it the label's cap-height sits directly
+--- against the sprite's bottom pixel row and the two read as one smudged shape,
+--- which is exactly how the first version looked in world.
 ---
---- The picture is a sprite where one exists - see `ui/icons.lua` - and a
---- character where one does not. Characters were the whole of the first version
---- and a desktop of them reads as punctuation, not as objects.
+--- The picture is centred by a pair of spacers rather than by arithmetic. A
+--- `Sprite` paints at its own origin inside whatever box it is given, so a
+--- stretched one lands hard against the left edge - which is what put every icon
+--- off-centre in a tile that was itself trying to look centred.
 ---
---- ## A window is a frame with a way out
+--- ## Three states, three grounds
 ---
---- Title bar, body, and a hint that says how to close it. The hint is not
---- optional furniture: a full-screen page with no visible exit is the single
---- most common way somebody concludes a program has hung, and this system has
---- already produced that impression twice for other reasons.
+--- Idle is `card`, selected is `accent`, and being carried is `warn`. Three
+--- backgrounds rather than a background and a caption, because a caption costs a
+--- row this screen does not have and because a colour is legible from across a
+--- room, which is where a wall monitor is read from.
+---
+--- Selecting changes the text colour too. One token would leave the label at
+--- whatever contrast it had, which on a monochrome terminal is no change at all.
+---
+--- ## There is no `Window` here any more
+---
+--- There was, and it drew a title bar and a "Q or backspace close" hint around
+--- whatever was inside it. On screen that came out as three stacked headers -
+--- the machine's bar, the window's bar, and the page's own title - on a screen
+--- that has nineteen rows in total.
+---
+--- The chrome now lives in one place, `os/client/desktop.lua`, as a single bar
+--- carrying the open apps and the time; and an open app is the only thing the
+--- desktop builds, so there is nothing left for a frame to be drawn around.
 
 local runtime = require("ui.runtime")
 local theme = require("ui.theme")
 
 local T = theme.TOKENS
 
----------------------------------------------------------------------------
--- Icon
----------------------------------------------------------------------------
-
 --- One app on the desktop.
 ---
----     scope:Icon({ Glyph = "\7", Label = "Fleet", Selected = isOpen, OnOpen = fn })
+---     scope:Icon({ Sprite = icons.fleet, Label = "Fleet", Selected = isOn })
 ---
---- `Selected` is a binding rather than a value, because the desktop moves the
---- selection and every tile has to hear about it - a tile that read a boolean
+--- `Selected` and `Held` are bindings rather than values, because the desktop
+--- moves both and every tile has to hear about it - a tile that read a boolean
 --- once would be a tile that never un-highlights.
 runtime.compose("Icon", function(scope, props)
   props = props or {}
 
   local selected = props.Selected
+  local held = props.Held
 
-  local function tone(onSelected, otherwise)
-    if selected == nil then
-      return otherwise
+  --- Pick between three values by what this tile is doing.
+  ---
+  --- Bound when either input is, constant when neither is, so a static tile
+  --- costs nothing in the graph.
+  local function tone(idle, chosen, carried)
+    if selected == nil and held == nil then
+      return idle
     end
     return scope:Computed(function(use)
-      return use(selected) and onSelected or otherwise
+      if held ~= nil and use(held) then
+        return carried
+      end
+      if selected ~= nil and use(selected) then
+        return chosen
+      end
+      return idle
     end)
   end
 
+  local ground = tone(T.card, T.accent, T.warn)
+
   return scope:Card(runtime.layoutProps(props, {
     Width = props.Width or 11,
-    Height = props.Height or 5,
-    Padding = { left = 1, right = 1, top = 0, bottom = 0 },
+
+    -- Four rows: two of picture, one of air, one of name. See the header for
+    -- why the empty one is not padding.
+    Height = props.Height or 4,
+
+    -- No side padding, deliberately. A tile eleven cells wide with a cell of
+    -- padding each side centres a name in nine, and `floor((9 - 8) / 2)` is
+    -- zero - so an eight-letter app sat flush left inside a tile that looked
+    -- like it was trying to centre it. The gap between tiles does the
+    -- separating instead, which is what a gap is for.
+    Padding = { left = 0, right = 0, top = 0, bottom = 0 },
+
     Focusable = true,
-    Background = tone(T.accent, T.card),
+    Background = ground,
     OnClick = props.OnOpen,
 
     -- Enter opens, because a keyboard user has already arrowed onto it and
@@ -73,93 +107,25 @@ runtime.compose("Icon", function(scope, props)
     end or nil,
 
     Children = {
-      -- A picture when there is one, a letter when there is not.
-      --
-      -- The first version was only ever a character, and it read as exactly
-      -- that: a desktop of punctuation standing in for objects. A sprite is
-      -- 8x6 pixels through the 2x3 canvas - four cells wide, two tall - which
-      -- is small enough to fit above a label on a 26-column Pocket Computer and
-      -- large enough to be a shape rather than a symbol.
-      props.Sprite and scope:Sprite({
+      scope:Row({
         Height = 2,
-        Sprite = props.Sprite,
-        -- The tile's own ground, so a transparent pixel shows the card rather
-        -- than a hole - and bound, because that ground changes with selection.
-        Background = tone(T.accent, T.card),
-      }) or scope:Text({
-        Height = 2,
-        TextAlign = "center",
-        Text = props.Glyph or "\7",
-        Color = tone(T.accentFg, T.accent),
+        Children = {
+          scope:Spacer({ Grow = 1 }),
+          scope:Sprite({
+            Sprite = props.Sprite,
+            -- The tile's own ground, so a transparent pixel shows the card
+            -- rather than a hole - and bound, because that ground moves.
+            Background = ground,
+          }),
+          scope:Spacer({ Grow = 1 }),
+        },
       }),
+      scope:Spacer({ Height = 1 }),
       scope:Text({
         Height = 1,
         TextAlign = "center",
         Text = props.Label or "",
-        Color = tone(T.accentFg, T.foreground),
-      }),
-      scope:Muted({
-        Height = 1,
-        TextAlign = "center",
-        Text = props.Detail or "",
-        Color = tone(T.accentFg, T.mutedFg),
-      }),
-    },
-  }))
-end)
-
----------------------------------------------------------------------------
--- Window
----------------------------------------------------------------------------
-
---- A framed app, with a title bar and a way out.
----
---- `Absolute` on the outer node, so a window sits over the desktop rather than
---- pushing it around - which is what makes closing one leave the wallpaper
---- exactly as it was rather than reflowing everything underneath.
-runtime.compose("Window", function(scope, props)
-  props = props or {}
-
-  local bar = {
-    scope:Text({
-      Text = props.Title or "",
-      Color = T.primaryFg,
-      Grow = 1,
-    }),
-  }
-
-  if props.Status ~= nil then
-    bar[#bar + 1] = scope:Text({ Text = props.Status, Color = T.primaryFg })
-  end
-
-  return scope:Overlay(runtime.layoutProps(props, {
-    Background = T.background,
-    Children = {
-      scope:Row({
-        Height = 1,
-        Padding = { left = 1, right = 1, top = 0, bottom = 0 },
-        Background = T.primary,
-        Children = bar,
-      }),
-
-      scope:Box({
-        Grow = 1,
-        Children = props.Children or {},
-      }),
-
-      -- Always there, even when the app below has its own actions. A window
-      -- whose exit is sometimes visible is a window somebody has to look for.
-      scope:Row({
-        Height = 1,
-        Padding = { left = 1, right = 1, top = 0, bottom = 0 },
-        Background = T.muted,
-        Children = {
-          scope:Muted({
-            Text = props.Hint or "Q or backspace  close",
-            Color = T.foreground,
-            Grow = 1,
-          }),
-        },
+        Color = tone(T.foreground, T.accentFg, T.primaryFg),
       }),
     },
   }))

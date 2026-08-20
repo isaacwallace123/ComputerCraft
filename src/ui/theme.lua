@@ -47,9 +47,28 @@ theme.TOKENS = {
   destructive = 11,
   free1 = 12,
   free2 = 13,
-  free3 = 14,
+
+  -- The window manager's own colour, and the one token that is not about the
+  -- content. A top bar in `primary` is fifty-one cells of near-white across the
+  -- top of every screen, which is the loudest thing on a wall monitor and is
+  -- competing with the data rather than framing it. Chrome is indigo: clearly
+  -- not part of the page, and dark enough in both themes to sit still.
+  --
+  -- It takes the slot `free3` had. The free slots are for an app that wants a
+  -- chart series or a card suit, and nothing has ever wanted one; a bar that
+  -- every machine draws at all times has a better claim on a palette entry.
+  chrome = 14,
+
   background = 15,
 }
+
+--- What reads on `chrome`.
+---
+--- The same slot as `primaryFg`, deliberately, because the requirement is
+--- identical - text that reads on a saturated block - and a sixteen-slot palette
+--- cannot afford a second near-black. Named separately so a component asks for
+--- the role it means, which is this file's whole rule.
+theme.TOKENS.chromeFg = theme.TOKENS.primaryFg
 
 --- Tokens a person has to be able to tell apart, because they can appear in the
 --- same place. A status column shows `good`, `warn`, `destructive`, and
@@ -84,7 +103,7 @@ theme.dark = {
   [T.warn] = 0xFDE68A,
   [T.free1] = 0xC084FC,
   [T.free2] = 0x2DD4BF,
-  [T.free3] = 0x818CF8,
+  [T.chrome] = 0x818CF8,
 }
 
 --- Light has less room: every token has to be dark enough to read on white, so
@@ -108,7 +127,7 @@ theme.light = {
   [T.destructive] = 0xDC2626,
   [T.free1] = 0x9333EA,
   [T.free2] = 0x0D9488,
-  [T.free3] = 0x4F46E5,
+  [T.chrome] = 0x4F46E5,
 }
 
 --- Push a palette onto a screen.

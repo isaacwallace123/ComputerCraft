@@ -43,6 +43,12 @@ local host = {}
 --- host - the desktop, a supervisor - keeps its own bookkeeping without the
 --- screen having to forward anything. Returning `true` from it consumes the
 --- event.
+--- What `onEvent` returns to end the session.
+---
+--- A sentinel rather than `true`, because "I handled this" and "stop drawing"
+--- are different answers and every existing handler already returns the first.
+host.STOP = "stop"
+
 function host.run(root, input, options)
   options = options or {}
   local running = true
@@ -91,6 +97,15 @@ function host.run(root, input, options)
         break
       end
       local consumed = options.onEvent and options.onEvent(name, table.unpack(event, 2))
+
+      -- A handler that wants the session over says so, rather than setting a
+      -- flag the loop cannot see. `os/client/shell.lua` did set such a flag, and
+      -- read it only after `host.run` returned - so switching apps with a number
+      -- key recorded the choice and then carried on drawing the old one, for as
+      -- long as the machine was up.
+      if consumed == host.STOP then
+        break
+      end
       if not consumed then
         root:handle(table.unpack(event))
       end
@@ -99,6 +114,15 @@ function host.run(root, input, options)
       if clock then
         root:advance(clock.now())
       end
+    end
+
+    -- Asked once per pass, after the tree has had the event. A click reaches a
+    -- component's `OnClick`, not `onEvent`, so a handler inside the tree has no
+    -- way to end the session - and without this the desktop's icons and tabs
+    -- recorded what you clicked and went on drawing the old view until the next
+    -- keypress, which is exactly what "clicking does nothing" looks like.
+    if options.onFrame and options.onFrame(root) == host.STOP then
+      break
     end
 
     root:render()
