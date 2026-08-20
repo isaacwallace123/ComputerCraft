@@ -312,6 +312,7 @@ function turtleOs.boot(ports, options)
     serialise = ports.serialise,
     beacon = ports.beacon,
     locator = ports.locator,
+    peripherals = ports.peripherals,
 
     -- The turtle's own screen.
     --

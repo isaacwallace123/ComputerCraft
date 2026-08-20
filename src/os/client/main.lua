@@ -195,6 +195,7 @@ function client.boot(ports, options)
     input = ports.input,
     beacon = ports.beacon,
     locator = ports.locator,
+    peripherals = ports.peripherals,
     saveLocation = ports.saveLocation,
 
     -- A client is a block, like a server. Same answer, same reason.

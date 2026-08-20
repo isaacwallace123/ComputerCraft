@@ -49,6 +49,7 @@ function boot.ports()
     transport = require("adapters.cc.transport").new(),
     locator = require("adapters.cc.locator").new(),
     beacon = require("adapters.cc.beacon").new(),
+    peripherals = require("adapters.cc.peripherals").new(),
 
     -- The write half of the locator. `locator` reads `.location`; nothing could
     -- write it except `commands/locate`, so a machine that corrected itself

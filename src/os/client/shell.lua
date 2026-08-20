@@ -92,6 +92,8 @@ function shell.apps()
     require("apps.automation.app"),
     require("apps.operations.app"),
     require("apps.gps.app"),
+    require("apps.hardware.app"),
+    require("apps.disks.app"),
     require("apps.console.app"),
   }
 end

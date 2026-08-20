@@ -242,6 +242,7 @@ function server.boot(ports, options)
     storage = ports.storage,
     transport = ports.transport,
     locator = ports.locator,
+    peripherals = ports.peripherals,
     beacon = ports.beacon,
 
     -- A server is a block in the world. It cannot move without being broken,
