@@ -149,6 +149,11 @@ local function headingRow(snapshot, state)
     }
   end
 
+  -- No "not set, reboot to set it" branch, and it is worth saying why it is
+  -- absent: `locateWhy` is written alongside the failure that raises the prompt,
+  -- so it always wins the test above and that branch could never be reached. The
+  -- reason is the better message anyway - "blocked: Movement obstructed" says
+  -- what to do about it and "not set" does not.
   return { label = "facing", value = "working it out", colour = T.warn }
 end
 
@@ -351,6 +356,81 @@ function screen.draw(port, rows, label, last)
   return true, digest
 end
 
+--- Ask which way this turtle faces, when it cannot work that out itself.
+---
+--- ## Automatic first, always
+---
+--- `os/turtle/calibrate.lua` finds the heading by stepping one block and
+--- comparing two GPS fixes, and that is the path that scales: nobody walks to a
+--- turtle. This runs only once that has *tried and failed* - a turtle boxed in
+--- on every side, or one whose constellation is not up yet.
+---
+--- Which is why it waits for `locateFailed` rather than for the absence of an
+--- origin. Those look identical for the first few seconds of every boot, and a
+--- prompt that appeared in that window would be a prompt somebody answers
+--- before the machine has had a chance to answer it better.
+---
+--- ## Before the status page, not instead of it
+---
+--- A turtle that cannot say which way it points cannot be deployed, so its
+--- status page is a list of things it is not doing. Asking first puts the one
+--- answerable question in front of the person standing there.
+---
+--- Cancelling is always possible and always means "leave it alone". The page
+--- then says so, and the automatic path keeps trying in the background.
+function screen.askFacing(context)
+  local nav = context.nav
+  if nav == nil or nav.hasOrigin() or context.screen == nil then
+    return false
+  end
+
+  -- The position comes first and comes free: `os/kernel/services/gps.lua`
+  -- refreshes it from the constellation. Without one there is nothing to anchor
+  -- a heading to, and asking would collect an answer that cannot be written
+  -- down.
+  local saved = context.locator and context.locator.saved()
+  if type(saved) ~= "table" or tonumber(saved.x) == nil then
+    return false
+  end
+
+  local console = require("os.kernel.console")
+  local prompt = require("os.kernel.prompt")
+
+  local entries = {}
+  for _, name in ipairs(fix.COMPASS) do
+    entries[#entries + 1] = { label = name }
+  end
+
+  local chosen = prompt.choose(console.new(context.screen), entries, {
+    title = tostring(context.node and context.node.label or "turtle"),
+    note = "F3 shows Facing. Turtles point away.",
+    footer = "up/down   enter choose   Q skip",
+  })
+
+  if chosen == nil then
+    return false
+  end
+
+  -- The automatic path may have won while the question was on screen. Its answer
+  -- is measured and this one is typed, so it keeps its own.
+  if nav.hasOrigin() then
+    return false
+  end
+
+  nav.setOrigin(saved.x, saved.y, saved.z, chosen - 1)
+  if context.saveLocation then
+    context.saveLocation({
+      x = saved.x,
+      y = saved.y,
+      z = saved.z,
+      heading = chosen - 1,
+    })
+  end
+  context.locateWhy = nil
+  context.locateFailed = nil
+  return true
+end
+
 --- How long between frames, in seconds.
 ---
 --- One, matching the heartbeat that changes most of what is on screen. A frame
@@ -374,6 +454,7 @@ function screen.run(context)
   local port = context.screen
   local label = context.node and context.node.label or "turtle"
   local last = nil
+  local asked = false
 
   -- The palette, once.
   --
@@ -391,6 +472,13 @@ function screen.run(context)
   end
 
   while true do
+    -- Once, and only after the automatic attempt has given up. See `askFacing`.
+    if not asked and context.locateFailed then
+      asked = true
+      screen.askFacing(context)
+      last = nil
+    end
+
     if port ~= nil then
       local rows = screen.rows(context)
       local _, digest = screen.draw(port, rows, label, last)

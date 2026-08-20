@@ -403,6 +403,7 @@ turtleOs.locate = service.define({
             })
           end
           context.locateWhy = nil
+          context.locateFailed = nil
           if context.log then
             context.log.info(
               ("located at %d, %d, %d facing %s"):format(
@@ -426,6 +427,12 @@ turtleOs.locate = service.define({
           -- diagnostic in it would be persisted, and a stale one would survive a
           -- reboot to describe an attempt that never happened.
           context.locateWhy = why
+
+          -- A separate flag from the sentence, because the screen has to tell
+          -- "still trying" from "tried and could not" - the first is a machine
+          -- working and the second is a machine waiting for a person. Reading it
+          -- off the wording would be reading a diagnostic as a protocol.
+          context.locateFailed = true
 
           if context.log then
             -- Once per attempt, and the attempts are a minute apart. A turtle

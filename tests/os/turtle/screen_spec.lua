@@ -326,3 +326,94 @@ it("the heading gets its own row, because it is a different missing thing", func
   }))
   expect.contains(stuck.facing, "Movement obstructed", "or why it cannot")
 end)
+
+---------------------------------------------------------------------------
+-- Asking, when it cannot work it out
+---------------------------------------------------------------------------
+
+--- A turtle with a saved fix and a navigator that has no origin yet.
+local function unheaded(options)
+  options = options or {}
+  local given = nil
+  return {
+    given = function()
+      return given
+    end,
+    context = {
+      screen = recorder().port,
+      node = { label = "miner-6" },
+      locator = {
+        saved = function()
+          return options.position ~= false and { x = 52, y = 1, z = 425 } or nil
+        end,
+        gps = function()
+          return nil
+        end,
+      },
+      nav = {
+        hasOrigin = function()
+          return options.located == true or given ~= nil
+        end,
+        setOrigin = function(x, y, z, heading)
+          given = { x = x, y = y, z = z, heading = heading }
+        end,
+      },
+    },
+  }
+end
+
+it("a turtle that has already worked it out is never asked", function()
+  -- The automatic path is the one that scales, because nobody walks to a
+  -- turtle. Asking a machine that already knows would be asking somebody to
+  -- confirm a measurement.
+  local turtle = unheaded({ located = true })
+  expect.falsy(screen.askFacing(turtle.context))
+end)
+
+it("a turtle with no position is not asked, because there is nowhere to put it", function()
+  -- The position comes first and comes free. Without one there is nothing to
+  -- anchor a heading to, and asking would collect an answer that cannot be
+  -- written down.
+  local turtle = unheaded({ position = false })
+  expect.falsy(screen.askFacing(turtle.context))
+  expect.equal(turtle.given(), nil)
+end)
+
+it("a machine with no screen is not asked either", function()
+  local turtle = unheaded()
+  turtle.context.screen = nil
+  expect.falsy(screen.askFacing(turtle.context))
+end)
+
+it("the prompt only appears once the automatic attempt has given up", function()
+  -- `locateFailed` rather than the absence of an origin, because those look
+  -- identical for the first few seconds of every boot - and a prompt that
+  -- appeared in that window would be one somebody answers before the machine has
+  -- had a chance to answer it better.
+  local asked = 0
+  local turtle = unheaded()
+  local context = turtle.context
+  context.clock = {
+    now = function()
+      return 0
+    end,
+    sleep = function()
+      error("parked", 0)
+    end,
+  }
+
+  local real = screen.askFacing
+  screen.askFacing = function()
+    asked = asked + 1
+    return false
+  end
+
+  pcall(screen.run, context)
+  expect.equal(asked, 0, "still trying, so not yet")
+
+  context.locateFailed = true
+  pcall(screen.run, context)
+  expect.equal(asked, 1, "tried and could not, so now")
+
+  screen.askFacing = real
+end)
