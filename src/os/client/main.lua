@@ -44,6 +44,7 @@ local registry = require("domain.fleet.registry")
 local request = require("os.kernel.request")
 local service = require("os.kernel.service")
 local supervisor = require("os.kernel.supervisor")
+local switches = require("os.kernel.switches")
 local wire = require("domain.protocol.message")
 
 --- The value every page recomputes from.
@@ -265,6 +266,15 @@ function client.boot(ports, options)
   -- a reference to it is a cycle the serialiser would refuse - which is exactly
   -- the kind of thing that is discovered when a state file stops being written.
   context.supervisor = sup
+
+  -- What somebody switched off on the Services page, last time this machine was
+  -- up. Applied before starting, so a service meant to stay off never runs at
+  -- all rather than running until the first frame can stop it.
+  --
+  -- This is what makes a configuration a configuration: a GPS host is a client
+  -- with the fleet mirror and the desktop switched off, and until the choice
+  -- survived a reboot that was a thing somebody had to redo every restart.
+  switches.apply(sup, switches.load(context))
 
   sup:start(context)
 

@@ -29,6 +29,7 @@
 --- reading a page with one red row and the word "healthy" underneath needs to be
 --- told why those are both true, or they will conclude the page is lying.
 
+local switches = require("os.kernel.switches")
 local theme = require("ui.theme")
 
 local T = theme.TOKENS
@@ -324,6 +325,19 @@ function app.mount(scope, context, options)
           else
             supervisor:disable(id)
           end
+
+          -- Written down, or it lasts until the next reboot.
+          --
+          -- This page could switch a service off since it was written and
+          -- nothing ever recorded it - which on a base station is a long time
+          -- before anybody notices, so it looked like it worked. A machine's job
+          -- is decided by which of its services run, and a choice that forgets
+          -- itself on restart is not a choice.
+          --
+          -- Read back off the supervisor rather than tracked here, so the file
+          -- can only ever describe a state the machine was actually in.
+          switches.save(context, switches.current(supervisor))
+
           tick:set(tick:get() + 1)
         end,
       }),

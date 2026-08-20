@@ -18,6 +18,7 @@ types/
 .pulse
 .update
 .settings
+.services
 .node
 .nav
 .log
