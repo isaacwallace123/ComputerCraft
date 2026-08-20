@@ -238,19 +238,38 @@ ICOS 1, and `.mine` is shared on purpose.
 
 ## Testing in a local world
 
-The fastest loop by a wide margin: point a singleplayer computer's filesystem straight at
-`src\` and skip publishing entirely. Save in the editor, reboot the computer in game, and
-it is running the new code. No commit, no push, no `update`.
+The fastest loop by a wide margin: point a singleplayer computer's filesystem at the
+build and skip publishing entirely. Save in the editor, build, reboot the computer in
+game, and it is running the new code. No commit, no push, no `update`.
 
 ```powershell
 .\tools\link-world.ps1 -List
 .\tools\link-world.ps1 -World "CC Testing" -Id 0
+
+# after every edit
+.\tools\build.ps1
 ```
 
 That replaces `<instance>\saves\<world>\computercraft\computer\0\` with a directory
-junction to `src\`. Junctions need no administrator rights. Place a computer in the world
-first — the first one placed gets ID 0 — and re-run with `-Id n` for a second machine, or
-after making a new world.
+junction to `build\`. Junctions need no administrator rights. Place a computer in the
+world first — the first one placed gets ID 0 — and re-run with `-Id n` for a second
+machine, or after making a new world.
+
+### Why there is a build step at all
+
+The junction used to point at `src\` directly, which was one command shorter and put a
+1.2 MB tree on a 1 MB disk. `computer_space_limit` is 1,000,000 bytes by default and is
+not something you can raise on somebody else's server, so the ceiling is real.
+
+The machine drew perfectly and could not write a single file: its log stayed empty, its
+saved desktop arrangement vanished on every reboot, and nothing anywhere reported an
+error. A linked computer that is over the limit is the most misleading test rig there is,
+because it looks exactly like a working one.
+
+`tools\build.ps1` blanks every comment-only line — one byte instead of sixty — which takes
+the tree to about 550 KB. Blanked rather than deleted, because `apps/job/app.lua:207` in
+an error message is only useful while line 207 is still line 207. `tools\check.ps1`
+measures it on every run and fails if it stops fitting.
 
 `-Instance` defaults to the Valhelsia 6 CurseForge path; pass it explicitly for any other
 launcher or pack.
@@ -269,10 +288,13 @@ game.
 ### What a linked computer writes into your working tree
 
 The junction goes both ways. Everything the OS persists — `.node`, `.nav`, `.mine`,
-`.log`, a job file, and a `.tmp` beside each during a save — is written into `src\` and
-shows up in `git status`. They are all listed in `.gitignore`, so this is safe; but if a
-new dotfile appears in a diff, that is why, and it belongs in `.gitignore` rather than in
-a commit. A turtle that gets as far as mining writes six of them within a minute.
+`.log`, a job file, and a `.tmp` beside each during a save — is written into `build\`,
+which is ignored wholesale. The build leaves dotfiles alone when it runs, so the linked
+computer keeps its identity, its position and its log across a rebuild.
+
+That is also why they no longer land in `src\`. The individual dotfile entries remain in
+`.gitignore` for anyone whose world is still linked the old way, and a turtle that gets as
+far as mining writes six of them within a minute.
 
 `.settings` is CC's own, written when you use the `set` program.
 

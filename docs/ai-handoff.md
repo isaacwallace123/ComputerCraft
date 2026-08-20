@@ -131,7 +131,8 @@ marked, because changing the wrong one produces a passing build and no change in
 | how we compare to Basalt | `tools/compare.lua`, `tools/compare.ps1`, `docs/ui-framework.md` sections 12 and 16 |
 | a colour, a token, or the theme | `src/ui/theme.lua`, `docs/ui-design.md`, `tools/preview.lua` |
 | what a screen should look like | `docs/ui-design.md`, then `tools/preview.ps1` |
-| trying the OS in a local world | `tools/link-world.ps1`, `docs/operations.md` |
+| trying the OS in a local world | `tools/link-world.ps1`, `tools/build.ps1`, `docs/operations.md` |
+| the 1 MB disk limit, and what fits under it | `tools/build.ps1`, the `size` section of `tools/check.ps1` |
 | seeing the new UI on real hardware | `src/apps/showcase/main.lua`, then run apps/showcase in game |
 | updater/bootstrap | `bootstrap.lua`, `src/update.lua`, `tools/make-manifest.ps1` |
 | version automation | `.github/workflows/icos-version.yml`, `src/lib/version.lua` |

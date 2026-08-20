@@ -9,6 +9,7 @@
   - lua-language-server --check   type and nil-safety errors
   - selene                        lint against the CC: Tweaked standard library
   - stylua --check                formatting
+  - build.ps1 -MeasureOnly        does the tree still fit on a CC computer
 
   Anything not installed is skipped with a note rather than failing the run.
 
@@ -194,6 +195,31 @@ if ($stylua) {
 }
 else {
   Write-Host "  skipped (install the johnnymorganz.stylua extension)" -ForegroundColor DarkGray
+}
+
+# Does the tree still fit on a CC computer?
+#
+# The one check here that is about the world rather than about the code, and the
+# only one whose failure has already happened: a turtle that could not write its
+# own `.location` because the disk was full - a failure that says nothing about
+# the real cause and points at the file it happened to be writing.
+#
+# `computer_space_limit` is 1,000,000 by default and is not something you can
+# raise on somebody else's server, so this is a hard ceiling rather than a
+# preference. Measured through `build.ps1` so the number here and the number that
+# lands on a disk come from the same function.
+Write-Host "== size ==" -ForegroundColor Cyan
+$build = & (Join-Path $PSScriptRoot "build.ps1") -MeasureOnly
+$used = [math]::Round($build.Size / 1024)
+$cap = [math]::Round($build.Limit / 1024)
+if ($build.Fits) {
+  Write-Host ("  {0} KB of {1} KB, {2}% free" -f $used, $cap,
+    [math]::Round(100 - 100 * $build.Size / $build.Limit))
+}
+else {
+  Write-Host ("  {0} KB of {1} KB - OVER the computer_space_limit" -f $used, $cap) -ForegroundColor Red
+  Write-Host "  every machine in the fleet would silently fail to write" -ForegroundColor Red
+  $failed = $true
 }
 
 # The handoff map, checked for the same reason the layering rule is: it was a

@@ -1,21 +1,20 @@
 <#
 .SYNOPSIS
-  Copy src\ into one world computer, keeping that machine's own state.
+  Copy the build into one world computer, keeping that machine's own state.
 
 .DESCRIPTION
-  `link-world.ps1` junctions a computer straight at `src\`, which is the fastest
-  loop there is - but only one machine can have it. Two computers pointed at one
+  `link-world.ps1` junctions a computer at `build\`, which is the fastest loop
+  there is - but only one machine can have it. Two computers pointed at one
   directory share `.node`, so they boot the same role; they share `.location`, so
   they claim the same coordinates; and they share `.nav` and `.log`. That is not
   a slower test, it is a broken one.
 
-  So the second machine gets a copy. This overwrites the code and leaves the
-  state alone.
+  So every other machine gets a copy. This runs `build.ps1`, overwrites the code
+  from it, and leaves the state alone.
 
-  The rule is the dot. Every file ICOS persists is a dotfile - `.node`,
-  `.location`, `.nav`, `.mine`, `.log`, a job file - and every file it ships is
-  not. So "replace everything that is not a dotfile" needs no list to maintain
-  and cannot forget the state file somebody adds next month.
+  Building rather than stripping in place: the size rule and the comment
+  stripping belong in one file, because "does this fit on a CC computer" is a
+  question about the tree and not about which machine happens to be receiving it.
 
 .EXAMPLE
   .\tools\copy-world.ps1 -World "ComputerCraft" -Id 5
@@ -33,11 +32,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
-$src = Join-Path $repo "src"
+
+# The tree a computer runs, not the tree the repository holds. `build.ps1` owns
+# the comment stripping and the size rule; this script owns getting one machine's
+# files replaced without touching its state. Two jobs, one each, and the size
+# limit is checked in the one place that can enforce it.
+$built = & (Join-Path $PSScriptRoot "build.ps1") -Quiet
+$src = $built.Path
 
 $root = Join-Path $Instance "saves\$World\computercraft\computer\$Id"
-
-if (-not (Test-Path $src)) { throw "No src at $src" }
 
 if (-not (Test-Path $root)) {
   # A computer that has never been powered on has no directory. Making it is
@@ -52,48 +55,26 @@ if ($link.LinkType) {
 }
 
 # Out with the code, keeping every dotfile.
+#
+# The rule is the dot. Every file ICOS persists is a dotfile - `.node`,
+# `.location`, `.nav`, `.mine`, `.log`, a job file - and every file it ships is
+# not. So "replace everything that is not a dotfile" needs no list to maintain
+# and cannot forget the state file somebody adds next month.
 Get-ChildItem $root -Force | Where-Object { -not $_.Name.StartsWith(".") } | ForEach-Object {
   Remove-Item $_.FullName -Recurse -Force
 }
 
-# In with the new. Dotfiles in src\ are this developer machine's own leftovers
-# from a junction - never the target's - so they are not copied.
+# In with the new. Dotfiles in the build belong to whichever computer is
+# junctioned there, never to this one, so they are not copied.
 Get-ChildItem $src -Force | Where-Object { -not $_.Name.StartsWith(".") } | ForEach-Object {
   Copy-Item $_.FullName -Destination $root -Recurse -Force
 }
 
-# Strip comment-only lines, keeping the line count.
-#
-# A CC computer gets 1,000,000 bytes and this tree is 1,096,626 of which 55% is
-# comments. The first machine to find that out was a turtle that could not write
-# its own `.location` because the disk was full - a failure that says nothing
-# about the real cause and points at the file it happened to be writing.
-#
-# The comments are for the repository, not the device. But the **line numbers**
-# are for the device: `apps/job/app.lua:207` in an error message is the single
-# most useful thing this system has produced in a world, and it is only useful
-# while it matches the file somebody opens here. So each comment line becomes an
-# empty line rather than disappearing - one byte instead of sixty, and line 207
-# is still line 207.
-$stripped = 0
-Get-ChildItem $root -Recurse -File -Filter *.lua | ForEach-Object {
-  $lines = [System.IO.File]::ReadAllLines($_.FullName)
-  $out = foreach ($line in $lines) {
-    if ($line.TrimStart().StartsWith("--")) { "" } else { $line }
-  }
-  [System.IO.File]::WriteAllLines($_.FullName, $out)
-  $stripped++
-}
-
-# Measured after the write, not from the cached FileInfo - which is what the
-# first version did, and it reported "saving 0 KB" while having just halved the
-# tree.
 $size = (Get-ChildItem $root -Recurse -File -Force | Measure-Object -Property Length -Sum).Sum
-$limit = 1000000
-$colour = if ($size -gt $limit) { "Red" } else { "Green" }
-Write-Host ("Stripped comments from {0} files - {1} KB of {2} KB used" -f
-  $stripped, [math]::Round($size / 1024), [math]::Round($limit / 1024)) -ForegroundColor $colour
-if ($size -gt $limit) {
+$colour = if ($size -gt $built.Limit) { "Red" } else { "Green" }
+Write-Host ("{0} KB of {1} KB used, including this machine's own state" -f
+  [math]::Round($size / 1024), [math]::Round($built.Limit / 1024)) -ForegroundColor $colour
+if ($size -gt $built.Limit) {
   Write-Host "  OVER the computer_space_limit - writes on this machine will fail" -ForegroundColor Red
 }
 
