@@ -54,7 +54,7 @@ agent.PROTOCOL = wire.NAME
 agent.PATH = ".desired"
 
 function agent.empty()
-  return { applied = 0, mode = nil }
+  return { applied = 0, epoch = nil, mode = nil }
 end
 
 --- Read what this turtle has already carried out.
@@ -87,7 +87,7 @@ end
 function agent.heartbeat(state, snapshot)
   return {
     kind = "status",
-    applied = desired.report(state.applied, state.mode),
+    applied = desired.report(state, state.mode),
     snapshot = snapshot,
   }
 end
@@ -117,7 +117,7 @@ function agent.receive(state, message)
   end
 
   if message.kind == "desired" then
-    local accepted = desired.apply(state.applied, message.desired)
+    local accepted = desired.apply(state, message.desired)
     if accepted == nil then
       return nil
     end
@@ -127,6 +127,7 @@ function agent.receive(state, message)
       settings = accepted.settings,
       reason = accepted.reason,
       generation = accepted.generation,
+      epoch = accepted.epoch,
       source = "desired",
     }
   end
@@ -179,6 +180,10 @@ function agent.applied(state, intent)
   state.mode = intent.mode
   if intent.source == "desired" and intent.generation then
     state.applied = intent.generation
+    -- Recorded together, because the number is only meaningful beside the run
+    -- it was minted under. Keeping one without the other would leave a device
+    -- comparing this server's count against a previous server's.
+    state.epoch = intent.epoch
   end
   return state
 end

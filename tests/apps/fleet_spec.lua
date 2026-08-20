@@ -32,24 +32,40 @@ it("a device that has gone quiet is not shown as still mining", function()
   expect.falsy(quiet[1].online, "marked offline")
 end)
 
-it("the fleet list is stable, unlike the devices list", function()
-  -- Devices sorts by staleness because it is the page you open when something
-  -- is wrong. This is the page you leave open, and rows that reorder themselves
-  -- while somebody is glancing at a wall monitor make it unreadable.
+it("the list is ordered by name and stays there while devices change", function()
+  -- This list used to lead with the stalest device. In a live fleet that key -
+  -- seconds since the last heartbeat - moves continuously on every row, so two
+  -- rows swap past each other every time one of them checks in. With a
+  -- heartbeat every couple of seconds the list never stops reordering, under
+  -- the cursor, between reading a row and clicking it.
   local ctx = context()
   discovery.handle(ctx, 2, heartbeat({ snapshot = { label = "miner-9", phase = "mining" } }))
   discovery.handle(ctx, 3, heartbeat({ snapshot = { label = "miner-10", phase = "mining" } }))
 
   local before = fleetApp.rows(ctx.state, ctx.clock.now())
-  expect.equal(before[1].label, "miner-9", "natural order, so 10 follows 9")
-  expect.equal(before[2].label, "miner-10", "and not before it")
+  expect.equal(before[1].label, "miner-9", "natural order, so 9 comes before 10")
+  expect.equal(before[2].label, "miner-10", "and not after it, the way plain string order would have it")
 
-  -- One goes quiet. The order must not change.
-  ctx._clock.advance(5 * 60)
-  discovery.handle(ctx, 3, heartbeat({ snapshot = { label = "miner-10", phase = "mining" } }))
+  -- miner-9 checks in and miner-10 does not, so miner-10 is now the stalest -
+  -- which is exactly what used to drag it to the top of the list.
+  ctx._clock.advance(30)
+  discovery.handle(ctx, 2, heartbeat({ snapshot = { label = "miner-9", phase = "mining" } }))
+
   local after = fleetApp.rows(ctx.state, ctx.clock.now())
   expect.equal(after[1].label, "miner-9", "same row")
-  expect.equal(after[2].label, "miner-10", "same order")
+  expect.equal(after[2].label, "miner-10", "same order - the news does not move the furniture")
+end)
+
+it("a device with no label at all still sorts somewhere fixed", function()
+  -- A turtle that has never been named reports no label, and sorting nil is an
+  -- error rather than a bad order. It falls back to its id.
+  local ctx = context()
+  discovery.handle(ctx, 4, heartbeat({ snapshot = { label = "miner-4", phase = "mining" } }))
+  discovery.handle(ctx, 11, heartbeat({ snapshot = { phase = "mining" } }))
+
+  local rows = fleetApp.rows(ctx.state, ctx.clock.now())
+  expect.equal(#rows, 2, "both are listed")
+  expect.truthy(fleetApp.sortKey(rows[1]) < fleetApp.sortKey(rows[2]), "and the order is decidable")
 end)
 
 it("no fuel reading shows an empty meter, not a full one", function()

@@ -10,6 +10,7 @@ local it = require("support.spec").it
 local fleet = require("support.fleet")
 
 local desired = require("domain.fleet.desired")
+local registry = require("domain.fleet.registry")
 
 local SECOND = 1000
 
@@ -222,4 +223,76 @@ it("two orders while a device is away collapse to the newer one", function()
   local accepted = assert(desired.apply(0, desired.reply(device)))
   expect.equal(accepted.mode, "park", "only the latest goal")
   expect.equal(accepted.generation, 2, "at the latest generation")
+end)
+
+it("a server that has started counting again is still obeyed", function()
+  -- The fault this pins cost the fleet an evening. Generations count up per
+  -- device *record*, so the number only means anything next to the state file
+  -- holding it. Rebuild that state - a fresh install, a pruned record, a
+  -- deleted `.fleet2` - and the server counts from 1 while every turtle in the
+  -- world still remembers the 6 it last applied. Every order is then discarded
+  -- as stale, permanently, and nothing looks wrong from either end: the fleet
+  -- is present on the dashboard, reporting healthy, and completely deaf.
+  local turtle = { applied = 6, epoch = "monday" }
+
+  local rebuilt = registry.empty()
+  local device = registry.observe(rebuilt, 7, {}, 0)
+  desired.want(device, "recall", nil, 0)
+
+  local goal = desired.reply(device, registry.epoch(rebuilt, 500))
+  expect.equal(goal.generation, 1, "the new server is counting from the start")
+
+  local accepted = assert(desired.apply(turtle, goal), "and the turtle takes it anyway")
+  expect.equal(accepted.mode, "recall")
+  expect.equal(accepted.epoch, goal.epoch, "under the run it was minted in")
+end)
+
+it("within one run the count still only goes forwards", function()
+  -- The reason the comparison exists at all: rednet promises no ordering, so a
+  -- reply that overtook a newer one must not undo it. Naming the run relaxes
+  -- the rule across servers without relaxing it inside one.
+  local held = { applied = 6, epoch = "monday" }
+
+  expect.equal(
+    desired.apply(held, { mode = "deploy", generation = 5, epoch = "monday" }),
+    nil,
+    "an older order from the same server is still refused"
+  )
+  expect.equal(
+    desired.apply(held, { mode = "deploy", generation = 6, epoch = "monday" }),
+    nil,
+    "and so is the one it already applied"
+  )
+  expect.truthy(
+    desired.apply(held, { mode = "deploy", generation = 7, epoch = "monday" }),
+    "but the next one is news"
+  )
+end)
+
+it("a device answering under an older run has not converged", function()
+  -- The dashboard's half of the same fault. Comparing bare numbers across runs
+  -- let a turtle holding generation 6 read as caught up with a goal of 3 - so
+  -- the server saw nothing outstanding and never nudged it.
+  local state = registry.empty()
+  local device = registry.observe(state, 7, {}, 0)
+  desired.want(device, "recall", nil, 0)
+  desired.reply(device, registry.epoch(state, 500))
+
+  desired.observe(device, { generation = 6, epoch = "monday", mode = "deploy" }, 0)
+  expect.falsy(desired.converged(device), "a bigger number from a different server is not progress")
+
+  desired.observe(device, { generation = 1, epoch = 500, mode = "recall" }, 0)
+  expect.truthy(desired.converged(device), "this run's number is")
+end)
+
+it("a device that has never heard an epoch is taken as its own run", function()
+  -- Every turtle in the world held a bare number before this existed, and a
+  -- server that does not stamp one behaves exactly as it always did.
+  expect.truthy(desired.apply(6, { mode = "recall", generation = 1, epoch = 500 }))
+  expect.equal(desired.apply(6, { mode = "recall", generation = 1 }), nil, "unstamped, still monotonic")
+
+  local report = desired.report({ applied = 4, epoch = 500 }, "recall")
+  expect.equal(report.generation, 4)
+  expect.equal(report.epoch, 500, "the heartbeat says which run it is counting in")
+  expect.equal(desired.report(4, "recall").epoch, nil, "and a bare number says nothing")
 end)

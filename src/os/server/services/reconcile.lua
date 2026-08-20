@@ -98,7 +98,7 @@ end
 function reconcile.due(context, now)
   local rows = {}
   for _, record in pairs(context.state.fleet.devices) do
-    local goal = desired.reply(record)
+    local goal = desired.reply(record, registry.epoch(context.state.fleet, now))
     if goal ~= nil and not desired.converged(record) then
       local health = registry.health(record, now)
       local last = record.nudgedAt

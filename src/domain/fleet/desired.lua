@@ -144,8 +144,18 @@ function desired.want(record, mode, options, now)
 end
 
 --- What to send a device that has just checked in.
-function desired.reply(record)
-  return goalOf(record)
+---
+--- `epoch` names the run of numbering this generation was minted under. It is
+--- stamped here rather than in `want` because it identifies the *server* rather
+--- than the goal, and every reply in the system leaves through this function.
+--- Omitting it is allowed and means "unstamped", which is how an older server
+--- behaves and is treated as its own run.
+function desired.reply(record, epoch)
+  local goal = goalOf(record)
+  if goal ~= nil and epoch ~= nil then
+    goal.epoch = epoch
+  end
+  return goal
 end
 
 --- Record what a device reports it is doing and has applied.
@@ -156,6 +166,7 @@ function desired.observe(record, report, now)
   record.observed = {
     mode = report and report.mode or nil,
     generation = tonumber(report and report.generation) or 0,
+    epoch = report and report.epoch or nil,
     at = now,
   }
   return record.observed
@@ -168,7 +179,19 @@ function desired.converged(record)
     return true
   end
   local observed = record.observed
-  return observed ~= nil and (observed.generation or 0) >= goal.generation
+  if observed == nil then
+    return false
+  end
+
+  -- A device still answering under an older run of numbering has not applied
+  -- this goal, whatever its number says. Comparing across runs is what let a
+  -- turtle holding generation 6 read as converged against a goal of 3 - the
+  -- dashboard's half of the same fault `apply` fixes below.
+  if goal.epoch ~= nil and observed.epoch ~= goal.epoch then
+    return false
+  end
+
+  return (observed.generation or 0) >= goal.generation
 end
 
 --- `converged`, `pending`, or `unreachable`.
@@ -214,6 +237,18 @@ end
 --- persists. A rebooted turtle reads it back and therefore does not re-apply an
 --- order it had already carried out - a recall that re-ran on every boot would
 --- be a turtle that could never be redeployed.
+--- What a device remembers having applied: a number, and the run it belongs to.
+---
+--- A bare number is accepted and means "no run recorded", which is what every
+--- device held before epochs existed and what a device that has only ever heard
+--- ICOS 1 commands holds today.
+local function appliedOf(applied)
+  if type(applied) == "table" then
+    return tonumber(applied.applied) or 0, applied.epoch
+  end
+  return tonumber(applied) or 0, nil
+end
+
 function desired.apply(applied, incoming)
   if type(incoming) ~= "table" then
     return nil
@@ -222,12 +257,30 @@ function desired.apply(applied, incoming)
   if generation == nil or not desired.MODES[incoming.mode] then
     return nil
   end
-  if generation <= (tonumber(applied) or 0) then
+
+  local held, epoch = appliedOf(applied)
+
+  -- Monotonic *within* a run of numbering, and only within one.
+  --
+  -- Generations count up from whatever a record holds, so they mean nothing
+  -- except relative to the state file holding them. Lose that file - a fresh
+  -- install, a pruned record, a rebuilt server - and the count restarts at 1
+  -- while every turtle in the world still remembers the number it last applied.
+  -- Comparing the two numbers then discards every order the new server sends,
+  -- permanently, and nothing on either side looks wrong: the fleet is present
+  -- on the dashboard, reporting healthy, and deaf. That is exactly how four
+  -- turtles came to ignore recall.
+  --
+  -- So a number is only comparable against one minted under the same run. A
+  -- different epoch is a different authority, and its count is taken as given.
+  if epoch == incoming.epoch and generation <= held then
     return nil
   end
+
   return {
     mode = incoming.mode,
     generation = generation,
+    epoch = incoming.epoch,
     job = incoming.job,
     settings = incoming.settings,
     reason = incoming.reason,
@@ -237,7 +290,8 @@ end
 --- What a device puts in its heartbeat so the server can tell whether it has
 --- caught up.
 function desired.report(applied, mode)
-  return { generation = tonumber(applied) or 0, mode = mode }
+  local generation, epoch = appliedOf(applied)
+  return { generation = generation, epoch = epoch, mode = mode }
 end
 
 return desired

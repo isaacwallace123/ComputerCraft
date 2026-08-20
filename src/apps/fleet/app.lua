@@ -142,13 +142,41 @@ function app.rows(state, now)
       rows[#rows + 1] = row
     end
   end
+  -- By name, and by nothing else.
+  --
+  -- This used to lead with the stalest device, on the theory that the machine
+  -- you have not heard from is the one you want to look at. In a live fleet
+  -- that theory is wrong: the key is seconds-since-last-heartbeat, which moves
+  -- continuously on every row and flips two rows past each other every time one
+  -- of them checks in. With a heartbeat every couple of seconds and eight
+  -- machines, the list never stops reordering - under the cursor, between the
+  -- reading of a row and the clicking of it. A list you cannot point at is
+  -- worse than one that buries the news, and staleness is already shown in the
+  -- row itself for anyone looking for it.
+  --
+  -- A label is stable, it is what the operator calls the machine, and it sorts
+  -- miner-4 next to miner-6 where they can be compared. The id is the
+  -- tie-break, padded so 7 sorts before 11 rather than after it.
   table.sort(rows, function(a, b)
-    if a.since ~= b.since then
-      return a.since > b.since
+    local left, right = app.sortKey(a), app.sortKey(b)
+    if left ~= right then
+      return left < right
     end
     return tostring(a.id) < tostring(b.id)
   end)
   return rows
+end
+
+--- What a row sorts under: its label, with any trailing number padded.
+---
+--- Plain string order puts miner-11 before miner-7, because "1" < "7". Padding
+--- the digits fixes that without needing a second comparison rule, and a label
+--- with no number in it is unaffected.
+function app.sortKey(row)
+  local label = tostring((row.snap and row.snap.label) or row.label or row.id)
+  return (label:gsub("%d+", function(digits)
+    return string.format("%09d", tonumber(digits))
+  end)):lower()
 end
 
 --- Ask the server to want something.

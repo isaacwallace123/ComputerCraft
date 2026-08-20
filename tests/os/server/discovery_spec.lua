@@ -118,8 +118,16 @@ it("an order set while a device is away is delivered when it returns", function(
   local reply = assert(discovery.handle(ctx, 7, heartbeat()))
   expect.equal(reply.desired.mode, "recall", "the order was waiting")
 
-  local accepted = assert(desired.apply(0, reply.desired), "the turtle takes it")
-  local caughtUp = heartbeat({ applied = desired.report(accepted.generation, "recall") })
+  -- The turtle's side, kept faithful to what `os/turtle/agent.lua` actually
+  -- persists: the generation *and* the run of numbering it was minted under.
+  -- Reporting the number alone would be a device claiming a count without
+  -- saying whose count it is, which is the thing that made four turtles ignore
+  -- recall from a rebuilt server.
+  local turtle = { applied = 0 }
+  local accepted = assert(desired.apply(turtle, reply.desired), "the turtle takes it")
+  turtle.applied, turtle.epoch = accepted.generation, accepted.epoch
+
+  local caughtUp = heartbeat({ applied = desired.report(turtle, "recall") })
   discovery.handle(ctx, 7, caughtUp)
 
   expect.equal(desired.status(record, ctx.clock.now()), "converged", "converged")

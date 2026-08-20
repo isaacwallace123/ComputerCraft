@@ -54,6 +54,26 @@ function registry.empty()
   return { devices = {} }
 end
 
+--- The name of this server's run of numbering.
+---
+--- Desired-state generations count up per device record, so a generation only
+--- means anything next to the state that holds it. This gives that state an
+--- identity, so a device can tell "an order older than one I have applied" from
+--- "an order from a server that has started counting again" - which look
+--- identical as bare numbers and call for opposite responses.
+---
+--- Minted once from the clock and persisted alongside the devices, so it
+--- survives a reboot and changes exactly when the state it names is lost.
+function registry.epoch(state, now)
+  if state == nil then
+    return nil
+  end
+  if state.epoch == nil then
+    state.epoch = now
+  end
+  return state.epoch
+end
+
 --- Pull a world position out of a snapshot, or nil if it has none.
 ---
 --- `world` is the turtle's absolute position and the only one worth keeping: the

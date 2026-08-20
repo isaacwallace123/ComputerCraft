@@ -211,7 +211,11 @@ function discovery.handle(context, sender, message)
 
   return {
     kind = "desired",
-    desired = desired.reply(record),
+    -- Stamped with this server's run of numbering. Without it the generation is
+    -- a bare count that restarts at 1 whenever the registry is rebuilt, and a
+    -- device holding a higher number from a previous run discards every order
+    -- this one sends.
+    desired = desired.reply(record, registry.epoch(context.state.fleet, now)),
     general = coverage.generalOf(context.state.coverage, sender),
 
     -- Omitted rather than sent empty. Every miner in the fleet would otherwise
