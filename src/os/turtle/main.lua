@@ -179,8 +179,18 @@ turtleOs.heartbeat = service.define({
       local sender, message, protocol =
         context.transport.receive(turtleOs.PROTOCOL, turtleOs.HEARTBEAT)
       if sender ~= nil and protocol == turtleOs.PROTOCOL then
-        -- Whoever answered is who to ask next time.
-        peer.remember(context.peer, sender, context.clock.now())
+        -- The base is whoever sent a `desired`, and only the base sends one.
+        --
+        -- This used to bind to the sender of anything that arrived. Until a
+        -- device has bound it broadcasts, and every other device in range hears
+        -- it - so two turtles booting together each heard the other's heartbeat,
+        -- each bound to the other, and both spent the rest of the day unicasting
+        -- their status to a machine that keeps no registry. They kept working and
+        -- went offline on the one screen that decides whether they are alive.
+        if type(message) == "table" and message.kind == "desired" then
+          peer.remember(context.peer, sender, context.clock.now())
+        end
+
         turtleOs.orders(context, message)
 
         -- Anything else that needs to see a message registers here, for the
@@ -312,12 +322,19 @@ turtleOs.locate = service.define({
           -- Both files in one call. Two that disagreed about which way home is
           -- would be a turtle mining confidently in the wrong direction.
           nav.setOrigin(found.x, found.y, found.z, found.heading)
-          context.saveLocation({
-            x = found.x,
-            y = found.y,
-            z = found.z,
-            heading = found.heading,
-          })
+
+          -- Guarded, because a machine assembled without one is a real shape -
+          -- every spec is - and the origin has already been written by the line
+          -- above. Throwing here would restart the service and lose the reason.
+          if context.saveLocation then
+            context.saveLocation({
+              x = found.x,
+              y = found.y,
+              z = found.z,
+              heading = found.heading,
+            })
+          end
+          context.state.locateWhy = nil
           if context.log then
             context.log.info(
               ("located at %d, %d, %d facing %s"):format(
@@ -328,11 +345,22 @@ turtleOs.locate = service.define({
               )
             )
           end
-        elseif context.log then
-          -- Once per attempt, and the attempts are a minute apart. A turtle with
-          -- no constellation in range would otherwise fill its own disk saying
-          -- so, on the machine least able to spare it.
-          context.log.warn("locate: " .. tostring(why))
+        else
+          -- On the screen, not only in the log.
+          --
+          -- A turtle has no Logs page any more, so a reason written only to
+          -- `.log` is a reason nobody standing in front of the machine can read
+          -- - and "no position" with no explanation is exactly the state the
+          -- whole fleet was found in. The turtle's own screen is where somebody
+          -- is looking when they want to know.
+          context.state.locateWhy = why
+
+          if context.log then
+            -- Once per attempt, and the attempts are a minute apart. A turtle
+            -- with no constellation in range would otherwise fill its own disk
+            -- saying so, on the machine least able to spare it.
+            context.log.warn("locate: " .. tostring(why))
+          end
         end
       end
 

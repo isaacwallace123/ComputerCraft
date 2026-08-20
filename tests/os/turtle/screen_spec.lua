@@ -71,7 +71,15 @@ it("a turtle that does not know where it is says so rather than showing zeroes",
 
   -- `0 0 0` is a real place and this turtle is not at it. Showing coordinates
   -- for a turtle with no position is how somebody ends up looking for it there.
-  expect.equal(seen.at, "no position")
+  expect.equal(seen.at, "locating...", "and it says what it is doing about it")
+
+  -- And once it has a reason, that is what it says. "no position" on a turtle
+  -- standing under a working constellation is a fact with no next step attached,
+  -- and a turtle no longer has a Logs page for the reason to hide in.
+  local stuck = values(screen.miner({ job = "rare" }, {
+    locateWhy = "boxed in on all four sides",
+  }))
+  expect.contains(stuck.at, "boxed in")
   expect.equal(seen.sector, "none")
   expect.equal(seen.general, "none")
 end)

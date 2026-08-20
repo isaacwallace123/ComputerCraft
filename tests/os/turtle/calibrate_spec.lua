@@ -17,25 +17,44 @@ local calibrate = require("os.turtle.calibrate")
 --- answering after the first fix, and `stuck` lets it go forward and not back.
 local function world(options)
   options = options or {}
-  local self = { x = 0, y = 64, z = 0, moves = {}, fixes = 0 }
+  local self = { x = 0, y = 64, z = 0, facing = 0, moves = {}, fixes = 0 }
+
+  -- 0 north (-Z), 1 east (+X), 2 south (+Z), 3 west (-X), which is the order a
+  -- turtle turns through when it turns right.
+  local STEP = {
+    [0] = { x = 0, z = -1 },
+    [1] = { x = 1, z = 0 },
+    [2] = { x = 0, z = 1 },
+    [3] = { x = -1, z = 0 },
+  }
 
   self.body = {
+    turn = function(way)
+      self.facing = (self.facing + (way == "right" and 1 or 3)) % 4
+      return true
+    end,
+
     move = function(direction)
       self.moves[#self.moves + 1] = direction
+
       if direction == "forward" then
-        if options.blocked then
+        if options.blocked or options.blockedFacing == self.facing then
           return false, "movement obstructed"
         end
-        self.z = self.z - 1
+        self.x = self.x + STEP[self.facing].x
+        self.z = self.z + STEP[self.facing].z
         return true
       end
+
       if direction == "back" then
         if options.stuck then
           return false, "movement obstructed"
         end
-        self.z = self.z + 1
+        self.x = self.x - STEP[self.facing].x
+        self.z = self.z - STEP[self.facing].z
         return true
       end
+
       return false, "no"
     end,
   }
@@ -90,16 +109,36 @@ it("no constellation is a sentence, not a guess", function()
   expect.equal(#turtle.moves, 0)
 end)
 
-it("a blocked turtle is refused rather than digging its way out", function()
-  -- A turtle that mined a block to find out where it was would be a turtle that
-  -- damages whatever it was parked in front of - a chest, somebody's wall - to
-  -- answer a question about itself.
+it("a turtle blocked in front turns and tries the other three ways", function()
+  -- Most parked turtles are parked *against* something: a chest they unload
+  -- into, the wall of the room they live in. The first version stepped forward,
+  -- gave up, and reported "no position" on every machine in the fleet with a
+  -- constellation overhead.
+  local turtle = world({ blockedFacing = 0 })
+
+  local found, why = calibrate.run(turtle.body, turtle.locator)
+  expect.truthy(found ~= nil, tostring(why))
+  found = found or {}
+
+  -- The heading reported is what it was facing *before* it turned, which is what
+  -- everything else in the system means by this turtle's heading.
+  expect.equal(found.heading, 0, "it was pointing north all along")
+  expect.equal(turtle.facing, 0, "and it is facing that way again")
+  expect.equal(turtle.x, 0, "back where it started")
+  expect.equal(turtle.z, 0)
+end)
+
+it("a turtle boxed in on all four sides says so, still facing where it was", function()
+  -- A turtle that mined a block to find out where it was would damage whatever
+  -- it was parked in front of - a chest, somebody's wall - to answer a question
+  -- about itself.
   local turtle = world({ blocked = true })
   local found, why = calibrate.run(turtle.body, turtle.locator)
 
   expect.equal(found, nil)
-  expect.contains(why, "blocked")
-  expect.equal(turtle.z, 0, "and it is still where it was")
+  expect.contains(why, "boxed in")
+  expect.equal(turtle.z, 0, "still where it was")
+  expect.equal(turtle.facing, 0, "and still pointing the way it was")
 end)
 
 it("a fix lost between the two steps still puts the turtle back", function()

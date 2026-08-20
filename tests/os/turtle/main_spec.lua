@@ -139,3 +139,52 @@ it("a job that gives up makes the turtle unhealthy", function()
   expect.falsy(healthy, "not healthy")
   expect.contains(why, "job", "and it names the job")
 end)
+
+it("a turtle does not bind its radio to another turtle", function()
+  -- The bug this is written about took a whole fleet offline while every machine
+  -- in it kept working.
+  --
+  -- Until a device has bound it *broadcasts*, and every other device in range
+  -- hears it. Binding to the sender of anything that arrived meant two turtles
+  -- booting together each heard the other's heartbeat, each bound to the other,
+  -- and both spent the day unicasting their status to a machine that keeps no
+  -- registry. The Fleet page showed them offline; they were fine.
+  local peer = require("domain.protocol.peer")
+  local wire = require("domain.protocol.message")
+
+  local machine = turtleContext({ node = { parked = true } })
+  local context = machine.context
+
+  --- Deliver one message and then behave like a quiet radio.
+  ---
+  --- Yielding on the second call matters: `fleet.ports`'s own receive does it,
+  --- because a fake that returns instantly turns the heartbeat loop into an
+  --- infinite one inside a single resume and hangs the suite rather than failing
+  --- it.
+  local function delivers(id, message)
+    local sent = false
+    context.transport.receive = function()
+      if sent then
+        if coroutine.isyieldable() then
+          coroutine.yield()
+        end
+        return nil
+      end
+      sent = true
+      return id, wire.stamp(message), "icos"
+    end
+  end
+
+  local now = machine.clock.port.now()
+
+  -- Another turtle's heartbeat, which is most of what a broadcast on this
+  -- protocol is.
+  delivers(7, { kind = "status", snapshot = { label = "miner-7" } })
+  machine.supervisor:step()
+  expect.equal(peer.address(context.peer, now), nil, "a peer's heartbeat binds nothing")
+
+  -- The base's reply, which only the base sends.
+  delivers(5, { kind = "desired", desired = { mode = "recall", generation = 1 } })
+  machine.supervisor:step({ "icos_tick" })
+  expect.equal(peer.address(context.peer, now), 5, "and the base's reply does")
+end)

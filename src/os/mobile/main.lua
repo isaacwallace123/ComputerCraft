@@ -96,13 +96,14 @@ mobile.sync = service.define({
       )
       local sender, message, protocol = context.transport.receive(mobile.PROTOCOL, mobile.SYNC)
 
-      if sender ~= nil and protocol == mobile.PROTOCOL then
-        peer.remember(context.peer, sender, context.clock.now())
-      end
-
       local heard = sender ~= nil
         and protocol == mobile.PROTOCOL
         and client.absorb(context, message)
+
+      -- Only on a mirror the server sent. See `domain/protocol/peer.lua`.
+      if heard then
+        peer.remember(context.peer, sender, context.clock.now())
+      end
 
       if heard then
         context.misses = 0

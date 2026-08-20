@@ -53,10 +53,20 @@ end
 
 --- Note that this peer answered.
 ---
---- Called with the sender of any reply, not only the one that was expected. A
---- machine that answers at all is a machine worth addressing, and being fussy
---- about which message proved it would mean a device that stays deaf because the
---- one kind of reply it was watching for never came.
+--- **Only ever called with the sender of a message that only the base sends.**
+---
+--- The first version took the sender of anything that arrived on the protocol,
+--- on the reasoning that a machine which answers at all is worth addressing.
+--- That is wrong in a way that took a fleet down: until a device has bound, it
+--- *broadcasts* - and every other device in range hears it. Two turtles booting
+--- together each heard the other's heartbeat, each bound to the other, and both
+--- spent the rest of the day unicasting their status to a machine that does not
+--- keep a registry. They kept working, kept reporting, and went offline on the
+--- one screen that decides whether they are alive.
+---
+--- So the caller checks the kind first. A turtle binds on `desired`, a client on
+--- `mirror` - replies the server is the only thing that sends - and a broadcast
+--- from a peer is not a reply however friendly it looks.
 function peer.remember(state, id, now)
   if type(state) ~= "table" or type(id) ~= "number" then
     return false

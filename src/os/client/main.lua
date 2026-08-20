@@ -205,8 +205,12 @@ client.sync = service.define({
 
       local sender, message, protocol = context.transport.receive(client.PROTOCOL, client.SYNC)
       if sender ~= nil and protocol == client.PROTOCOL then
-        peer.remember(context.peer, sender, context.clock.now())
-        client.absorb(context, message)
+        -- Bound on a mirror, which only the server sends. Binding to the sender
+        -- of anything on the protocol meant binding to another client's request
+        -- - see `domain/protocol/peer.lua` for what that cost the turtles.
+        if client.absorb(context, message) then
+          peer.remember(context.peer, sender, context.clock.now())
+        end
       end
     end
   end,

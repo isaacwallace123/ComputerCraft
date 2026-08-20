@@ -71,8 +71,24 @@ end
 --- Returns `{ x, y, z, heading }`, or nil and a sentence somebody can act on.
 --- `body` is the turtle; `locator` is the constellation.
 ---
---- The turtle ends where it started in every path through this function, which
---- is the property worth reading the code for rather than taking on trust.
+--- ## It tries all four directions
+---
+--- The first version stepped forward and gave up if the block ahead was solid -
+--- which is most parked turtles, because a turtle is usually parked *against*
+--- something: a chest it unloads into, the wall of the room it lives in. The
+--- fleet duly reported "no position" on every machine with a constellation
+--- overhead and nothing to say why.
+---
+--- So it turns right and tries again, up to four times. The heading it measures
+--- is the direction it was facing *after* those turns, so the answer is that
+--- minus however many it made.
+---
+--- ## The turtle ends where it started, facing where it started
+---
+--- Every path through this function, including every failure. A calibration that
+--- left a turtle one block over or a quarter-turn round would leave a machine
+--- whose saved origin - the old one, still trusted - is now wrong, and
+--- everything downstream of it is dead reckoning from a lie.
 function calibrate.run(body, locator, options)
   options = options or {}
   local timeout = options.timeout or calibrate.TIMEOUT
@@ -86,37 +102,60 @@ function calibrate.run(body, locator, options)
     return nil, "this machine cannot move"
   end
 
-  -- Forward, not up. Up is usually free and would give the height twice and the
-  -- heading never; forward is the one direction whose displacement names the way
-  -- the turtle is pointing.
-  local moved, reason = body.move("forward")
-  if not moved then
-    -- Deliberately not dug through. A turtle that mined a block to find out
-    -- where it was would be a turtle that damages whatever it was parked in
-    -- front of - a chest, somebody's wall - to answer a question about itself.
-    return nil, "blocked: " .. tostring(reason or "cannot step forward")
+  --- Undo the turns, whatever happened.
+  local function faceBack(turns)
+    for _ = 1, turns do
+      body.turn("left")
+    end
   end
 
-  local after, secondWhy = calibrate.locate(locator, timeout)
+  local blocked = nil
 
-  -- Back first, and then decide. Reversing only on success would leave a turtle
-  -- that failed the second fix standing one block from where its saved origin
-  -- says it is, which is worse than not having calibrated at all.
-  local returned = body.move("back")
+  for turns = 0, 3 do
+    local moved, reason = body.move("forward")
 
-  if after == nil then
-    return nil, secondWhy
+    if moved then
+      local after, secondWhy = calibrate.locate(locator, timeout)
+
+      -- Back first, and then decide. Reversing only on success would leave a
+      -- turtle that failed the second fix standing one block from where its
+      -- saved origin says it is.
+      local returned = body.move("back")
+      faceBack(turns)
+
+      if after == nil then
+        return nil, secondWhy
+      end
+      if not returned then
+        return nil, "moved forward and could not step back - this turtle has shifted"
+      end
+
+      local heading, headingWhy = fix.headingFrom(before, after)
+      if heading == nil then
+        return nil, headingWhy
+      end
+
+      -- What it was facing before the turns, which is what everything else in
+      -- the system means by this turtle's heading.
+      return {
+        x = before.x,
+        y = before.y,
+        z = before.z,
+        heading = (heading - turns) % 4,
+      }
+    end
+
+    blocked = reason
+    if turns < 3 then
+      -- Deliberately not dug through. A turtle that mined a block to find out
+      -- where it was would damage whatever it was parked in front of - a chest,
+      -- somebody's wall - to answer a question about itself.
+      body.turn("right")
+    end
   end
-  if not returned then
-    return nil, "moved forward and could not step back - this turtle has shifted"
-  end
 
-  local heading, headingWhy = fix.headingFrom(before, after)
-  if heading == nil then
-    return nil, headingWhy
-  end
-
-  return { x = before.x, y = before.y, z = before.z, heading = heading }
+  faceBack(3)
+  return nil, "boxed in on all four sides: " .. tostring(blocked or "cannot step")
 end
 
 --- Does this turtle need calibrating?

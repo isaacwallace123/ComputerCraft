@@ -133,8 +133,13 @@ function screen.miner(snapshot, state)
   local world = snapshot.world
   if type(world) == "table" and world.x then
     row("at", ("%d %d %d"):format(world.x, world.y or 0, world.z or 0))
+  elseif state.locateWhy then
+    -- Why, not just that. "no position" on a turtle standing under a working
+    -- constellation is a fact with no next step attached, and the reason was
+    -- going to the log - which a turtle no longer has a page for.
+    row("at", format.ellipsis(tostring(state.locateWhy), 30), T.warn)
   else
-    row("at", "no position", T.warn)
+    row("at", "locating...", T.warn)
   end
 
   local goal = state.desired and state.desired.mode
