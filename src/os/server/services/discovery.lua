@@ -119,6 +119,18 @@ function discovery.handle(context, sender, message)
   end
 
   if message.kind == discovery.MIRROR then
+    -- A machine asking for the fleet is a machine in it.
+    --
+    -- Clients used to ask three times a minute and never appear, so the GPS
+    -- page - whose whole subject is which machines are hosting - could not show
+    -- the machines set up to host. Observing here rather than making a client
+    -- send a second message: the server has the sender in hand already, and all
+    -- that was missing was the sentence saying what the sender is.
+    if type(message.snapshot) == "table" then
+      registry.observe(context.state.fleet, sender, message.snapshot, context.clock.now())
+      persist.mark(context, "fleet")
+    end
+
     -- The whole registry, not a diff. Ten devices is a small table and a diff
     -- would need the client and the server to agree about what the client
     -- already has - which is a second piece of state to get wrong, on the side
@@ -249,9 +261,11 @@ function discovery.want(context, message)
 
   local applied = 0
   for _, record in pairs(state.devices or {}) do
-    local _, changed = desired.want(record, message.mode, {}, now)
-    if changed then
-      applied = applied + 1
+    if discovery.takesOrders(record) then
+      local _, changed = desired.want(record, message.mode, {}, now)
+      if changed then
+        applied = applied + 1
+      end
     end
   end
 
@@ -275,7 +289,27 @@ end
 --- Without this a turtle that boots after somebody pressed Deploy stays parked
 --- forever, because the order it missed lives only in the goals of the devices
 --- that were listening at the time.
+--- Can this machine carry out a fleet goal?
+---
+--- Everything that speaks to the server is in the registry, and most of it is
+--- not a turtle: a client, a wall monitor, a GPS host. Handing one of those a
+--- "recall" would leave it reporting the goal as pending forever, because there
+--- is nothing on it that could carry one out - which reads on the Fleet page as
+--- a machine ignoring the base.
+---
+--- The device says so rather than the server guessing from a role name. Absent
+--- means yes, which is the safe direction: every turtle in the world predates
+--- this field, and a missing one must not mean a turtle that never gets orders.
+function discovery.takesOrders(record)
+  local snapshot = record and record.snap
+  return type(snapshot) ~= "table" or snapshot.orders ~= false
+end
+
 function discovery.adopt(context, record)
+  if not discovery.takesOrders(record) then
+    return false
+  end
+
   local goal = context.state.fleet.goal
   if type(goal) ~= "table" or not desired.MODES[goal.mode] then
     return false

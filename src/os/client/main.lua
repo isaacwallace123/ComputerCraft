@@ -79,6 +79,41 @@ client.SYNC = 3
 --- one message and cannot leak.
 client.REQUEST = "mirror"
 
+--- What this machine is, for the base's roster.
+---
+--- A client used to say nothing about itself. It asked for the fleet three
+--- times a minute and never appeared in it - so the GPS page, whose entire
+--- subject is which machines are hosting, could not show the machines set up to
+--- host. "1 of 4 hosts" on a base with five located clients standing round it.
+---
+--- Carried on the request it already sends rather than as a second message. The
+--- server answers a mirror by name anyway, so it has the sender in hand; all
+--- that was missing was the sentence saying what the sender is.
+---
+--- `orders = false` is the important field. Everything in the registry is a
+--- candidate for a fleet goal, and a client that was handed "recall" would sit
+--- reporting it as pending forever, because there is nothing on a client that
+--- could carry one out. Saying so is better than the server guessing from a
+--- role name it does not otherwise read.
+function client.snapshot(context)
+  local node = context.node or {}
+  local saved = context.locator and context.locator.saved() or nil
+
+  return {
+    label = node.label or ("computer-" .. tostring(context.id or "?")),
+    role = node.role or "client",
+    kind = "computer",
+    phase = "ready",
+
+    -- A client is a block in the world; it knows where it is if somebody has
+    -- run `commands/locate`, and it cannot move without being broken.
+    located = saved ~= nil,
+    world = saved and { x = saved.x, y = saved.y, z = saved.z } or nil,
+
+    orders = false,
+  }
+end
+
 --- Fold a mirror reply into the local copy.
 ---
 --- Replaces rather than merges. A merge would let a device the server has
@@ -163,7 +198,7 @@ client.sync = service.define({
       peer.send(
         context.peer,
         context.transport,
-        wire.stamp({ kind = client.REQUEST }),
+        wire.stamp({ kind = client.REQUEST, snapshot = client.snapshot(context) }),
         client.PROTOCOL,
         context.clock.now()
       )
@@ -239,6 +274,10 @@ function client.boot(ports, options)
     -- Which computer answered the last mirror request. See
     -- `domain/protocol/peer.lua`: a broadcast is charged to everybody.
     peer = peer.empty(),
+
+    -- What this machine calls itself, so it can say so on the radio.
+    node = options.node or {},
+    id = ports.transport and ports.transport.id() or nil,
 
     tick = machineTick(),
 

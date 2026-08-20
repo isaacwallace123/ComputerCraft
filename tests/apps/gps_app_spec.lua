@@ -85,3 +85,58 @@ it("an empty fleet is not an error", function()
   expect.equal(#rows, 0, "nothing to show")
   expect.contains(app.summary(rows), "0 of 4", "and it says so plainly")
 end)
+
+it("a client appears on the page whose whole subject is what clients do", function()
+  -- Clients asked the server for the fleet three times a minute and never
+  -- appeared in it, so five located GPS hosts standing round a base read as
+  -- "1 of 4 hosts". The page was right about what it could see; nothing had
+  -- ever told it they were there.
+  local ctx = fleet.server()
+  discovery.handle(ctx, 9, {
+    kind = "mirror",
+    snapshot = {
+      label = "gps-9",
+      role = "client",
+      kind = "computer",
+      located = true,
+      world = { x = 10, y = 64, z = -3 },
+      orders = false,
+    },
+  })
+
+  local rows = app.rows(ctx.state, ctx.clock.now())
+  expect.equal(#rows, 1, "the client is on the roster")
+  expect.equal(rows[1].label, "gps-9")
+  expect.truthy(rows[1].serving, "and it is hosting, which is the whole question")
+end)
+
+it("a machine that cannot carry out an order is never given one", function()
+  -- Everything that talks to the server is in the registry and most of it is not
+  -- a turtle. A client handed "recall" would report it as pending forever,
+  -- because there is nothing on a client that could carry one out - which reads
+  -- on the Fleet page as a machine ignoring the base.
+  local ctx = fleet.server()
+  discovery.handle(ctx, 9, {
+    kind = "mirror",
+    snapshot = { label = "gps-9", role = "client", located = true, orders = false },
+  })
+  discovery.handle(ctx, 7, fleet.heartbeat())
+
+  discovery.handle(ctx, 1, { kind = "want", mode = "recall" })
+
+  local registry = require("domain.fleet.registry")
+  expect.equal(registry.get(ctx.state.fleet, 7).desired.mode, "recall", "the turtle was told")
+  expect.equal(registry.get(ctx.state.fleet, 9).desired, nil, "and the client was not")
+end)
+
+it("a device that has never heard of the field still gets orders", function()
+  -- Absent means yes, which is the safe direction: every turtle in the world
+  -- predates this field, and a missing one must not mean a turtle that silently
+  -- never gets told anything again.
+  local ctx = fleet.server()
+  discovery.handle(ctx, 7, fleet.heartbeat())
+  discovery.handle(ctx, 1, { kind = "want", mode = "deploy" })
+
+  local registry = require("domain.fleet.registry")
+  expect.equal(registry.get(ctx.state.fleet, 7).desired.mode, "deploy")
+end)

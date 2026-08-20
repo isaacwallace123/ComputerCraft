@@ -245,6 +245,14 @@ function boot.machine(node, options)
     end
   end
 
+  -- What this machine is, for the root that is about to build it.
+  --
+  -- Only the turtle root read `.node` before, because only a turtle carried a
+  -- job. Every machine has a label and a role, and a machine that cannot say so
+  -- is a machine the base cannot list - which is how five GPS hosts came to be
+  -- invisible on the page whose whole subject is GPS hosts.
+  options.node = options.node or node
+
   local machine = require(moduleName).boot(ports, options)
   machine.role = role
   return machine
