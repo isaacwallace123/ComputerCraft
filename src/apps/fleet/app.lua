@@ -38,24 +38,6 @@ local view = require("apps.fleet.view")
 
 local app = {}
 
---- The manifest.
----
---- `monitor` is in the surface list and `requiresInput` is false, which together
---- are the point of this page: it is the one meant to be left running on a wall
---- where nobody can press anything. The shell hands it no callbacks there, so
---- there is no code path that could put a Deploy button on a monitor (D020).
-app.manifest = {
-  id = "fleet",
-  name = "Fleet",
-  -- `server` too, because a base station with a monitor is a server *and* a
-  -- client (§2, `roles.alsoClient`) - and it is the machine most likely to have
-  -- the wall this page was designed to live on. Its pages read the server's own
-  -- state directly rather than a mirror, so on that machine they are never stale.
-  roles = { "client", "mobile", "server" },
-  surfaces = { "desktop", "monitor", "handheld" },
-  requiresInput = false,
-}
-
 --- Turn one registry record into a row the view can draw.
 ---
 --- The snapshot is the device's own account of itself and every field in it is

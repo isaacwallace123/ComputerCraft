@@ -42,24 +42,6 @@ local view = require("apps.devices.view")
 
 local app = {}
 
---- The manifest.
----
---- Declared rather than inferred, and `requiresInput` is the load-bearing field:
---- D020 says a display-only surface gets no controls, and this app expresses
---- that by handing the view no callbacks rather than by branching inside it.
---- A monitor on a wall mounts the same page and there is no code path that
---- could put a Deploy button on it.
-app.manifest = {
-  id = "devices",
-  name = "Devices",
-  -- `server` for the same reason Fleet carries it: a base with a screen is both
-  -- halves of §2's split, and reads its own authoritative state rather than a
-  -- mirror of it.
-  roles = { "client", "mobile", "server" },
-  surfaces = { "desktop", "monitor", "handheld" },
-  requiresInput = false,
-}
-
 --- Turn one registry record into a row the view can draw.
 ---
 --- The view asks for `label`, `phase`, `fuel`, `job`, `since` and `settings`,

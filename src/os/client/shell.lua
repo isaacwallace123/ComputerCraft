@@ -30,78 +30,11 @@
 --- the most likely place to leak it.
 
 local host = require("ui.host")
+local registry = require("apps.registry")
 local reactive = require("ui.state.reactive")
 local ui = require("ui.init")
 
 local shell = {}
-
---- Which apps this surface shows, in order.
----
---- Filtered by role and surface rather than by a hard-coded list per machine,
---- so a Pocket Computer and a wall monitor run the same code and disagree only
---- about what they are.
----
---- D020's `requiresInput` is a *surface* property, not an app one: the same
---- Devices app is interactive on a desktop and read-only on a monitor, and it
---- expresses that by being handed no callbacks rather than by branching.
-function shell.available(apps, role, surface)
-  local out = {}
-  for _, entry in ipairs(apps) do
-    local manifest = entry.manifest or entry
-    local roleOk = false
-    for _, name in ipairs(manifest.roles or {}) do
-      if name == role then
-        roleOk = true
-      end
-    end
-
-    local surfaceOk = manifest.surfaces == nil
-    for _, name in ipairs(manifest.surfaces or {}) do
-      if name == surface then
-        surfaceOk = true
-      end
-    end
-
-    if roleOk and surfaceOk then
-      out[#out + 1] = entry
-    end
-  end
-  return out
-end
-
---- The apps a client knows about.
----
---- A function rather than a table so that requiring this file does not require
---- every app - which matters because an app requires its view, and a view
---- requires the whole framework. A monitor that shows one page should not pay
---- to load four.
-function shell.apps()
-  return {
-    -- Fleet first. It is the page meant to be left open, so it is the one a
-    -- client shows on boot; Devices is what somebody switches to when the Fleet
-    -- page has told them something is wrong.
-    require("apps.fleet.app"),
-    require("apps.devices.app"),
-    -- The turtle's own page. First in the list on a launcher, because
-    -- `available` filters by surface and it is the only one of these a turtle
-    -- shows - somebody standing in front of a turtle wants what it is doing,
-    -- not the fleet it is part of.
-    require("apps.job.app"),
-    require("apps.services.app"),
-    require("apps.logs.app"),
-    require("apps.automation.app"),
-    require("apps.operations.app"),
-    require("apps.gps.app"),
-    -- The other half of what a base is for. §2 calls a server the fleet's
-    -- authority; the bank is the second thing it is authoritative about, and it
-    -- is on this list rather than a list of its own because a person opening a
-    -- window does not care which service owns the state behind it.
-    require("apps.bank.app"),
-    require("apps.hardware.app"),
-    require("apps.disks.app"),
-    require("apps.console.app"),
-  }
-end
 
 --- The event a ticking machine queues to wake its screen.
 ---
@@ -168,7 +101,7 @@ end
 function shell.taskbar(scope, state)
   local children = {}
   for index, entry in ipairs(state.entries) do
-    local manifest = entry.manifest or entry
+    local manifest = entry
     local active = scope:Computed(function(use)
       return use(state.index) == index
     end)
@@ -191,11 +124,8 @@ end
 --- should back off and remount rather than sit there showing the last frame.
 function shell.run(context, options)
   options = options or {}
-  local entries = shell.available(
-    options.apps or shell.apps(),
-    options.role or "client",
-    options.surface or "desktop"
-  )
+  local entries = options.apps
+    or registry.available(options.role or "client", options.surface or "desktop")
 
   -- Rebuilt on every switch, so an app that is closed is destroyed rather than
   -- hidden. Ten pages of Computed recalculating on every heartbeat so that nine
@@ -203,6 +133,14 @@ function shell.run(context, options)
   local function open(index)
     local entry = entries[index]
     if entry == nil then
+      return nil
+    end
+
+    -- Loaded here rather than at boot. `registry.available` returns names, and
+    -- the module behind one is read off disk the first time somebody looks at
+    -- it - which on a wall monitor is one page out of eight.
+    local app = entry.mount and entry or registry.load(entry)
+    if app == nil then
       return nil
     end
 
@@ -217,7 +155,7 @@ function shell.run(context, options)
       build = function(inner)
         return inner:Column({
           Children = {
-            entry.mount(inner, context, {
+            app.mount(inner, context, {
               readOnly = options.readOnly,
               capacity = options.capacity,
 

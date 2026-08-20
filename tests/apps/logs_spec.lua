@@ -1,4 +1,5 @@
 local expect = require("support.expect")
+local registry = require("apps.registry")
 local it = require("support.spec").it
 local fleet = require("support.fleet")
 
@@ -123,10 +124,10 @@ end)
 it("Logs reaches every surface, including the one that needs it most", function()
   -- `edit .log` on a turtle whose screen is thirteen rows and whose program is
   -- still running is not a thing anybody does at 2am.
-  local onTurtle = shell.available(shell.apps(), "turtle", "launcher")
+  local onTurtle = registry.available("turtle", "launcher")
   local found = false
   for _, entry in ipairs(onTurtle) do
-    if entry.manifest.id == "logs" then
+    if entry.id == "logs" then
       found = true
     end
   end

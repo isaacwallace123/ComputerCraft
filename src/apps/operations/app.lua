@@ -39,14 +39,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "operations",
-  name = "Mine",
-  roles = { "client", "mobile" },
-  surfaces = { "desktop", "monitor", "handheld" },
-  requiresInput = false,
-}
-
 --- The numbers a person edits, and what each one costs to get wrong.
 ---
 --- `surfaceY` is the one that matters most and is easiest to mistype: it is the

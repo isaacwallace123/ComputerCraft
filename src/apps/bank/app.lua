@@ -28,17 +28,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "bank",
-  name = "Bank",
-
-  -- Every screen a person stands in front of. Not a turtle: a turtle has no
-  -- reason to hold an account and four rows to spare.
-  roles = { "server", "client", "mobile" },
-  surfaces = { "desktop", "monitor", "handheld" },
-  requiresInput = false,
-}
-
 --- The message that asks the server to do something with the books.
 ---
 --- Built as a pure function so a spec can assert on the shape without a radio,

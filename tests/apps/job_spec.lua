@@ -13,6 +13,7 @@
 
 local app = require("apps.job.app")
 local expect = require("support.expect")
+local registry = require("apps.registry")
 local it = require("support.spec").it
 
 ---------------------------------------------------------------------------
@@ -100,11 +101,11 @@ end)
 it("it is still the page a turtle shows, and only that", function()
   -- Removing the controls must not remove the page. Somebody walks to a turtle
   -- to find out what it is doing, and that question still has an answer.
-  expect.equal(app.manifest.id, "job", "registered")
-  expect.falsy(app.manifest.requiresInput, "and needs no keyboard")
+  local entry = registry.find("job")
+  expect.truthy(entry ~= nil, "registered")
 
   local surfaces = {}
-  for _, name in ipairs(app.manifest.surfaces) do
+  for _, name in ipairs((entry or {}).surfaces or {}) do
     surfaces[name] = true
   end
   expect.truthy(surfaces.launcher, "on a turtle's own screen")

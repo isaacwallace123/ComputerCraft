@@ -39,18 +39,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "job",
-  name = "Job",
-
-  -- The turtle's own launcher, and a desktop for looking at one over a
-  -- shoulder. Not a handheld: a Pocket Computer showing one turtle's status is
-  -- a worse Devices page.
-  roles = { "turtle", "client", "server" },
-  surfaces = { "launcher", "desktop" },
-  requiresInput = false,
-}
-
 --- The label column, wide enough for the longest word and no wider.
 app.LABEL = 8
 

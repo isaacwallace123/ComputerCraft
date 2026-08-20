@@ -1,4 +1,5 @@
 local expect = require("support.expect")
+local registry = require("apps.registry")
 local it = require("support.spec").it
 local fleet = require("support.fleet")
 
@@ -106,17 +107,17 @@ it("a turtle gets the Services page without a turtle version being written", fun
   -- The whole benefit of filtering by surface. Somebody standing in front of a
   -- stopped turtle wants "job: gave up - bedrock", and that page appeared by
   -- declaring the surface rather than by being ported.
-  local available = shell.available(shell.apps(), "turtle", "launcher")
+  local available = registry.available("turtle", "launcher")
   local ids = {}
   for _, entry in ipairs(available) do
-    ids[entry.manifest.id] = true
+    ids[entry.id] = true
   end
   expect.truthy(ids.services, "the diagnostic page is there")
 
   -- Devices is deliberately not there: a turtle showing a fleet roster would be
   -- a turtle drawing something it has no copy of.
   for _, entry in ipairs(available) do
-    expect.falsy(entry.manifest.id == "devices", "no fleet roster on a turtle")
+    expect.falsy(entry.id == "devices", "no fleet roster on a turtle")
   end
 end)
 

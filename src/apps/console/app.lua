@@ -32,20 +32,6 @@ local view = require("apps.console.view")
 
 local app = {}
 
---- The manifest.
----
---- `requiresInput` is true, and it is the only app so far for which that is
---- structurally true rather than a preference: a console with no keyboard is a
---- log with a decoration. D020's deny-by-default filtering keeps it off a
---- monitor without anybody having to remember to.
-app.manifest = {
-  id = "console",
-  name = "Console",
-  roles = { "client", "server" },
-  surfaces = { "desktop" },
-  requiresInput = true,
-}
-
 --- How many lines of history to keep.
 ---
 --- More than fits, so that a command whose answer is several lines does not

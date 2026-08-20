@@ -32,17 +32,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "disks",
-  name = "Disks",
-
-  -- A base and a client. Not a turtle: a turtle with a disk drive is a turtle
-  -- carrying a disk drive instead of a pickaxe.
-  roles = { "server", "client" },
-  surfaces = { "desktop", "monitor" },
-  requiresInput = false,
-}
-
 --- Everything one drive can tell us.
 ---
 --- Each field is a separate guarded call rather than a wrapped peripheral,

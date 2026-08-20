@@ -45,11 +45,10 @@
 --- None of that is written on screen, because a bar that lists its own shortcuts
 --- is a bar spending a row on the assumption you will need telling twice.
 
-local appIcons = require("ui.icons")
 local format = require("ui.format")
 local host = require("ui.host")
 local reactive = require("ui.state.reactive")
-local shell = require("os.client.shell")
+local registry = require("apps.registry")
 local theme = require("ui.theme")
 local ui = require("ui.init")
 
@@ -356,14 +355,17 @@ local function wall(scope, state, entries, options)
     local at = math.floor((index - 1) / columns) + 1
     grouped[at] = grouped[at] or {}
 
-    local manifest = entries[index].manifest or entries[index]
+    local manifest = entries[index]
     grouped[at][#grouped[at] + 1] = scope:Icon({
       Width = tile,
 
-      -- A picture rather than a letter. `ui/icons.lua` had existed for a while
-      -- and nothing passed one, so a desktop built to show objects was showing
-      -- punctuation - the exact thing its own header says it replaced.
-      Sprite = appIcons.forApp(manifest.id) or appIcons.app,
+      -- A glyph, not a sprite. There were 8x6 sprites here and they went back
+      -- out: four cells of two-colour pixels is not enough to draw an object, so
+      -- every icon came out a blue smudge that had to be labelled anyway - and a
+      -- wall of them costs 1.6x a wall of glyphs to build, measured. The sprites
+      -- still exist for ores and blocks, where the subject is a texture rather
+      -- than an idea.
+      Glyph = manifest.glyph,
       Label = format.ellipsis(manifest.name or manifest.id, tile),
 
       Selected = scope:Computed(function(use)
@@ -414,14 +416,26 @@ function desktop.build(scope, context, state, entries, options)
   if index == nil then
     body = wall(scope, state, entries, options)
   else
+    -- Read off disk here, not at boot. `registry.available` hands back names;
+    -- the module behind one is loaded the first time somebody opens it, which is
+    -- why a machine that never opens the console never pays for it.
+    local app, why = registry.load(entries[index])
     body = scope:Column({
       Grow = 1,
       Children = {
-        entries[index].mount(scope, context, {
-          readOnly = options.readOnly,
-          capacity = options.capacity,
-          tick = state.tick,
-        }),
+        app
+            and app.mount(scope, context, {
+              readOnly = options.readOnly,
+              capacity = options.capacity,
+              tick = state.tick,
+            })
+          or scope:Text({
+            -- A page that failed to load says so rather than leaving a blank
+            -- rectangle, which is the single most common way somebody concludes a
+            -- machine has hung.
+            Text = format.ellipsis(tostring(why or "could not open"), (options.width or 51) - 2),
+            Color = T.destructive,
+          }),
       },
     })
   end
@@ -455,11 +469,8 @@ end
 function desktop.run(context, options)
   options = options or {}
 
-  local entries = shell.available(
-    options.apps or shell.apps(),
-    options.role or "client",
-    options.surface or "desktop"
-  )
+  local entries = options.apps
+    or registry.available(options.role or "client", options.surface or "desktop")
   if #entries == 0 then
     return
   end

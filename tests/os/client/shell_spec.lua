@@ -2,6 +2,7 @@ local expect = require("support.expect")
 local it = require("support.spec").it
 local page = require("support.page")
 
+local registry = require("apps.registry")
 local shell = require("os.client.shell")
 local ui = require("ui.init")
 
@@ -12,16 +13,41 @@ local fakeApp = page.fake
 ---------------------------------------------------------------------------
 
 it("a surface shows the apps that belong on it and no others", function()
-  local apps = {
-    fakeApp("devices", "Devices", { "client", "mobile" }, { "desktop", "monitor" }),
-    fakeApp("console", "Console", { "client" }, { "desktop" }),
-    fakeApp("turtle-only", "Turtle", { "turtle" }, { "launcher" }),
-  }
+  -- Filtering reads the registry, which is names and nothing else. That is the
+  -- point: choosing what a machine offers used to mean requiring all twelve app
+  -- modules to read twelve manifests, which cost 41 ms and 30 resident modules
+  -- at boot on a turtle that draws one of them.
+  local onWall = registry.available("server", "monitor")
+  local ids = {}
+  for _, entry in ipairs(onWall) do
+    ids[entry.id] = true
+    expect.equal(entry.mount, nil, entry.id .. " is a name, not a loaded module")
+  end
 
-  expect.equal(#shell.available(apps, "client", "desktop"), 2, "a desktop gets both client apps")
-  expect.equal(#shell.available(apps, "client", "monitor"), 1, "a monitor gets only the one")
-  expect.equal(#shell.available(apps, "mobile", "desktop"), 1, "and a handheld gets its own")
-  expect.equal(#shell.available(apps, "server", "desktop"), 0, "a server draws nothing")
+  expect.truthy(ids.fleet, "a wall gets the page meant to be left open")
+  expect.falsy(ids.console, "and not the one whose whole point is typing")
+
+  -- A client is not a small server. It is the machine somebody who does not run
+  -- the fleet sits at, so it has no roster and nothing that reconfigures mining.
+  local onClient = {}
+  for _, entry in ipairs(registry.available("client", "desktop")) do
+    onClient[entry.id] = true
+  end
+  expect.falsy(onClient.fleet, "no fleet")
+  expect.falsy(onClient.automation, "no automation")
+  expect.falsy(onClient.operations, "and no mine")
+  expect.truthy(onClient.bank, "their own money, though")
+end)
+
+it("an app named in the registry can actually be loaded", function()
+  -- The failure this catches is a moved module: the registry names a path, and
+  -- nothing else in the system would notice it had gone until somebody clicked
+  -- the icon and got a blank rectangle.
+  for _, entry in ipairs(registry.APPS) do
+    local app, why = registry.load(entry)
+    expect.truthy(app ~= nil, entry.id .. " loads: " .. tostring(why))
+    expect.truthy(type((app or {}).mount) == "function", entry.id .. " has a mount")
+  end
 end)
 
 it("the app switcher wraps rather than stopping at the end", function()

@@ -26,14 +26,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "hardware",
-  name = "Hardware",
-  roles = { "server", "client", "turtle" },
-  surfaces = { "desktop", "monitor", "launcher" },
-  requiresInput = false,
-}
-
 --- One row per peripheral, with its group folded in.
 ---
 --- Flattened rather than nested, because a table is what draws well on a

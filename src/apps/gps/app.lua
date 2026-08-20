@@ -29,17 +29,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "gps",
-  name = "GPS",
-
-  -- Not a turtle. A turtle showing the constellation is showing something it
-  -- cannot act on, and its screen has four rows to spare.
-  roles = { "client", "server", "mobile" },
-  surfaces = { "desktop", "monitor", "handheld" },
-  requiresInput = false,
-}
-
 --- Whether a device is currently able to answer a GPS ping.
 ---
 --- The same rule `domain/gps/host.lua` applies on the machine itself, evaluated

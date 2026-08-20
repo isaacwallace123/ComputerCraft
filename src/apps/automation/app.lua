@@ -34,17 +34,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "automation",
-  name = "Automation",
-
-  -- Not a turtle. A turtle has no opinion about fleet policy and no screen to
-  -- spare for one.
-  roles = { "client", "mobile" },
-  surfaces = { "desktop", "monitor", "handheld" },
-  requiresInput = false,
-}
-
 --- The switches, in the order they are shown.
 ---
 --- Ordered by how much damage each can do, least first. Somebody scanning the

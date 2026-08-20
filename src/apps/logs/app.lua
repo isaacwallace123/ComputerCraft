@@ -29,19 +29,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "logs",
-  name = "Logs",
-
-  -- Every surface including a turtle's launcher. The turtle is where the log
-  -- matters most and is hardest to reach: `edit .log` on a machine whose screen
-  -- is thirteen rows and whose program is still running is not a thing anybody
-  -- does at 2am.
-  roles = { "client", "mobile", "turtle", "server" },
-  surfaces = { "desktop", "monitor", "handheld", "launcher" },
-  requiresInput = false,
-}
-
 --- The colour a line is drawn in.
 ---
 --- Only two are coloured. A log where every line is a colour is a log with no

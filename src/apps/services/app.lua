@@ -35,18 +35,6 @@ local T = theme.TOKENS
 
 local app = {}
 
-app.manifest = {
-  id = "services",
-  name = "Services",
-
-  -- Every role, including turtle. A turtle's launcher is the one screen a
-  -- person is standing in front of when its job has stopped, and "job: gave up -
-  -- bedrock" is the answer they came for.
-  roles = { "client", "mobile", "turtle", "server" },
-  surfaces = { "desktop", "monitor", "handheld", "launcher" },
-  requiresInput = false,
-}
-
 --- Services this page refuses to switch off.
 ---
 --- Not the same list as `critical`. Critical means "the machine is not doing its

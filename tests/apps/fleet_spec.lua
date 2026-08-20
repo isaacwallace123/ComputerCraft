@@ -6,6 +6,7 @@ local page = require("support.page")
 local desired = require("domain.fleet.desired")
 local discovery = require("os.server.services.discovery")
 local fleetApp = require("apps.fleet.app")
+local appRegistry = require("apps.registry")
 local registry = require("domain.fleet.registry")
 
 local context = fleet.context
@@ -85,14 +86,14 @@ it("a read-only surface gets no actions at all", function()
   ctx.transport = { broadcast = function() end, send = function() end }
 
   local pairsToCheck = {
-    { require("apps.fleet.app"), require("apps.fleet.view") },
-    { require("apps.devices.app"), require("apps.devices.view") },
+    { require("apps.fleet.app"), require("apps.fleet.view"), "fleet" },
+    { require("apps.devices.app"), require("apps.devices.view"), "devices" },
   }
 
   for _, entry in ipairs(pairsToCheck) do
     local passed = assert(optionsPassedTo(entry[1], entry[2], ctx, { readOnly = true }))
     for _, name in ipairs({ "onDeploy", "onRecall", "onStop", "onJob", "onSetting" }) do
-      expect.equal(passed[name], nil, entry[1].manifest.id .. " passes no " .. name)
+      expect.equal(passed[name], nil, entry[3] .. " passes no " .. name)
     end
   end
 end)
@@ -120,13 +121,18 @@ it("a fleet action asks the server for a goal, never the device for an action", 
 end)
 
 it("the fleet page is allowed on a monitor, and devices actions are not forced on it", function()
-  -- D020 as a manifest rather than as a branch: this is the page meant to be
-  -- left on a wall, and `readOnly` is what the shell hands a surface with no
+  -- D020 as a registry entry rather than as a branch: this is the page meant to
+  -- be left on a wall, and `readOnly` is what the shell hands a surface with no
   -- keyboard.
-  expect.falsy(fleetApp.manifest.requiresInput, "no input required")
+  local entry = appRegistry.find("fleet") or {}
   local surfaces = {}
-  for _, name in ipairs(fleetApp.manifest.surfaces) do
+  for _, name in ipairs(entry.surfaces or {}) do
     surfaces[name] = true
   end
-  expect.truthy(surfaces.monitor, "and it may appear on a monitor")
+  expect.truthy(surfaces.monitor, "it may appear on a monitor")
+
+  -- And its identity lives in one place. There used to be an `app.manifest`
+  -- saying the same thing, which is two descriptions of one app and therefore
+  -- one of them eventually wrong.
+  expect.equal(fleetApp.manifest, nil, "the module describes nothing about itself")
 end)
