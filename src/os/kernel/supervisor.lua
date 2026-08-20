@@ -176,11 +176,70 @@ function Supervisor:start(context)
   self.context = context or {}
   local now = self.clock.now()
   for _, entry in ipairs(self.order) do
-    if entry.state == "stopped" and not entry.gaveUp then
+    if entry.state == "stopped" and not entry.gaveUp and not entry.disabled then
       spawn(self, entry, self.context, now)
     end
   end
   return self
+end
+
+--- Turn a service off, and leave it off.
+---
+--- Not the same as a service that failed, and the distinction is the whole
+--- reason this exists rather than reusing `gaveUp`. A machine where somebody
+--- switched GPS off is working exactly as intended; a machine where GPS gave up
+--- is broken. Reporting them the same way means either the health page lies
+--- about a deliberate choice, or it stops meaning anything about a real fault.
+---
+--- So `disabled` is its own state: it survives `start`, it is never cleared by
+--- backoff, and `healthy()` ignores it entirely - a critical service that was
+--- turned off on purpose does not make a machine unhealthy, because the person
+--- who turned it off is the one the health report is for.
+---
+--- The coroutine is dropped rather than paused. Lua has no way to freeze one
+--- mid-execution, and a service holding a half-finished disk write while
+--- "paused" would be a worse thing to resume than a fresh one - every service
+--- here is written to be restartable because the supervisor already restarts
+--- them after failure.
+function Supervisor:disable(id)
+  local entry = self.services[id]
+  if entry == nil then
+    return false
+  end
+  entry.disabled = true
+  entry.thread = nil
+  entry.primed = nil
+  entry.filter = nil
+  entry.state = "disabled"
+  entry.retryAt = nil
+  return true
+end
+
+--- Turn it back on, from a clean slate.
+---
+--- Clears the failure count as well, because "off and on again" is what somebody
+--- does *after* fixing the thing that broke it - and leaving four failures on
+--- the record would mean one more mistake retires a service that has just been
+--- repaired.
+function Supervisor:enable(id)
+  local entry = self.services[id]
+  if entry == nil then
+    return false
+  end
+  entry.disabled = nil
+  entry.failures, entry.gaveUp, entry.lastError = 0, nil, nil
+  entry.retryAt = nil
+  if entry.state ~= "running" then
+    entry.state = "stopped"
+    spawn(self, entry, self.context or {}, self.clock.now())
+  end
+  return true
+end
+
+--- Is this service switched off?
+function Supervisor:disabled(id)
+  local entry = self.services[id]
+  return entry ~= nil and entry.disabled == true
 end
 
 --- Clear a service's failure count and start it again.
@@ -213,7 +272,12 @@ function Supervisor:step(event)
   local now = self.clock.now()
 
   for _, entry in ipairs(self.order) do
-    if entry.state == "waiting" and entry.retryAt and now >= entry.retryAt then
+    if
+      entry.state == "waiting"
+      and entry.retryAt
+      and now >= entry.retryAt
+      and not entry.disabled
+    then
       spawn(self, entry, self.context or {}, now)
     end
 
@@ -281,6 +345,7 @@ function Supervisor:health(now)
       id = entry.id,
       state = entry.state,
       critical = entry.critical,
+      disabled = entry.disabled == true,
       restarts = entry.restarts,
       failures = entry.failures,
       gaveUp = entry.gaveUp == true,
@@ -303,7 +368,11 @@ end
 --- policy to cause one.
 function Supervisor:healthy()
   for _, entry in ipairs(self.order) do
-    if entry.critical and (entry.gaveUp or entry.state == "stopped") then
+    -- A service somebody switched off never makes a machine unhealthy. The
+    -- health report exists for the person who made that choice, and telling
+    -- them their machine is broken because they turned something off is how a
+    -- health report stops being read.
+    if entry.critical and not entry.disabled and (entry.gaveUp or entry.state == "stopped") then
       return false, entry.id .. ": " .. tostring(entry.lastError or "stopped")
     end
   end

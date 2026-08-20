@@ -47,12 +47,44 @@ app.manifest = {
   requiresInput = false,
 }
 
+--- Services this page refuses to switch off.
+---
+--- Not the same list as `critical`. Critical means "the machine is not doing its
+--- job without this" and is about health; these are services whose absence would
+--- take away the means of turning them back on, which is about being able to
+--- recover.
+---
+---   * `screen` and `desktop` draw this page. Switching one off from the page it
+---     draws is a machine you have to reboot to get back, and somebody trying it
+---     once would learn nothing except not to.
+---   * `ticker` is what repaints. Without it the page freezes on the frame that
+---     said "off", which looks exactly like a crash.
+---
+--- Everything else is fair game, including `discovery` - a base that has been
+--- deliberately taken off the air is a thing somebody might genuinely want, and
+--- the page still says so in red.
+app.PROTECTED = {
+  screen = true,
+  desktop = true,
+  ticker = true,
+}
+
+--- May this service be switched off from here?
+function app.togglable(row)
+  return not app.PROTECTED[row.id]
+end
+
 --- How a service's state reads to a person.
 ---
 --- `waiting` becomes "retrying", because `waiting` is what the supervisor calls
 --- it and "retrying in 8s" is what somebody needs to know. The internal word is
 --- accurate and the displayed word is useful, and they are allowed to differ.
 function app.status(row)
+  -- Off comes before everything, because it is the only state that is somebody's
+  -- decision rather than the machine's news about itself.
+  if row.disabled then
+    return "off"
+  end
   if row.gaveUp then
     return "gave up"
   end
@@ -74,6 +106,12 @@ end
 --- degraded rather than broken, and painting it the same red as a failed
 --- critical service would train somebody to ignore both.
 function app.tone(row)
+  if row.disabled then
+    -- Muted, not warn. A service that was turned off on purpose is not a
+    -- problem, and colouring it like one would train somebody to ignore the
+    -- colour that means there is one.
+    return T.mutedFg
+  end
   if row.gaveUp then
     return row.critical and T.destructive or T.warn
   end
@@ -93,6 +131,11 @@ function app.rows(supervisor, now)
   local rows = supervisor:health(now)
 
   local function rank(row)
+    -- Off sorts to the bottom with the healthy ones. It is not a fault, and a
+    -- switched-off service at the top would push a real failure down the page.
+    if row.disabled then
+      return 5
+    end
     if row.gaveUp then
       return row.critical and 0 or 1
     end
@@ -201,6 +244,54 @@ function app.mount(scope, context, options)
     return ""
   end)
 
+  --- The switch, and what it refuses to switch.
+  ---
+  --- One button rather than a toggle per row, because the table builds a fixed
+  --- pool of row slots and a control inside one would have to move with the
+  --- scroll. The button acts on the selection, which is the thing already on
+  --- screen saying what it would act on.
+  local actions = nil
+  if not options.readOnly and supervisor then
+    actions = {
+      scope:Button({
+        Text = scope:Computed(function(use)
+          use(tick)
+          local id = use(selected)
+          return id and supervisor:disabled(id) and "Turn on" or "Turn off"
+        end),
+        Variant = scope:Computed(function(use)
+          use(tick)
+          local id = use(selected)
+          return id and supervisor:disabled(id) and "primary" or "destructive"
+        end),
+        Disabled = scope:Computed(function(use)
+          local id = use(selected)
+          if id == nil then
+            return true
+          end
+          for _, row in ipairs(use(rows)) do
+            if row.id == id then
+              return not app.togglable(row)
+            end
+          end
+          return true
+        end),
+        OnClick = function()
+          local id = selected:get()
+          if id == nil then
+            return
+          end
+          if supervisor:disabled(id) then
+            supervisor:enable(id)
+          else
+            supervisor:disable(id)
+          end
+          tick:set(tick:get() + 1)
+        end,
+      }),
+    }
+  end
+
   return scope:Page({
     Title = "Services",
     Status = summary,
@@ -217,6 +308,7 @@ function app.mount(scope, context, options)
       scope:Separator({}),
       scope:Muted({ Text = detail, Height = 1 }),
     },
+    Actions = actions,
   })
 end
 
