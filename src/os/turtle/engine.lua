@@ -221,6 +221,11 @@ function engine.new(options)
     -- surface and capacity had to agree.
     runControls = nil,
 
+    -- The navigator this turtle drives on, so `os/turtle/main.lua` can hand it
+    -- to the locate service without requiring a module that reads `turtle` and
+    -- `fs` the moment it loads.
+    nav = nav,
+
     -- Exposed for the entrypoint's benefit only. Nothing in `os/` reads it.
     context = ctx,
   }

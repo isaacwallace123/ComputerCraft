@@ -48,6 +48,7 @@
 --- by hand.
 
 local agent = require("os.turtle.agent")
+local calibrate = require("os.turtle.calibrate")
 local control = require("os.turtle.control")
 local gps = require("os.kernel.services.gps")
 local peer = require("domain.protocol.peer")
@@ -278,6 +279,78 @@ turtleOs.controls = service.define({
   end,
 })
 
+--- Find out where this turtle is, from the constellation.
+---
+--- A service rather than a step in boot, and the difference matters: it needs a
+--- GPS constellation, which on a base that is still coming up does not exist for
+--- the first few seconds. A boot step would ask once, fail, and leave the turtle
+--- unlocated until somebody rebooted it - which is exactly the state the whole
+--- fleet was found in.
+---
+--- So it retries, slowly, and stops the moment it succeeds. `run` returning
+--- would be a fault to the supervisor, so it parks instead.
+---
+--- **Only while parked.** The calibration steps one block forward and back, and
+--- a turtle doing that in the middle of a quarry cycle is a turtle that has
+--- moved without its navigator knowing. Parked is the same condition
+--- `domain/gps/host.lua` uses for hosting, for the same reason.
+turtleOs.locate = service.define({
+  id = "locate",
+  requires = { "locator", "body", "clock" },
+
+  -- Not critical. A turtle that does not know where it is cannot take a shared
+  -- mine sector and can still be recalled, and D004 says the radio being down
+  -- must not stop the machine - this is the same rule one layer up.
+  critical = false,
+
+  run = function(context)
+    local nav = context.nav
+    while true do
+      if nav ~= nil and calibrate.needed(nav) and context.node and context.node.parked then
+        local found, why = calibrate.run(context.body, context.locator)
+        if found then
+          -- Both files in one call. Two that disagreed about which way home is
+          -- would be a turtle mining confidently in the wrong direction.
+          nav.setOrigin(found.x, found.y, found.z, found.heading)
+          context.saveLocation({
+            x = found.x,
+            y = found.y,
+            z = found.z,
+            heading = found.heading,
+          })
+          if context.log then
+            context.log.info(
+              ("located at %d, %d, %d facing %s"):format(
+                found.x,
+                found.y,
+                found.z,
+                require("domain.gps.fix").compass(found.heading)
+              )
+            )
+          end
+        elseif context.log then
+          -- Once per attempt, and the attempts are a minute apart. A turtle with
+          -- no constellation in range would otherwise fill its own disk saying
+          -- so, on the machine least able to spare it.
+          context.log.warn("locate: " .. tostring(why))
+        end
+      end
+
+      context.clock.sleep(context.locateEvery or turtleOs.LOCATE_EVERY)
+      if coroutine.isyieldable() then
+        coroutine.yield()
+      end
+    end
+  end,
+})
+
+--- Seconds between attempts to find out where we are.
+---
+--- A minute. The constellation either exists or does not, and a turtle that
+--- retried every second would spend a move and a GPS round trip sixty times a
+--- minute discovering the same thing.
+turtleOs.LOCATE_EVERY = 60
+
 --- The services a turtle runs.
 ---
 --- `legacy` is the odd one and is temporary by design: it is the turtle's
@@ -300,6 +373,7 @@ function turtleOs.services()
     turtleOs.job,
     turtleOs.heartbeat,
     turtleOs.controls,
+    turtleOs.locate,
     legacyLink.service,
     gps.service,
   }
@@ -365,6 +439,14 @@ function turtleOs.boot(ports, options)
 
     -- Who answered last, so the next heartbeat is a message rather than a shout.
     peer = peer.empty(),
+
+    -- The navigator, when this machine has one.
+    --
+    -- Injected rather than required at the top of this file, for the reason the
+    -- turtle engine is: `os/turtle/device/nav.lua` reads `fs` and `turtle` at
+    -- load, and a spec that only wanted to check supervision should not have to
+    -- own a filesystem. A caller that brings its own is believed.
+    nav = options.nav,
 
     snapshot = options.snapshot or function()
       return {}

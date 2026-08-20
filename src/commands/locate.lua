@@ -38,45 +38,11 @@ package.path = "/?.lua;/?/init.lua;" .. package.path
 
 local config = require("adapters.cc.config")
 local host = require("domain.gps.host")
-local console = require("os.kernel.console")
+local calibrate = require("os.turtle.calibrate")
 local locator = require("adapters.cc.locator")
-local prompt = require("os.kernel.prompt")
 local util = require("lib.util")
 
 local COMPASS = { "north", "east", "south", "west" }
-
---- Which way this machine points, chosen rather than typed.
----
---- `prompt.choose` is what `commands/setup.lua` uses, and this asked for a
---- number instead - so the one question in the fleet with four possible answers
---- was the one place somebody could type a fifth. Arrow keys, a highlight band,
---- and a click all work; every other prompt in the system behaves this way and
---- there was no reason this one did not.
----
---- Returns a heading 0-3, or nil if they backed out. Cancelling means "change
---- nothing", which the caller has to be able to act on: a `locate` that wrote a
---- heading somebody declined to give would be worse than one that gave up.
-local function heading(screen)
-  local entries = {}
-  for _, name in ipairs(COMPASS) do
-    entries[#entries + 1] = { label = name }
-  end
-
-  -- A turtle's screen faces the person reading it, so it points away from them -
-  -- the single most confusing thing about this question, and it belongs above
-  -- the list rather than after it.
-  --
-  -- Thirty-six characters, because `console:panelLine` pads to `width - 2` and a
-  -- turtle is thirty-nine wide - so a longer sentence is not a longer sentence,
-  -- it is a truncated one, and the half that gets cut is the half that explains
-  -- the trap.
-  local chosen = prompt.choose(screen, entries, {
-    title = "Which way is it pointing?",
-    note = "F3 shows Facing. Turtles point away.",
-  })
-
-  return chosen and chosen - 1 or nil
-end
 
 --- Ask the constellation, then fall back to asking the person.
 ---
@@ -144,45 +110,64 @@ if existing then
   print("")
 end
 
-local x, y, z = position()
-
-local facing = nil
+--- A turtle finds out both numbers by itself, or not at all.
+---
+--- The move is the whole trick: take a fix, step one block, take another, and
+--- the difference is the way it was pointing. Then step back, so a calibration
+--- leaves the turtle where it was found.
+---
+--- **No fallback to asking.** A turtle is the machine somebody is least likely
+--- to be standing next to, and the manual answer is the one that can be wrong in
+--- a way nothing detects - a heading typed a quarter-turn out sends a turtle
+--- away from home in a straight line, and the first anybody knows is that it
+--- stopped answering. If there is no constellation, the answer is to build one,
+--- and this says so rather than offering a way to guess.
 if turtle then
-  -- Built here rather than at the top of the file: a computer never asks this,
-  -- and constructing a console it will not draw on would be a screen adapter
-  -- wrapped around `term` for nothing.
-  facing = heading(console.new(require("adapters.cc.screen").new(term)))
+  print("")
+  write("Asking the constellation... ")
 
-  if facing == nil then
-    -- Backed out. The position is still worth having and the heading is the half
-    -- that cannot be guessed, so nothing is written: a `.location` with a
-    -- heading somebody declined to give is a turtle mining confidently in the
-    -- wrong direction.
-    term.clear()
-    term.setCursorPos(1, 1)
-    printError("Cancelled - nothing was saved.")
+  local found, why =
+    calibrate.run(require("adapters.cc.body").new(), require("adapters.cc.locator").new())
+
+  if not found then
+    print("no")
+    printError(why)
+    print("")
+    print(("Trilateration needs %d machines that already"):format(host.QUORUM))
+    print("know where they are. Set those up first; every")
+    print("turtle after the fourth locates itself.")
     return
   end
 
-  term.clear()
-  term.setCursorPos(1, 1)
-end
+  print("found")
+  print(
+    ("It is at %d, %d, %d facing %s."):format(found.x, found.y, found.z, COMPASS[found.heading + 1])
+  )
 
--- Written before the navigator, so a crash between the two leaves a machine that
--- knows where it is and not one that has moved its own origin without saying so.
-config.save(locator.PATH, { x = x, y = y, z = z, heading = facing })
+  config.save(locator.PATH, { x = found.x, y = found.y, z = found.z, heading = found.heading })
 
-if turtle then
   -- `setOrigin` resets the relative frame and the world origin in one persisted
   -- update, so a reboot cannot leave half of the recalibration applied.
-  require("os.turtle.device.nav").setOrigin(x, y, z, facing)
+  require("os.turtle.device.nav").setOrigin(found.x, found.y, found.z, found.heading)
+
+  print("")
+  print("Saved. It can dead-reckon at any depth with no")
+  print("GPS cluster in range.")
+  return
 end
+
+-- A computer, which has no heading to find and no way to find one.
+--
+-- It cannot move, so the trick a turtle uses is not available - and it does not
+-- need it: a computer never dead-reckons. A position is the whole answer, and
+-- somebody standing at the machine reading F3 is the only source for the first
+-- four in a world.
+local x, y, z = position()
+
+config.save(locator.PATH, { x = x, y = y, z = z })
 
 print("")
 print(("Saved. This machine is at %d, %d, %d."):format(x, y, z))
-if facing then
-  print(("It faces %s, so it can dead-reckon at any"):format(COMPASS[facing + 1]))
-  print("depth with no GPS cluster in range.")
-end
+print("It will host GPS from the next reboot.")
 print("")
 print("Run this again if the machine is ever moved.")
