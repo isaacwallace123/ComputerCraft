@@ -38,31 +38,44 @@ package.path = "/?.lua;/?/init.lua;" .. package.path
 
 local config = require("adapters.cc.config")
 local host = require("domain.gps.host")
+local console = require("os.kernel.console")
 local locator = require("adapters.cc.locator")
+local prompt = require("os.kernel.prompt")
 local util = require("lib.util")
 
 local COMPASS = { "north", "east", "south", "west" }
 
-local function heading()
-  print("")
-  print("F3 shows 'Facing'. Which way is this")
-  print("machine pointing? A turtle's screen faces")
-  print("you, so it points the opposite way to your")
-  print("view.")
-  print("")
-  for index, name in ipairs(COMPASS) do
-    print(("  %d  %s"):format(index, name))
+--- Which way this machine points, chosen rather than typed.
+---
+--- `prompt.choose` is what `commands/setup.lua` uses, and this asked for a
+--- number instead - so the one question in the fleet with four possible answers
+--- was the one place somebody could type a fifth. Arrow keys, a highlight band,
+--- and a click all work; every other prompt in the system behaves this way and
+--- there was no reason this one did not.
+---
+--- Returns a heading 0-3, or nil if they backed out. Cancelling means "change
+--- nothing", which the caller has to be able to act on: a `locate` that wrote a
+--- heading somebody declined to give would be worse than one that gave up.
+local function heading(screen)
+  local entries = {}
+  for _, name in ipairs(COMPASS) do
+    entries[#entries + 1] = { label = name }
   end
-  print("")
 
-  while true do
-    write("Facing [1-4]: ")
-    local answer = tonumber((read() or ""):match("%d"))
-    if answer and COMPASS[answer] then
-      return answer - 1
-    end
-    printError("Enter 1, 2, 3 or 4.")
-  end
+  -- A turtle's screen faces the person reading it, so it points away from them -
+  -- the single most confusing thing about this question, and it belongs above
+  -- the list rather than after it.
+  --
+  -- Thirty-six characters, because `console:panelLine` pads to `width - 2` and a
+  -- turtle is thirty-nine wide - so a longer sentence is not a longer sentence,
+  -- it is a truncated one, and the half that gets cut is the half that explains
+  -- the trap.
+  local chosen = prompt.choose(screen, entries, {
+    title = "Which way is it pointing?",
+    note = "F3 shows Facing. Turtles point away.",
+  })
+
+  return chosen and chosen - 1 or nil
 end
 
 --- Ask the constellation, then fall back to asking the person.
@@ -135,7 +148,24 @@ local x, y, z = position()
 
 local facing = nil
 if turtle then
-  facing = heading()
+  -- Built here rather than at the top of the file: a computer never asks this,
+  -- and constructing a console it will not draw on would be a screen adapter
+  -- wrapped around `term` for nothing.
+  facing = heading(console.new(require("adapters.cc.screen").new(term)))
+
+  if facing == nil then
+    -- Backed out. The position is still worth having and the heading is the half
+    -- that cannot be guessed, so nothing is written: a `.location` with a
+    -- heading somebody declined to give is a turtle mining confidently in the
+    -- wrong direction.
+    term.clear()
+    term.setCursorPos(1, 1)
+    printError("Cancelled - nothing was saved.")
+    return
+  end
+
+  term.clear()
+  term.setCursorPos(1, 1)
 end
 
 -- Written before the navigator, so a crash between the two leaves a machine that
