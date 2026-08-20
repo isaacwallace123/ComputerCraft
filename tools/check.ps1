@@ -249,13 +249,50 @@ if (Test-Path $manifestPath) {
       $row.InputObject) -ForegroundColor Red
   }
 
-  if ($missing.Count -or $extra.Count -or $broken.Count -or $bootstrapDrift.Count) {
+  # Per-role closures, and the list `uninstall` walks.
+  #
+  # A role list that is missing a file is a machine that downloads a tree it
+  # cannot boot, and `prune.SHIPPED` that is missing a directory is an uninstall
+  # that leaves a directory behind - neither of which is visible by reading
+  # either file.
+  $roleDrift = @()
+  foreach ($role in @("server", "client", "turtle", "mobile")) {
+    $set = @($manifest.roles.$role)
+    if ($set.Count -eq 0) { $roleDrift += "$role has no file list"; continue }
+    foreach ($name in $set) {
+      if ($listed -notcontains $name) { $roleDrift += "$role wants $name, which is not in the build" }
+    }
+  }
+
+  $shippedDirs = @(($listed | Where-Object { $_ -match "/" } |
+        ForEach-Object { ($_ -split "/")[0] }) | Sort-Object -Unique)
+  $pruneSource = Get-Content (Join-Path $repo "src/lib/prune.lua") -Raw
+  $declared = @()
+  if ($pruneSource -match "(?s)prune\.SHIPPED = \{(.*?)\}") {
+    $declared = @([regex]::Matches($matches[1], '"(\w+)"') | ForEach-Object { $_.Groups[1].Value })
+  }
+  foreach ($row in @(Compare-Object $shippedDirs $declared)) {
+    $roleDrift += $(if ($row.SideIndicator -eq "<=") {
+        "prune.SHIPPED is missing $($row.InputObject)"
+      }
+      else {
+        "prune.SHIPPED names $($row.InputObject), which the build does not ship"
+      })
+  }
+
+  foreach ($problem in $roleDrift) { Write-Host "  $problem" -ForegroundColor Red }
+
+  if ($missing.Count -or $extra.Count -or $broken.Count -or $bootstrapDrift.Count -or $roleDrift.Count) {
     Write-Host "  run: .\tools\make-manifest.ps1" -ForegroundColor Yellow
     $failed = $true
   }
   else {
     Write-Host ("  {0} files listed, {1} of them needed to bootstrap" -f
       $listed.Count, $haveBootstrap.Count)
+    foreach ($role in @("server", "client", "turtle", "mobile")) {
+      $set = @($manifest.roles.$role)
+      Write-Host ("    {0,-7} {1,3} files" -f $role, $set.Count)
+    }
   }
 }
 else {

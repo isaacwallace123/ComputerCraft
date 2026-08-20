@@ -136,6 +136,8 @@ marked, because changing the wrong one produces a passing build and no change in
 | seeing the new UI on real hardware | `src/apps/showcase/main.lua`, then run apps/showcase in game |
 | updater/bootstrap | `bootstrap.lua`, `src/update.lua`, `tools/make-manifest.ps1` |
 | what an update deletes, and what it must not | `src/lib/prune.lua`, `tests/lib/prune_spec.lua` |
+| which apps a machine offers, and what they are called | `src/apps/registry.lua` |
+| which files a role needs, and taking ICOS off a machine | the `roles` block in `tools/make-manifest.ps1`, `icos uninstall` in `src/icos.lua` |
 | version automation | `.github/workflows/icos-version.yml`, `src/lib/version.lua` |
 
 Every path in this table is checked by `tools\check-docs.ps1`. It was allowed to rot to

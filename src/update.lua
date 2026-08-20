@@ -20,6 +20,7 @@ local config = require("adapters.cc.config")
 local sound = require("adapters.cc.sound")
 local ccScreen = require("adapters.cc.screen")
 local prune = require("lib.prune")
+local roles = require("os.kernel.roles")
 
 local CONFIG_PATH = ".update"
 local RESULT_PATH = ".update-result"
@@ -320,7 +321,33 @@ if not manifest or type(manifest.files) ~= "table" then
   return
 end
 
+--- What this machine downloads: its own role's files, not the whole tree.
+---
+--- The tree is about 554 KB and a CC computer holds 1,000,000 bytes. Most of
+--- what a given machine would fetch is code it will never run - a client has no
+--- mine, no sector leases and no turtle jobs; a turtle has no console and no
+--- disk manager. `tools/make-manifest.ps1` works out the closure for each role
+--- and writes it into the manifest; this picks the one that applies.
+---
+--- Falls back to everything in two cases, both correct. A manifest from a build
+--- before this existed has no `roles`, and a machine with no `.node` has not been
+--- set up yet - so it takes the lot, `setup` chooses what it is, and the next
+--- update trims to that.
+---
+--- `roles.roleOf` is deliberately not asked about a missing node. It answers
+--- `client` for anything it cannot read, which is the right default for booting
+--- - a machine that is wrong about itself should hold no authority - and the
+--- wrong one for downloading, because a fresh computer that fetched the client
+--- set would be missing the server it is about to be told to be.
+local role = nil
+if fs.exists(".node") then
+  role = roles.roleOf(config.load(".node", {}))
+end
+
 local files = manifest.files
+if role and type(manifest.roles) == "table" and type(manifest.roles[role]) == "table" then
+  files = manifest.roles[role]
+end
 local total = #files
 local expected = {}
 local changed, unchanged, failed = 0, 0, 0
@@ -456,7 +483,11 @@ screen:clear()
 screen:header("ICOS update", ok and "verified" or "PROBLEMS")
 
 screen:line(3, cfg.user .. "/" .. cfg.repo, T.mutedFg)
-screen:line(4, "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (branch)"), T.mutedFg)
+screen:line(
+  4,
+  "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (branch)") .. "  " .. (role or "all"),
+  T.mutedFg
+)
 
 screen:line(6, ("%-10s %d"):format("updated", changed), changed > 0 and T.good or T.mutedFg)
 screen:line(7, ("%-10s %d"):format("unchanged", unchanged), T.mutedFg)

@@ -13,6 +13,8 @@
 ---     icos status       build the machine, print its health, and stop
 ---     icos watch        run, and show the fleet while it does
 ---     icos mine <x> <z> <y>   place the shared mine and stop
+---     icos uninstall    take ICOS off this computer, keeping its state
+---     icos uninstall --purge    and erase the state as well
 ---
 --- ## Why `watch` exists
 ---
@@ -40,6 +42,7 @@ package.path = "/?.lua;/?/init.lua;" .. package.path
 
 local boot = require("os.kernel.boot")
 local config = require("adapters.cc.config")
+local prune = require("lib.prune")
 local roles = require("os.kernel.roles")
 
 local args = { ... }
@@ -116,6 +119,130 @@ end
 
 if command == "mine" then
   placeMine(args)
+  return
+end
+
+---------------------------------------------------------------------------
+-- uninstall
+---------------------------------------------------------------------------
+
+--- Take ICOS off this computer.
+---
+--- Every system that can install itself onto somebody's machine should be able
+--- to take itself off again, and until now the answer was "delete the files by
+--- hand, and hope you remember which ones are yours".
+---
+--- What it removes is `lib/prune.lua`'s list: the directories ICOS ships plus
+--- the ones it used to, and the root programs. A program somebody wrote on the
+--- computer is not in it and is never touched.
+---
+--- ## State survives unless you say otherwise
+---
+--- `.node`, `.location`, `.nav`, `.mine`, `.log` and the rest stay. Uninstalling
+--- is usually a step in reinstalling, and a turtle that comes back not knowing
+--- where it is has to be walked to and re-surveyed. `--purge` removes them too,
+--- and says how many it took.
+---
+--- ## It asks
+---
+--- The one destructive thing in this program, and the only one that reads from
+--- the keyboard. A confirmation nobody can be scripted past is worth more than a
+--- flag they can typo.
+local function uninstall(words)
+  local purge = false
+  for _, word in ipairs(words) do
+    if word == "--purge" then
+      purge = true
+    end
+  end
+
+  local function walk(dir, into)
+    for _, name in ipairs(fs.list(dir)) do
+      local path = dir == "" and name or (dir .. "/" .. name)
+      if fs.isDir(path) then
+        walk(path, into)
+      elseif purge or not prune.persisted(path) then
+        into[#into + 1] = path
+      end
+    end
+  end
+
+  local doomed = {}
+  for _, root in ipairs(prune.owned()) do
+    if fs.exists(root) and fs.isDir(root) then
+      walk(root, doomed)
+    end
+  end
+  for _, name in ipairs(prune.ownedFiles()) do
+    if fs.exists(name) and not fs.isDir(name) then
+      doomed[#doomed + 1] = name
+    end
+  end
+
+  local state = {}
+  if purge then
+    for _, name in ipairs(fs.list("")) do
+      if prune.persisted(name) and not fs.isDir(name) and name ~= ".settings" then
+        state[#state + 1] = name
+      end
+    end
+  end
+
+  if #doomed == 0 and #state == 0 then
+    print("Nothing of ICOS is on this computer.")
+    return
+  end
+
+  print(("This removes %d file%s of ICOS."):format(#doomed, #doomed == 1 and "" or "s"))
+  if purge then
+    print(
+      ("It also erases %d saved file%s: role, position, log, mine."):format(
+        #state,
+        #state == 1 and "" or "s"
+      )
+    )
+  else
+    print("Saved state - role, position, log, mine - is kept.")
+  end
+  write("Type the label of this computer, or `yes`: ")
+
+  local answer = (read() or ""):gsub("^%s*(.-)%s*$", "%1")
+  local label = tostring(node.label or "")
+  if answer ~= "yes" and (label == "" or answer ~= label) then
+    print("Left alone.")
+    return
+  end
+
+  local removed = 0
+  for _, path in ipairs(doomed) do
+    if not fs.isReadOnly(path) and pcall(fs.delete, path) then
+      removed = removed + 1
+    end
+  end
+  for _, path in ipairs(state) do
+    if not fs.isReadOnly(path) and pcall(fs.delete, path) then
+      removed = removed + 1
+    end
+  end
+
+  -- The directories themselves, once they are empty. A computer left with eight
+  -- empty folders looks like a failed uninstall rather than a finished one.
+  for _, root in ipairs(prune.owned()) do
+    if fs.exists(root) and fs.isDir(root) and #fs.list(root) == 0 then
+      pcall(fs.delete, root)
+    end
+  end
+
+  print(
+    ("Removed %d file%s. Reboot for a bare computer."):format(removed, removed == 1 and "" or "s")
+  )
+  if not purge then
+    print("`icos uninstall --purge` also erases the saved state.")
+  end
+end
+
+if command == "uninstall" then
+  uninstall(args)
   return
 end
 

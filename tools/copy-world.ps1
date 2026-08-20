@@ -64,10 +64,55 @@ Get-ChildItem $root -Force | Where-Object { -not $_.Name.StartsWith(".") } | For
   Remove-Item $_.FullName -Recurse -Force
 }
 
-# In with the new. Dotfiles in the build belong to whichever computer is
-# junctioned there, never to this one, so they are not copied.
-Get-ChildItem $src -Force | Where-Object { -not $_.Name.StartsWith(".") } | ForEach-Object {
-  Copy-Item $_.FullName -Destination $root -Recurse -Force
+# In with the new, and only the part this machine's role needs.
+#
+# A real machine downloads its role's closure and nothing else - see the `roles`
+# block in `tools/make-manifest.ps1`. Copying the whole build here would make
+# every in-world test run against a machine holding files production does not
+# have, which is the kind of difference that is only discovered by the fleet.
+#
+# The role comes from `-Role` when given, and from the target's own `.node` when
+# not, so re-copying a machine that is already set up keeps it honest without
+# anybody restating what it is.
+$manifest = Get-Content (Join-Path $src "manifest.json") -Raw | ConvertFrom-Json
+$targetRole = $Role
+if (-not $targetRole) {
+  $nodePath = Join-Path $root ".node"
+  if (Test-Path $nodePath) {
+    $nodeText = Get-Content $nodePath -Raw
+    if ($nodeText -match 'role\s*=\s*"(\w+)"') { $targetRole = $matches[1] }
+  }
+}
+
+# ICOS 1 role names still exist on live machines. One mapping, matching
+# `os/kernel/roles.lua`, so a `miner` gets the turtle's files.
+$asRole = @{
+  fleet = "server"; gps = "server"; miner = "turtle"; controller = "mobile"
+  utility = "client"; server = "server"; client = "client"; turtle = "turtle"; mobile = "mobile"
+}
+$wanted = $null
+if ($targetRole -and $asRole.ContainsKey($targetRole)) {
+  $wanted = @($manifest.roles.($asRole[$targetRole]))
+}
+
+if ($wanted) {
+  foreach ($name in $wanted) {
+    $from = Join-Path $src $name
+    if (-not (Test-Path $from)) { throw "the build has no $name" }
+    $to = Join-Path $root $name
+    $dir = Split-Path -Parent $to
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    Copy-Item $from -Destination $to -Force
+  }
+  Write-Host ("Role $targetRole -> $($asRole[$targetRole]): {0} of {1} files" -f
+    $wanted.Count, $manifest.files.Count) -ForegroundColor Cyan
+}
+else {
+  # No role to filter by, so the machine gets everything - exactly what a fresh
+  # computer downloads before `setup` has told it what it is.
+  Get-ChildItem $src -Force | Where-Object { -not $_.Name.StartsWith(".") } | ForEach-Object {
+    Copy-Item $_.FullName -Destination $root -Recurse -Force
+  }
 }
 
 $size = (Get-ChildItem $root -Recurse -File -Force | Measure-Object -Property Length -Sum).Sum

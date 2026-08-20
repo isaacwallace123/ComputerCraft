@@ -45,6 +45,31 @@ prune.RETIRED = {
   "turtle",
 }
 
+--- Top-level directories a current build ships.
+---
+--- Derived from the file list wherever there is one - see `roots` - and named
+--- here for the one caller that has no file list to derive from: `uninstall`,
+--- which has to know what to remove without asking GitHub what a build looks
+--- like. `tools/check.ps1` compares this against the manifest, so a new
+--- top-level directory is a failed check rather than a directory uninstall
+--- silently leaves behind.
+prune.SHIPPED = {
+  "adapters",
+  "apps",
+  "commands",
+  "domain",
+  "lib",
+  "os",
+  "ports",
+  "ui",
+}
+
+--- Root files a current build ships.
+---
+--- `manifest.json` is not among them: `update.lua` fetches it and reads it
+--- without ever writing it down, so there is nothing on disk to remove.
+prune.SHIPPED_FILES = { "startup.lua", "icos.lua", "update.lua" }
+
 --- Root files ICOS has shipped and no longer does.
 ---
 --- `install.lua` was ICOS 1's setup program and `icos2.lua` was the launcher
@@ -91,6 +116,37 @@ function prune.persisted(path)
     return true
   end
   return path:find("/%.") ~= nil
+end
+
+--- Everything ICOS owns, whether or not a build still ships it.
+---
+--- What `uninstall` walks. `roots` answers "where should I look for strays given
+--- this build"; this answers "where has ICOS ever put anything", and the
+--- difference is that one of them is being handed a build and the other is
+--- taking one away.
+function prune.owned()
+  local out = {}
+  for _, name in ipairs(prune.SHIPPED) do
+    out[#out + 1] = name
+  end
+  for _, name in ipairs(prune.RETIRED) do
+    out[#out + 1] = name
+  end
+  table.sort(out)
+  return out
+end
+
+--- Every root file ICOS has ever shipped.
+function prune.ownedFiles()
+  local out = {}
+  for _, name in ipairs(prune.SHIPPED_FILES) do
+    out[#out + 1] = name
+  end
+  for _, name in ipairs(prune.RETIRED_FILES) do
+    out[#out + 1] = name
+  end
+  table.sort(out)
+  return out
 end
 
 --- Which of the paths on disk this build does not have.

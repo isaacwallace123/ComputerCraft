@@ -117,3 +117,45 @@ it("the retired file list catches a launcher that was renamed", function()
   expect.truthy(set["icos2.lua"])
   expect.truthy(set["install.lua"], "ICOS 1's setup program")
 end)
+
+---------------------------------------------------------------------------
+-- Uninstalling
+---------------------------------------------------------------------------
+
+it("uninstall knows where ICOS has ever put anything", function()
+  local owned = {}
+  for _, name in ipairs(prune.owned()) do
+    owned[name] = true
+  end
+
+  -- What a build ships now. `roots` derives these from a file list; uninstall
+  -- has no file list, which is why they are named.
+  expect.truthy(owned.os, "the operating systems")
+  expect.truthy(owned.ui, "the framework")
+  expect.truthy(owned.adapters)
+
+  -- And what it used to. An uninstall that only knew about the current shape
+  -- would leave ICOS 1 behind on every machine that ever ran it.
+  expect.truthy(owned.core)
+  expect.truthy(owned.miner)
+
+  -- Still nothing else. This is the same safety boundary the updater uses.
+  expect.falsy(owned.rom)
+  expect.falsy(owned.disk)
+end)
+
+it("uninstall removes the programs somebody types, old names included", function()
+  local files = {}
+  for _, name in ipairs(prune.ownedFiles()) do
+    files[name] = true
+  end
+
+  expect.truthy(files["startup.lua"], "what runs on power-up")
+  expect.truthy(files["icos.lua"], "and what somebody types")
+  expect.truthy(files["update.lua"])
+  expect.truthy(files["icos2.lua"], "including the name it had before")
+
+  -- `manifest.json` is fetched and read, never written down, so there is
+  -- nothing on disk to remove and naming it would be a lie about the tree.
+  expect.falsy(files["manifest.json"])
+end)
