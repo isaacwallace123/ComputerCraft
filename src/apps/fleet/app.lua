@@ -38,6 +38,7 @@
 local desired = require("domain.fleet.desired")
 local jobs = require("domain.turtle.jobs")
 local registry = require("domain.fleet.registry")
+local suggest = require("domain.mine.suggest")
 local reactive = require("ui.state.reactive")
 local request = require("os.kernel.request")
 local view = require("apps.fleet.view")
@@ -121,6 +122,24 @@ function app.row(record, now)
     goal = record.desired and record.desired.mode or nil,
     converged = desired.converged(record),
   }
+end
+
+--- Where this base is, for anchoring a worksite.
+---
+--- The depot if one has been declared, and otherwise wherever the machine
+--- itself is. Nil when it knows neither, which `suggest.from` turns into a
+--- sentence rather than a mine centred on the origin.
+function app.base(context)
+  local depot = context.state and context.state.base
+  if type(depot) == "table" and tonumber(depot.x) ~= nil then
+    return depot
+  end
+  return context.locator and context.locator.saved() or nil
+end
+
+--- The worksite to configure before deploying, or nil.
+function app.worksite(context, keepOut)
+  return (suggest.from(app.base(context), { keepOut = keepOut }))
 end
 
 --- The jobs a fleet can be put on, as rows for the picker.
@@ -292,6 +311,7 @@ function app.mount(scope, context, options)
     end,
 
     jobs = app.jobs(),
+    base = app.base(context),
     job = scope:Computed(function(use)
       use(tick)
       return context.state.fleet and context.state.fleet.goal and context.state.fleet.goal.job
@@ -328,7 +348,33 @@ function app.mount(scope, context, options)
     --- collapsed into one press, and it is why there is no separate Job page any
     --- more - a page whose only control was "pick a job" was a page that could
     --- leave the fleet configured and not sent.
-    page.onJob = function(id)
+    page.onJob = function(id, keepOut)
+      -- The worksite first, then the order.
+      --
+      -- In that order because a fleet deployed against a mine that has not been
+      -- placed parks immediately with "no mine placed", which is what happened
+      -- every time somebody set up a new base: pick a job, watch four turtles
+      -- refuse, go looking for a page nobody said they needed.
+      --
+      -- Both are best-effort sends and neither is waited on. If the mine message
+      -- is lost the turtles park exactly as they used to, which is the honest
+      -- failure and not a worse one.
+      local worksite = app.worksite(context, keepOut)
+      if worksite ~= nil then
+        ask({
+          kind = "mine",
+          body = {
+            action = "configure",
+            centreX = worksite.centreX,
+            centreZ = worksite.centreZ,
+            surfaceY = worksite.surfaceY,
+            cellSize = worksite.cellSize,
+            minRing = worksite.minRing,
+            maxRing = worksite.maxRing,
+          },
+        })
+      end
+
       return want("deploy", id)
     end
   end

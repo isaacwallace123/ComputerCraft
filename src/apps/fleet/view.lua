@@ -23,6 +23,8 @@
 --- cell in the spec suite, with no world and no Minecraft. `app.lua` is the file
 --- that touches a running fleet.
 
+local reactive = require("ui.state.reactive")
+local suggest = require("domain.mine.suggest")
 local theme = require("ui.theme")
 local format = require("ui.format")
 
@@ -358,10 +360,90 @@ function devices.build(scope, options)
 
   local jobChoice = scope:Value(nil)
 
+  --- The job chosen but not yet started.
+  ---
+  --- Picking a job used to send it immediately, which meant the fleet deployed
+  --- against whatever mine happened to be configured - and on a new base that is
+  --- no mine at all, so every turtle parked with "no mine placed". The setup step
+  --- below is the few questions that turn a choice into a worksite.
+  local pending = scope:Value(nil)
+
+  local keepOut = scope:Value(suggest.KEEP_OUT)
+
+  --- What the fleet would be told, given the answers so far.
+  ---
+  --- Recomputed rather than stored, so the numbers on screen are the numbers
+  --- that will be sent. A preview built once and a message built again is two
+  --- chances to disagree, and the disagreement is invisible until turtles walk.
+  local proposal = scope:Computed(function(use)
+    local job = use(pending)
+    if job == nil then
+      return nil
+    end
+    return (suggest.from(options.base, { keepOut = use(keepOut) }))
+  end)
+
+  local setup = scope:Column({
+    Grow = 1,
+    Hidden = scope:Computed(function(use)
+      return use(pending) == nil
+    end),
+    Children = {
+      scope:Text({
+        Height = 1,
+        Text = scope:Computed(function(use)
+          local job = use(pending)
+          for _, entry in ipairs(options.jobs or {}) do
+            if entry.id == job then
+              return entry.label or entry.id
+            end
+          end
+          return tostring(job or "")
+        end),
+        Color = T.accent,
+      }),
+      scope:Spacer({ Height = 1 }),
+
+      scope:Stepper({
+        Label = "Start digging",
+        Step = 16,
+        Min = 0,
+        Max = 2048,
+        ValueWidth = 9,
+        Value = keepOut,
+        OnChange = function(value)
+          keepOut:set(value)
+        end,
+      }),
+
+      scope:Spacer({ Height = 1 }),
+      scope:Muted({
+        Height = 1,
+        Text = scope:Computed(function(use)
+          local plan = use(proposal)
+          if plan == nil then
+            return "the base does not know where it is - set the mine by hand"
+          end
+          local near, far = suggest.reach(plan)
+          return ("centred on %d %d, digging %d to %d blocks out"):format(
+            plan.centreX,
+            plan.centreZ,
+            near,
+            far
+          )
+        end),
+      }),
+      scope:Muted({
+        Height = 1,
+        Text = "Anything here can be changed later on the Mine page.",
+      }),
+    },
+  })
+
   local picker = scope:Column({
     Grow = 1,
     Hidden = scope:Computed(function(use)
-      return not use(picking)
+      return not use(picking) or use(pending) ~= nil
     end),
     Children = {
       scope:Table({
@@ -391,10 +473,10 @@ function devices.build(scope, options)
             end,
           },
         },
+        -- Chosen, not started. The setup step is what sends it.
         OnSelect = options.onJob and function(row)
           if row ~= nil then
-            options.onJob(row.id)
-            picking:set(false)
+            pending:set(row.id)
           end
         end or nil,
       }),
@@ -426,10 +508,39 @@ function devices.build(scope, options)
   -- reading a row of buttons left to right should follow the order you use them.
   if options.onJob then
     actions[#actions + 1] = scope:Button({
-      Text = "Job",
-      Variant = "ghost",
+      Text = scope:Computed(function(use)
+        if use(pending) ~= nil then
+          return "Start"
+        end
+        return use(picking) and "Back" or "Job"
+      end),
+      Variant = scope:Computed(function(use)
+        return use(pending) ~= nil and "primary" or "ghost"
+      end),
       OnClick = function()
+        local job = reactive.peek(pending)
+
+        -- One button, three steps, because the row is only so wide and the
+        -- action is always "the obvious next thing": open the list, go back
+        -- from it, or commit what has been set up.
+        if job ~= nil then
+          options.onJob(job, reactive.peek(keepOut))
+          pending:set(nil)
+          picking:set(false)
+          return
+        end
         picking:set(not picking:get())
+      end,
+    })
+
+    actions[#actions + 1] = scope:Button({
+      Text = "Cancel",
+      Variant = "ghost",
+      Hidden = scope:Computed(function(use)
+        return use(pending) == nil
+      end),
+      OnClick = function()
+        pending:set(nil)
       end,
     })
   end
@@ -451,11 +562,12 @@ function devices.build(scope, options)
         Grow = 1,
         Gap = 2,
         Hidden = scope:Computed(function(use)
-          return use(picking)
+          return use(picking) or use(pending) ~= nil
         end),
         Children = { list, detail },
       }),
       picker,
+      setup,
     },
     Actions = actions,
   })

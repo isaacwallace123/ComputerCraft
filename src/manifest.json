@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-20T16:21:16-04:00",
+    "generated":  "2026-08-20T16:31:24-04:00",
     "bootstrap":  [
                       "adapters/cc/config.lua",
                       "adapters/cc/screen.lua",
@@ -64,6 +64,7 @@
                                  "domain/hardware/network.lua",
                                  "domain/mine/plan.lua",
                                  "domain/mine/registry.lua",
+                                 "domain/mine/suggest.lua",
                                  "domain/mine/survey.lua",
                                  "domain/protocol/message.lua",
                                  "domain/turtle/jobs.lua",
@@ -395,6 +396,7 @@
                                  "domain/gps/host.lua",
                                  "domain/mine/plan.lua",
                                  "domain/mine/registry.lua",
+                                 "domain/mine/suggest.lua",
                                  "domain/mine/survey.lua",
                                  "domain/protocol/message.lua",
                                  "domain/protocol/peer.lua",
@@ -523,6 +525,7 @@
                   "domain/hardware/network.lua",
                   "domain/mine/plan.lua",
                   "domain/mine/registry.lua",
+                  "domain/mine/suggest.lua",
                   "domain/mine/survey.lua",
                   "domain/protocol/message.lua",
                   "domain/protocol/peer.lua",

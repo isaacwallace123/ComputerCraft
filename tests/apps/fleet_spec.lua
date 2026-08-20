@@ -258,3 +258,55 @@ it("every job in the catalogue can be picked", function()
     expect.truthy(offered[entry.id], entry.id .. " is runnable but not offered")
   end
 end)
+
+it("starting a job places the worksite before it sends the order", function()
+  -- A fleet deployed against a mine that has not been placed parks immediately
+  -- with "no mine placed", which is what happened every time somebody set up a
+  -- new base: pick a job, watch four turtles refuse, go looking for a page
+  -- nobody said they needed.
+  local ctx = context()
+  ctx.context = ctx.context or ctx
+  local machine = ctx.context or ctx
+  machine.locator = {
+    saved = function()
+      return { x = 53, y = 71, z = 426 }
+    end,
+  }
+
+  local worksite = assert(fleetApp.worksite(machine, 100), "derived from where the base is")
+  expect.equal(worksite.centreX, 53, "centred on the base, not the origin")
+  expect.equal(worksite.centreZ, 426)
+  expect.truthy(worksite.configured, "and ready to deploy against")
+
+  local near = require("domain.mine.suggest").reach(worksite)
+  expect.truthy(near >= 100, "with nothing dug inside the radius asked for")
+end)
+
+it("a base with no position proposes no worksite rather than one at the origin", function()
+  local ctx = context()
+  local machine = ctx.context or ctx
+  machine.locator = {
+    saved = function()
+      return nil
+    end,
+  }
+  expect.equal(fleetApp.worksite(machine, 100), nil)
+  expect.equal(fleetApp.base(machine), nil)
+end)
+
+it("a declared depot outranks the machine's own position", function()
+  -- The depot is where everything gets unloaded, so it is the point the shafts
+  -- should be equidistant from - not wherever the computer happens to sit.
+  local ctx = context()
+  local machine = ctx.context or ctx
+  machine.locator = {
+    saved = function()
+      return { x = 0, y = 64, z = 0 }
+    end,
+  }
+  machine.state.base = { x = 200, y = 70, z = -40 }
+
+  local base = assert(fleetApp.base(machine))
+  expect.equal(base.x, 200, "the depot won")
+  expect.equal(assert(fleetApp.worksite(machine, 100)).centreZ, -40)
+end)
