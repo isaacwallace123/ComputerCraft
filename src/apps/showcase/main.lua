@@ -31,7 +31,7 @@
 
 local ccInput = require("adapters.cc.input")
 local ccScreen = require("adapters.cc.screen")
-local devicesView = require("apps.devices.view")
+local devicesView = require("apps.fleet.view")
 local fleetView = require("apps.fleet.view")
 local ui = require("ui.init")
 

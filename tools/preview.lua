@@ -217,7 +217,7 @@ end
 
 local ui = require("ui.init")
 local fleetScreen = require("apps.fleet.view")
-local devicesScreen = require("apps.devices.view")
+local devicesScreen = require("apps.fleet.view")
 
 local ROSTER = {
   { id = 1, label = "miner-1", phase = "mining", fuel = 82000, fuelLimit = 100000, online = true },

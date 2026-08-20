@@ -614,3 +614,57 @@ it("a state read off disk is safe to use", function()
   expect.falsy(post, "and nothing is dispatched")
   expect.truthy(why ~= nil, "with a reason")
 end)
+
+it("who works for whom is derived from the ground, not stored twice", function()
+  -- A miner is assigned a chunk and a general holds that chunk, so the pairing
+  -- already exists. Storing it again would be a second copy that can disagree
+  -- with the first - and the way it would disagree is the worst kind: a general
+  -- listing a miner that was reassigned an hour ago.
+  local state = coverage.empty()
+  coverage.setRoot(state, 0, 0)
+  coverage.claim(state, 8, 0, 0, T0)
+
+  local assignment = coverage.assign(state, 4, T0)
+  expect.truthy(assignment ~= nil, "the miner got ground")
+
+  expect.equal(coverage.generalOf(state, 4), 8, "and the general holding it")
+
+  local crew = coverage.crewOf(state, 8)
+  expect.equal(#crew, 1)
+  expect.equal(crew[1].id, 4)
+end)
+
+it("reassigning a chunk moves the crew with it", function()
+  local state = coverage.empty()
+  coverage.setRoot(state, 0, 0)
+  coverage.claim(state, 8, 0, 0, T0)
+  coverage.assign(state, 4, T0)
+
+  -- The general that was holding this ground goes quiet and another takes it.
+  -- Nothing about the miner changed, and it now works for somebody else.
+  coverage.claim(state, 9, 0, 0, seconds(20 * 60))
+
+  expect.equal(coverage.generalOf(state, 4), 9, "the crew followed the ground")
+  expect.equal(#coverage.crewOf(state, 8), 0, "and the old general has nobody")
+end)
+
+it("a miner with no ground works for nobody, rather than for the first general", function()
+  local state = coverage.empty()
+  coverage.setRoot(state, 0, 0)
+  coverage.claim(state, 8, 0, 0, T0)
+
+  expect.equal(coverage.generalOf(state, 99), nil)
+  expect.equal(#coverage.crewOf(state, 8), 0, "an unassigned miner is not crew")
+end)
+
+it("a crew list is sorted, so a general's screen does not reshuffle", function()
+  local state = coverage.empty()
+  coverage.setRoot(state, 0, 0)
+  coverage.claim(state, 8, 0, 0, T0)
+  coverage.assign(state, 7, T0)
+  coverage.assign(state, 4, T0)
+
+  local crew = coverage.crewOf(state, 8)
+  expect.equal(#crew, 2)
+  expect.truthy(tostring(crew[1].id) < tostring(crew[2].id), "in a fixed order")
+end)

@@ -299,11 +299,24 @@ local function bar(scope, context, state, entries, options)
     ),
   }
 
-  for _, index in ipairs(state.tabs) do
-    local manifest = entries[index].manifest or entries[index]
+  -- How many tabs there is room for, and the clock always wins.
+  --
+  -- The strip used to grow until it ran off the right edge, taking the time with
+  -- it - so the machine's own bar became the one thing on screen that could not
+  -- fit on screen. The oldest tabs are dropped rather than the newest, because
+  -- the one you just opened is the one you are about to go back to.
+  local width = options.width or 51
+  local room = math.max(1, math.floor((width - 6 - 8) / 8))
+  local shown = {}
+  for index = math.max(1, #state.tabs - room + 1), #state.tabs do
+    shown[#shown + 1] = state.tabs[index]
+  end
+
+  for _, index in ipairs(shown) do
+    local manifest = entries[index]
     children[#children + 1] = tab(
       scope,
-      format.ellipsis(manifest.name or manifest.id, 10),
+      format.ellipsis(manifest.name or manifest.id, 6),
       scope:Computed(function(use)
         return use(state.open) == index
       end),

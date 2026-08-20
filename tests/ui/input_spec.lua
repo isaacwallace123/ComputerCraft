@@ -536,7 +536,7 @@ local function roster(count, phase)
 end
 
 local function devicesPage(count)
-  local devicesView = require("apps.devices.view")
+  local devicesView = require("apps.fleet.view")
   local screen = recorder.new(51, 19)
   local scope = ui.scoped()
   local state = {}
@@ -556,8 +556,8 @@ local function devicesPage(count)
         onSelect = function(device)
           state.selected:set(device.id)
         end,
-        onDeploy = function(device)
-          state.deployed[#state.deployed + 1] = device.id
+        onDeploy = function()
+          state.deployed[#state.deployed + 1] = "fleet"
         end,
         onRecall = function() end,
       })
@@ -567,10 +567,10 @@ local function devicesPage(count)
   return root, screen, state
 end
 
-it("Devices shows a list, and an empty detail panel until something is picked", function()
+it("the fleet page shows a list, and an empty detail panel until something is picked", function()
   local root, screen = devicesPage(12)
 
-  expect.contains(screen.rowText(2), "Devices", "the title")
+  expect.contains(screen.rowText(2), "Fleet", "the title")
   expect.contains(screen.rowText(2), "12 known", "and the derived count")
 
   local rows = {}
@@ -610,23 +610,19 @@ it("clicking a row fills the detail panel, and only repaints what changed", func
   root:destroy()
 end)
 
-it("the buttons are disabled until something is selected, without being told", function()
+it("the buttons act on the fleet, and do not wait for a selection", function()
   local root, screen, state = devicesPage(12)
 
-  -- `Disabled` is a Computed over the same list the table reads. There is no
-  -- code path that enables these buttons, so there is no code path that can
-  -- leave them wrong.
+  -- The selection drives the detail panel and nothing else. An order is for the
+  -- whole fleet, so requiring somebody to pick a row first would be asking them
+  -- to choose which turtle to recall all of them from.
   root:handle("mouse_click", 1, 6, 19)
   root:handle("mouse_up", 1, 6, 19)
-  expect.equal(#state.deployed, 0, "deploy does nothing with no selection")
+  expect.equal(state.deployed[1], "fleet", "deploy works with nothing selected")
 
-  root:handle("mouse_click", 1, 6, 7)
-  root:handle("mouse_up", 1, 6, 7)
-  root:render()
-
-  root:handle("mouse_click", 1, 6, 19)
-  root:handle("mouse_up", 1, 6, 19)
-  expect.equal(state.deployed[1], 1, "and deploys the selected device once there is one")
+  -- `Disabled` is a Computed over the same list the table reads, so the one
+  -- thing that does stop it is having no fleet at all.
+  local _ = screen
   root:destroy()
 end)
 
@@ -683,22 +679,19 @@ it("Devices scrolls its list without moving anything else", function()
   root:destroy()
 end)
 
-it("Devices is usable from a keyboard alone, which is all a turtle has", function()
+it("the fleet page is usable from a keyboard alone", function()
   local root, screen, state = devicesPage(12)
-
-  root:handle("mouse_click", 1, 6, 7)
-  root:handle("mouse_up", 1, 6, 7)
-  root:render()
+  local _ = screen
 
   -- Tab to the first enabled action and press it. No mouse involved.
   root:handle("key", KEY.tab, false)
   root:handle("key", KEY.enter, false)
-  expect.equal(state.deployed[1], 1, "the focused action fired")
+  expect.equal(state.deployed[1], "fleet", "the focused action fired")
   root:destroy()
 end)
 
-it("a display-only Devices page has no actions at all", function()
-  local devicesView = require("apps.devices.view")
+it("a display-only fleet page has no actions at all", function()
+  local devicesView = require("apps.fleet.view")
   local screen = recorder.new(51, 19)
   local scope = ui.scoped()
   local root = ui.mount({
@@ -724,174 +717,14 @@ it("a display-only Devices page has no actions at all", function()
 end)
 
 ---------------------------------------------------------------------------
--- The settings editor, which the acceptance test in section 14 asks for
+-- Select and Stepper, which the settings editor used to exercise
 ---------------------------------------------------------------------------
 
-local function editable(phase)
-  local devicesView = require("apps.devices.view")
-  local screen = recorder.new(51, 19)
-  local scope = ui.scoped()
-  local state = { writes = {}, jobs = {} }
-  local root = ui.mount({
-    scope = scope,
-    screen = screen.port,
-    build = function(s)
-      state.roster = s:Value({
-        {
-          id = 1,
-          label = "miner-1",
-          phase = phase or "parked",
-          job = "rare",
-          fuel = 51000,
-          fuelLimit = 100000,
-          settings = { targetY = -59, veinBudget = 64, veinRadius = 8, scanEvery = 100 },
-        },
-      })
-      state.selected = s:Value(1)
-      return devicesView.build(s, {
-        devices = state.roster,
-        selected = state.selected,
-        capacity = 3,
-        onSelect = function() end,
-        onSetting = function(device, key, value)
-          state.writes[#state.writes + 1] = { id = device.id, key = key, value = value }
-        end,
-        onJob = function(device, job)
-          state.jobs[#state.jobs + 1] = { id = device.id, job = job }
-        end,
-      })
-    end,
-  })
-  root:render()
-  return root, screen, state
-end
-
-local function panelText(screen)
-  local lines = {}
-  for row = 4, 18 do
-    lines[#lines + 1] = screen.rowText(row)
-  end
-  return table.concat(lines, " ")
-end
-
-it("the settings editor replaces the detail panel rather than crowding it", function()
-  local root, screen = editable()
-
-  expect.contains(panelText(screen), "miner-1", "the detail panel is showing")
-  expect.falsy(panelText(screen):find("vein budget"), "and the editor is not")
-
-  -- The last action is the panel switch.
-  local ring = root:focusRing()
-  root:focus(ring[#ring])
-  root:handle("key", KEY.enter, false)
-  root:render()
-
-  expect.contains(
-    panelText(screen),
-    "vein budget",
-    "the editor is showing, with room for real labels"
-  )
-  expect.falsy(panelText(screen):find("seen"), "the detail panel is hidden, not merely covered")
-  expect.falsy(panelText(screen):find("DEVICE"), "and so is the list, so the editor gets the width")
-  root:destroy()
-end)
-
-it("a hidden panel takes no space and paints nothing", function()
-  -- `Hidden` used to affect only hit testing, so a hidden node still reserved
-  -- its box and still painted: invisible to a click and perfectly visible to a
-  -- person, which is the worst of both.
-  local root, screen = editable()
-  local ring = root:focusRing()
-  root:focus(ring[#ring])
-  root:handle("key", KEY.enter, false)
-  root:render()
-
-  local text = panelText(screen)
-  local _, detailWidth = nil, nil
-  expect.falsy(text:find("No device selected"), "the hidden card contributes nothing")
-  expect.contains(text, "target Y", "and the editor took its place")
-  root:destroy()
-end)
-
-it("stepping a setting reports the intent and does not write it", function()
-  local root, screen, state = editable()
-  local ring = root:focusRing()
-  root:focus(ring[#ring])
-  root:handle("key", KEY.enter, false)
-  root:render()
-
-  -- Two tabs: the job picker is the first stop in the editor, and the steppers
-  -- follow it. One tab stop per setting, not three - the arrows beside each are
-  -- deliberately not focusable.
-  root:handle("key", KEY.tab, false)
-  root:handle("key", KEY.tab, false)
-  root:handle("key", KEY.right, false)
-
-  expect.equal(#state.writes, 1, "one change reported")
-  expect.equal(state.writes[1].key, "targetY", "the first field")
-  expect.equal(state.writes[1].value, -58, "stepped by its own step")
-  expect.equal(state.writes[1].id, 1, "for the selected device")
-
-  -- The screen decides whether to apply it; a stepper never writes its own
-  -- value, because in the real app this sends a `configure` message to a turtle
-  -- that may refuse.
-  local device = state.roster:get()[1]
-  expect.equal(device.settings.targetY, -59, "the record is untouched until the screen says so")
-  root:destroy()
-end)
-
-it("a working turtle cannot be reconfigured", function()
-  -- One of the high-risk invariants in docs/ai-handoff.md: remote configuration
-  -- requires a parked turtle. Derived from the same record the panel shows, so
-  -- there is no code path that leaves the editor live while a turtle is down a
-  -- shaft.
-  local root, screen, state = editable("mining")
-  local ring = root:focusRing()
-  root:focus(ring[#ring])
-  root:handle("key", KEY.enter, false)
-  root:render()
-
-  expect.contains(panelText(screen), "park it first", "the panel says why")
-
-  -- Disabled steppers are not in the ring at all, so tab cannot reach one.
-  for _, node in ipairs(root:focusRing()) do
-    expect.falsy(
-      node.OnKey ~= nil and node.Disabled ~= true and node._kind == "Row",
-      "no live stepper"
-    )
-  end
-
-  root:handle("key", KEY.tab, false)
-  root:handle("key", KEY.tab, false)
-  root:handle("key", KEY.right, false)
-  expect.equal(#state.writes, 0, "and nothing was changed")
-  expect.equal(#state.jobs, 0, "including the job")
-  root:destroy()
-end)
-
-it("a display-only surface gets no editor and no way to reach one", function()
-  local devicesView = require("apps.devices.view")
-  local screen = recorder.new(51, 19)
-  local scope = ui.scoped()
-  local root = ui.mount({
-    scope = scope,
-    screen = screen.port,
-    build = function(s)
-      return devicesView.build(s, {
-        devices = s:Value({ { id = 1, label = "miner-1", phase = "parked", settings = {} } }),
-        selected = s:Value(1),
-        capacity = 3,
-      })
-    end,
-  })
-  root:render()
-
-  for row = 1, 19 do
-    expect.falsy((screen.rowText(row) or ""):find("Settings", 1, true), "no switch on row " .. row)
-  end
-  expect.equal(#root:focusRing(), 0, "and nothing to tab to")
-  root:destroy()
-end)
+--- These were tested through the Devices settings editor, which was the densest
+--- screen in the system and is gone: a fleet is dispatched, fuelled, assigned
+--- ground and recalled as a unit, so there is no page for configuring one
+--- turtle. The components are not gone, and the trap below is the reason these
+--- two survived the page they were written against.
 
 it("a composite reads a state prop through peek, not as a truth value", function()
   -- The trap in the composite API, pinned because it is invisible: a composite
@@ -899,45 +732,76 @@ it("a composite reads a state prop through peek, not as a truth value", function
   -- therefore truthy whether it currently reads true or false. `if
   -- props.Disabled then` disabled every stepper on the page permanently, passed
   -- review, and raised nothing.
-  local root, screen, state = editable("parked")
-  local ring = root:focusRing()
-  root:focus(ring[#ring])
-  root:handle("key", KEY.enter, false)
+  local screen = recorder.new(30, 5)
+  local scope = ui.scoped()
+  local changes = {}
+
+  local root = ui.mount({
+    scope = scope,
+    screen = screen.port,
+    build = function(s)
+      local off = s:Computed(function()
+        return false
+      end)
+      return s:Stepper({
+        Label = "depth",
+        Value = s:Value(4),
+        Min = 0,
+        Max = 10,
+        Disabled = off,
+        OnChange = function(value)
+          changes[#changes + 1] = value
+        end,
+      })
+    end,
+  })
   root:render()
 
-  root:handle("key", KEY.tab, false)
-  root:handle("key", KEY.tab, false)
+  root:focus(root:focusRing()[1])
   root:handle("key", KEY.right, false)
-  expect.equal(#state.writes, 1, "a Computed reading false does not disable the control")
+
+  expect.equal(#changes, 1, "a Computed reading false does not disable the control")
+  expect.equal(changes[1], 5)
   root:destroy()
 end)
 
-it("the job picker cycles through the fleet's jobs and wraps", function()
-  -- `src/apps/devices.lua` changes a job by cycling `JOB_ORDER` on each press,
-  -- and a `Select` is that shape rather than a dropdown: a dropdown needs
-  -- somewhere to drop, and on a monitor it is a floating panel a touch can miss
-  -- with no hover to hint it opened.
-  local devicesView = require("apps.devices.view")
-  local root, screen, state = editable("parked")
-  local ring = root:focusRing()
-  root:focus(ring[#ring])
-  root:handle("key", KEY.enter, false)
+it("a select cycles through its options and wraps", function()
+  -- A `Select` is a cycle rather than a dropdown: a dropdown needs somewhere to
+  -- drop, and on a monitor it is a floating panel a touch can miss with no hover
+  -- to hint that it opened.
+  local screen = recorder.new(30, 5)
+  local scope = ui.scoped()
+  local picked = {}
+  local OPTIONS = { "quarry", "rare", "hollow" }
+
+  local root = ui.mount({
+    scope = scope,
+    screen = screen.port,
+    build = function(s)
+      return s:Select({
+        Label = "job",
+        Options = OPTIONS,
+        -- Held by the caller and never written back here, so every press is
+        -- computed from the same value - which is what makes the wrap below a
+        -- statement about the component rather than about accumulated state.
+        Value = s:Value("rare"),
+        OnChange = function(value)
+          picked[#picked + 1] = value
+        end,
+      })
+    end,
+  })
   root:render()
 
-  -- The seeded device is on "rare", the second of five.
-  root:handle("key", KEY.tab, false)
+  root:focus(root:focusRing()[1])
   root:handle("key", KEY.right, false)
-  expect.equal(state.jobs[1].job, devicesView.JOBS[3], "forward one")
+  expect.equal(picked[1], "hollow", "forward one")
 
   root:handle("key", KEY.left, false)
-  root:handle("key", KEY.left, false)
-  expect.equal(state.jobs[3].job, devicesView.JOBS[1], "and back two")
+  expect.equal(picked[2], "quarry", "and back one from the unchanged value")
 
-  -- The picker reports intent and never writes, so the record still says "rare"
-  -- and every press is computed from it. Going left from the first option wraps
-  -- to the last rather than sticking.
   root:handle("key", KEY.left, false)
-  expect.equal(state.jobs[4].job, devicesView.JOBS[1], "still computed from the unchanged record")
+  expect.equal(picked[3], "quarry", "still computed from the value the caller holds")
   root:destroy()
 end)
 

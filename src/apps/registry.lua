@@ -60,14 +60,6 @@ registry.APPS = {
     surfaces = { "desktop", "monitor", "handheld" },
   },
   {
-    id = "devices",
-    name = "Devices",
-    glyph = "\7", -- bullet: one device among many
-    module = "apps.devices.app",
-    roles = { "server", "mobile" },
-    surfaces = { "desktop", "monitor", "handheld" },
-  },
-  {
     id = "operations",
     name = "Mine",
     glyph = "\30", -- triangle: a shaft head

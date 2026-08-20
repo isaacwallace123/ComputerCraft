@@ -85,16 +85,11 @@ it("a read-only surface gets no actions at all", function()
   discovery.handle(ctx, 7, heartbeat())
   ctx.transport = { broadcast = function() end, send = function() end }
 
-  local pairsToCheck = {
-    { require("apps.fleet.app"), require("apps.fleet.view"), "fleet" },
-    { require("apps.devices.app"), require("apps.devices.view"), "devices" },
-  }
-
-  for _, entry in ipairs(pairsToCheck) do
-    local passed = assert(optionsPassedTo(entry[1], entry[2], ctx, { readOnly = true }))
-    for _, name in ipairs({ "onDeploy", "onRecall", "onStop", "onJob", "onSetting" }) do
-      expect.equal(passed[name], nil, entry[3] .. " passes no " .. name)
-    end
+  local passed = assert(
+    optionsPassedTo(require("apps.fleet.app"), require("apps.fleet.view"), ctx, { readOnly = true })
+  )
+  for _, name in ipairs({ "onDeploy", "onRecall", "onStop" }) do
+    expect.equal(passed[name], nil, "fleet passes no " .. name)
   end
 end)
 
@@ -111,16 +106,21 @@ it("an interactive surface does get them", function()
   expect.truthy(passed.onDeploy, "and so is deploy")
 end)
 
-it("a fleet action asks the server for a goal, never the device for an action", function()
+it("an order is for the fleet, and carries no device at all", function()
   -- D018 and section 5 together: an app that sent orders to devices would be an
   -- app whose being closed changed what the fleet was doing.
-  local message = assert(fleetApp.intent(7, "recall"), "built a message")
+  local message = assert(fleetApp.intent("recall"), "built a message")
   expect.equal(message.kind, "want", "asks the server to want it")
-  expect.equal(message.id, 7, "of that device")
-  expect.equal(fleetApp.intent(7, "explode"), nil, "and refuses a mode that does not exist")
+
+  -- The absence is the design. Turtles are dispatched, fuelled, assigned ground
+  -- and recalled as a unit, so an order names the mode and nothing else - and
+  -- the server keeps it, which is what makes a turtle that boots a minute later
+  -- do what everybody else was told.
+  expect.equal(message.id, nil, "of everybody")
+  expect.equal(fleetApp.intent("explode"), nil, "and it refuses a mode that does not exist")
 end)
 
-it("the fleet page is allowed on a monitor, and devices actions are not forced on it", function()
+it("the fleet page is allowed on a monitor, and its actions are not forced on it", function()
   -- D020 as a registry entry rather than as a branch: this is the page meant to
   -- be left on a wall, and `readOnly` is what the shell hands a surface with no
   -- keyboard.

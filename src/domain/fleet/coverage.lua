@@ -370,6 +370,46 @@ function coverage.assign(state, minerId, now)
   return state.miners[id], true
 end
 
+--- Which general a miner is working under, or nil.
+---
+--- Derived rather than stored, and that is the point: a miner is assigned a
+--- chunk and a general holds that chunk, so the pairing already exists and
+--- storing it again would be a second copy that can disagree with the first.
+--- Reassign the chunk and the crew follows without anybody updating a list.
+function coverage.generalOf(state, minerId)
+  local assignment = state.miners[tostring(minerId)]
+  if assignment == nil then
+    return nil
+  end
+  local post = state.posts[assignment.chunk]
+  if post == nil then
+    return nil
+  end
+  return post.general
+end
+
+--- The miners working under one general.
+---
+--- The one fact about a general that nothing else knows. The base has the fleet
+--- and it has the chunk claims; the pairing of a miner to the general covering
+--- its ground is what this answers, and it is what a general's own screen shows.
+---
+--- Sorted, so a general's screen does not reshuffle its crew between two draws
+--- of an unchanged assignment.
+function coverage.crewOf(state, generalId)
+  local out = {}
+  for id, assignment in pairs(state.miners or {}) do
+    local post = state.posts[assignment.chunk]
+    if post ~= nil and post.general == generalId then
+      out[#out + 1] = { id = tonumber(id) or id, chunk = assignment.chunk, slot = assignment.slot }
+    end
+  end
+  table.sort(out, function(a, b)
+    return tostring(a.id) < tostring(b.id)
+  end)
+  return out
+end
+
 --- Forget a miner, freeing its slice for somebody else.
 function coverage.forget(state, minerId)
   local id = tostring(minerId)

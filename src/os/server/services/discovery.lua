@@ -23,6 +23,7 @@
 --- it checks in - which is the point of §5 and the reason recall stops being a
 --- message that can be missed.
 
+local coverage = require("domain.fleet.coverage")
 local desired = require("domain.fleet.desired")
 local ledger = require("domain.bank.ledger")
 local persist = require("os.server.services.persist")
@@ -156,7 +157,13 @@ function discovery.handle(context, sender, message)
   local now = context.clock.now()
   local snapshot = message.snapshot
 
+  local known = registry.get(context.state.fleet, sender) ~= nil
   local record = registry.observe(context.state.fleet, sender, snapshot, now)
+
+  -- New to us, so it has not heard the fleet's standing order.
+  if not known then
+    discovery.adopt(context, record)
+  end
 
   -- Which build this device is running, kept beside the rest of what is known
   -- about it. During a rolling update "which devices are still on the old
@@ -177,9 +184,28 @@ function discovery.handle(context, sender, message)
   -- is a real file operation on the host.
   persist.mark(context, "fleet")
 
+  --- Who this device works with.
+  ---
+  --- Both are derived from the chunk claims rather than stored, so reassigning a
+  --- chunk moves the crew without anybody updating a list. A miner learns which
+  --- general covers its ground; a general learns which miners are on it.
+  ---
+  --- That pairing is the one thing about a general nothing else knows. The base
+  --- has the fleet and it has the claims, and the *join* between them is what a
+  --- general's own screen shows - which is why it is sent rather than left for
+  --- the turtle to work out from a copy of the coverage state it has no reason
+  --- to hold.
+  local crew = coverage.crewOf(context.state.coverage, sender)
+
   return {
     kind = "desired",
     desired = desired.reply(record),
+    general = coverage.generalOf(context.state.coverage, sender),
+
+    -- Omitted rather than sent empty. Every miner in the fleet would otherwise
+    -- carry an empty list on every heartbeat to say something it already knows.
+    crew = #crew > 0 and crew or nil,
+
     -- The server's own clock, so a device can tell how far its own has drifted
     -- without needing anything to agree about the past.
     now = now,
@@ -200,39 +226,62 @@ end
 --- a fleet dashboard must never do, because the whole point of §6 is telling
 --- "there is no miner-7" from "we do not know where miner-7 is".
 function discovery.want(context, message)
-  local record = registry.get(context.state.fleet, message.id)
-  if record == nil then
-    return { kind = "want_result", ok = false, id = message.id, message = "no such device" }
-  end
   if not desired.MODES[message.mode] then
     return {
       kind = "want_result",
       ok = false,
-      id = message.id,
       message = "no such mode: " .. tostring(message.mode),
     }
   end
 
-  local goal, changed = desired.want(record, message.mode, {
-    job = message.job,
-    settings = message.settings,
-  }, context.clock.now())
+  -- A `want` with no `id` is an order for the fleet, and that is the only kind
+  -- the pages send now. See `apps/fleet/app.lua`: turtles are dispatched,
+  -- fuelled, assigned ground and recalled as a unit, so "recall" is a fact about
+  -- the fleet rather than about a turtle.
+  --
+  -- Kept as well as applied. Fanning it out once would leave a device that
+  -- registers a minute later parked while everybody else works - and nothing on
+  -- any screen would say why, because the goal it is missing was never written
+  -- down anywhere.
+  local now = context.clock.now()
+  local state = context.state.fleet
+  state.goal = { mode = message.mode, at = now }
 
-  if changed then
+  local applied = 0
+  for _, record in pairs(state.devices or {}) do
+    local _, changed = desired.want(record, message.mode, {}, now)
+    if changed then
+      applied = applied + 1
+    end
+  end
+
+  if applied > 0 then
     persist.mark(context, "fleet")
   end
 
-  -- `changed = false` is still `ok`. Asking for a goal the device already has is
-  -- not a failure, and reporting it as one would make a second click on Recall
-  -- look like something went wrong when the correct answer is "it is already
-  -- recalled".
+  -- `changed = 0` is still `ok`. Asking for a goal the fleet already has is not
+  -- a failure, and reporting it as one would make a second press of Recall look
+  -- like something went wrong when the correct answer is "already recalled".
   return {
     kind = "want_result",
     ok = true,
-    id = message.id,
-    generation = goal.generation,
-    changed = changed,
+    mode = message.mode,
+    changed = applied,
   }
+end
+
+--- Give a device that has just registered the fleet's standing order.
+---
+--- Without this a turtle that boots after somebody pressed Deploy stays parked
+--- forever, because the order it missed lives only in the goals of the devices
+--- that were listening at the time.
+function discovery.adopt(context, record)
+  local goal = context.state.fleet.goal
+  if type(goal) ~= "table" or not desired.MODES[goal.mode] then
+    return false
+  end
+  local _, changed = desired.want(record, goal.mode, {}, context.clock.now())
+  return changed
 end
 
 --- Read the policy, or change it and read it back.

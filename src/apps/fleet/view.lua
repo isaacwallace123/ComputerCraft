@@ -1,62 +1,45 @@
---- The Fleet dashboard, rebuilt on the framework.
+--- The fleet: every device, one of them in detail, and orders for all of them.
 ---
---- This is the acceptance test for phase 2 of docs/ui-framework.md, and it is
---- written to be read against `src/apps/fleet.lua` - the version this replaces -
---- rather than admired on its own. The four criteria from section 7 of
---- docs/ui-design.md are the whole of it:
+--- This is the Devices page and the Fleet page, which were two pages because
+--- one of them could command a single turtle. It cannot any more - see the
+--- actions below - and once that went there was nothing left to tell them
+--- apart: a roster with a detail panel, and a roster with a detail panel.
 ---
----   * **no coordinates.** There is not an `x` or a `y` anywhere below.
----   * **no colours.** Only tokens, and only through `Tone` functions that say
----     what a value means rather than what it looks like.
----   * **no redraw calls.** Nothing here tells the screen to catch up. Handing
----     `devices:set(...)` a new list is the entire update path.
----   * **no stale derived values.** The online count is a `Computed` over the
----     same list the table reads, so the two cannot disagree.
+--- ## The four criteria from docs/ui-design.md section 7
 ---
---- ## It is a view, and only a view
+---   * **no coordinates** - there is not an `x` or a `y` below.
+---   * **no colours** - only tokens, reached through functions that say what a
+---     value *means*.
+---   * **no redraw calls** - handing `devices:set(...)` a new list is the entire
+---     update path. Nothing tells the screen to catch up.
+---   * **no stale derived values** - the detail panel, the button states and the
+---     summary are all `Computed` over the same list the table reads, so none of
+---     them can disagree with it.
 ---
---- `build` takes state objects and callbacks. It does not open a file, touch
---- rednet, or know that a fleet service exists - which is what lets the whole
---- screen be rendered into a recording buffer and asserted cell by cell, with no
---- world and no Minecraft. The composition root wires this to
---- `legacy/fleet/roster.lua`; a spec wires it to a table.
+--- ## Still a view, and only a view
 ---
---- That separation is the point of the ports layer arriving first. A dashboard
---- that reached for `fleet.devices()` directly would be untestable for exactly
---- the reason every screen in this repository is untestable today.
----
---- ## Why it lives here and not under `ui/`
----
---- `ui/` is the framework: it knows about cells, layout, and binding, and knows
---- nothing about mining. This file is the opposite - it knows what a stalled
---- turtle is and has no idea how a cell is painted. Putting a view inside the
---- framework would make the framework depend on the domain, which is the exact
---- inversion the layering in docs/icos-2.md section 3 exists to prevent.
----
---- `apps/fleet/view.lua` is where docs/icos-2.md section 4 puts it. The `app.lua`
---- beside it - the composition root that wires this to the fleet service and the
---- desktop - is a later phase, because that one touches a running fleet.
+--- No file, no radio. State objects and callbacks in, a node tree out - which is
+--- why the whole page is rendered into a recording buffer and asserted cell by
+--- cell in the spec suite, with no world and no Minecraft. `app.lua` is the file
+--- that touches a running fleet.
 
 local theme = require("ui.theme")
 local format = require("ui.format")
 
 local T = theme.TOKENS
 
-local fleet = {}
+local devices = {}
 
---- Phases that are not a problem, so that everything else stands out.
----
---- The list is the honest one: a turtle that is mining, walking home, or
---- emptying its inventory is working. Parked is neither good nor bad - it is
---- waiting for a person - so it reads as muted rather than green, because a wall
---- of green would make the four turtles that are actually fine indistinguishable
---- from the two that are stuck.
+---------------------------------------------------------------------------
+-- What a device's state looks like
+---------------------------------------------------------------------------
+
 local WORKING = {
   mining = true,
+  working = true,
   returning = true,
-  unloading = true,
   travelling = true,
-  descending = true,
+  refuelling = true,
 }
 
 local IDLE = {
@@ -73,7 +56,7 @@ local IDLE = {
 --- own opinion had to be found. See D023 - an exposed shaft is reported ahead of
 --- a full depot, because one is inconvenient and the other is a hole somebody
 --- falls into.
-function fleet.phaseTone(device)
+function devices.phaseTone(device)
   if device == nil then
     return T.mutedFg
   end
@@ -94,7 +77,7 @@ function fleet.phaseTone(device)
 end
 
 --- Fuel as a fraction of what this turtle can hold, for the meter.
-function fleet.fuelFraction(device)
+function devices.fuelFraction(device)
   if device == nil then
     return 0
   end
@@ -111,120 +94,232 @@ end
 --- and a standard one 20,000, and a single threshold would be a crisis on one
 --- and a full tank on the other. The exact return-route reserve is D009's job;
 --- this is only the colour on a dashboard.
-fleet.LOW_FUEL = 0.15
+devices.LOW_FUEL = 0.15
 
-function fleet.fuelTint(device)
-  return fleet.fuelFraction(device) < fleet.LOW_FUEL and T.destructive or T.accent
+function devices.fuelTint(device)
+  return devices.fuelFraction(device) < devices.LOW_FUEL and T.destructive or T.accent
 end
 
----------------------------------------------------------------------------
+--- The columns, narrow because this page is half list and half detail.
+---
+--- The label is the only thing wide enough to matter at a glance; the status is
+--- the only thing coloured. Both decisions are the same one: on a page this
+--- dense, anything that is always visible has to earn its width.
+local function columns()
+  return {
+    { Title = "Device", Grow = 1, Key = "label" },
+    { Title = "Status", Width = 12, Key = "phase", Tone = devices.phaseTone },
+  }
+end
+
+--- A labelled value, which is most of what a detail panel is.
+---
+--- Both halves are `Muted` except the value, so a panel of ten of these reads as
+--- one block of secondary information with the answers picked out - rather than
+--- as ten competing lines, which is what the current page looks like.
+local function field(scope, label, value, tone)
+  return scope:Row({
+    Height = 1,
+    Children = {
+      scope:Muted({ Text = label, Width = 9 }),
+      scope:Text({ Text = value, Grow = 1, Color = tone }),
+    },
+  })
+end
 
 --- Build the page.
 ---
---- `options.devices` is a state object holding the device list; everything the
---- screen shows is derived from it. `options.selected` is the id of the
---- highlighted row, or nil. The three action callbacks are optional so that a
---- display-only monitor can mount the same screen with none of them - which is
---- the `requiresInput` boundary from D020 expressed as an absent argument rather
---- than as a branch inside the view.
-function fleet.build(scope, options)
-  local devices = options.devices
+--- `options.devices` is a state object holding the roster; `options.selected`
+--- holds the id of the highlighted device, or nil. Everything else is derived.
+---
+--- The action callbacks are optional, exactly as in the Fleet view, so that a
+--- display-only monitor mounts the same page with none of them and there is no
+--- code path that could put a deploy button on a wall. D020's `requiresInput`
+--- boundary, expressed as an absent argument rather than as a branch. The
+--- settings editor follows the same rule: without `onSetting` or `onJob` there is
+--- no editor and no button to reach one.
+function devices.build(scope, options)
+  local roster = options.devices
   local selected = options.selected
+  local offset = options.offset or scope:Value(0)
 
-  local online = scope:Computed(function(use)
-    local count = 0
-    for _, device in ipairs(use(devices)) do
-      if device.online then
-        count = count + 1
+  --- The selected device, or nil. Every other derived value hangs off this one,
+  --- which is what makes it impossible for the detail panel to be showing a
+  --- device the list is no longer highlighting.
+  local current = scope:Computed(function(use)
+    local id = use(selected)
+    if id == nil then
+      return nil
+    end
+    for _, device in ipairs(use(roster)) do
+      if device.id == id then
+        return device
       end
     end
-    return count
+    -- Selected but absent: the device dropped off the roster while its detail
+    -- was open. Returning nil rather than the last known record is deliberate -
+    -- a panel showing a device that is no longer there, with no indication that
+    -- it is stale, is worse than an empty panel.
+    return nil
   end)
 
-  local status = scope:Computed(function(use)
-    return ("%d of %d online"):format(use(online), #use(devices))
-  end)
+  local function about(fn, fallback)
+    return scope:Computed(function(use)
+      local device = use(current)
+      if device == nil then
+        return fallback or ""
+      end
+      return fn(device)
+    end)
+  end
 
   local nothingSelected = scope:Computed(function(use)
-    return use(selected) == nil
+    return use(current) == nil
   end)
 
-  local table = scope:Table({
-    Rows = devices,
-    Selected = selected,
-    Identity = function(device)
-      return device.id
-    end,
-    Capacity = options.capacity or 10,
-    Grow = 1,
-    Columns = {
-      { Title = "Device", Width = 12, Key = "label" },
-      { Title = "Status", Grow = 1, Key = "phase", Tone = fleet.phaseTone },
-      {
-        Title = "Fuel",
-        Width = 7,
-        Align = "right",
-        Key = "fuel",
-        Format = format.count,
-        Tone = function()
-          return T.mutedFg
-        end,
-      },
-      -- The meter is a column like any other, so its width is in the same list
-      -- as the headings and the two cannot drift apart. It is handed the row's
-      -- surface because of the rule in docs/ui-design.md: a `muted` track on a
-      -- `muted` selected row is invisible, so anything that recesses has to know
-      -- what it is sitting on.
-      {
-        Title = "",
-        Width = 10,
-        Render = function(rowScope, row, surface)
-          return rowScope:Meter({
-            Width = 10,
-            Value = rowScope:Computed(function(use)
-              return fleet.fuelFraction(row(use))
-            end),
-            Tint = rowScope:Computed(function(use)
-              return fleet.fuelTint(row(use))
-            end),
-            Track = rowScope:Computed(function(use)
-              return use(surface) == T.muted and T.border or T.muted
-            end),
-          })
-        end,
-      },
+  local detail = scope:Card({
+    Width = 22,
+    Padding = 1,
+    Gap = 0,
+    Children = {
+      scope:Text({
+        Text = about(function(device)
+          return device.label or ("computer " .. tostring(device.id))
+        end, "No device selected"),
+        Color = scope:Computed(function(use)
+          return use(nothingSelected) and T.mutedFg or T.foreground
+        end),
+      }),
+      scope:Muted({
+        Text = about(function(device)
+          return ("id %d"):format(device.id or 0)
+        end, "pick one from the list"),
+      }),
+      scope:Spacer({ Height = 1 }),
+
+      field(
+        scope,
+        "status",
+        about(function(device)
+          return tostring(device.phase or "unknown")
+        end, "-"),
+        scope:Computed(function(use)
+          return devices.phaseTone(use(current))
+        end)
+      ),
+      field(
+        scope,
+        "job",
+        about(function(device)
+          return tostring(device.job or "none")
+        end, "-")
+      ),
+      field(
+        scope,
+        "fuel",
+        about(function(device)
+          return format.count(device.fuel)
+        end, "-")
+      ),
+      field(
+        scope,
+        "seen",
+        about(function(device)
+          return format.ago(device.since)
+        end, "-")
+      ),
+      scope:Spacer({ Height = 1 }),
+
+      scope:Meter({
+        Height = 1,
+        Value = scope:Computed(function(use)
+          return devices.fuelFraction(use(current))
+        end),
+        Tint = scope:Computed(function(use)
+          return devices.fuelTint(use(current))
+        end),
+      }),
     },
   })
 
+  --- The settings editor: one Stepper per advertised field.
+  ---
+  --- A fixed pool of rows, bound to whatever the selected device advertises.
+  ---
+  --- The same reasoning as a table's `Capacity` (D031): build the slots once and
+  --- let the bindings decide what is in them, rather than rebuilding the graph
+  --- whenever the selection moves.
+  ---
+  --- This used to build rows from a **static** list, and the list it built them
+  --- from was `devices.FIELDS` - the mining defaults - because nothing ever
+  --- passed `options.fields`. So a farming turtle showed `vein budget` and
+  --- `scan every`: four steppers for settings it does not have, wired to change
+  --- settings it does not have, while its plot size was unreachable from the
+  --- base. Every turtle advertises `settingFields` in its heartbeat and always
+  --- had; the panel simply never looked.
+  ---
+
+  local list = scope:Table({
+    Rows = roster,
+    Selected = selected,
+    Offset = offset,
+    Identity = function(device)
+      return device.id
+    end,
+    Capacity = options.capacity or 8,
+    Grow = 1,
+    Columns = columns(),
+    -- Selection is the screen's state, not the table's. The table reports which
+    -- row was pressed and nothing else, which is why the same table can drive a
+    -- detail panel here and drive nothing at all on the Fleet page.
+    OnSelect = options.onSelect and function(device)
+      options.onSelect(device)
+    end or nil,
+  })
+
+  --- The buttons, and what they act on.
+  ---
+  --- The whole fleet, always. There is no per-device Deploy any more and that is
+  --- a decision about what this system is rather than a simplification of the
+  --- page: turtles are dispatched, fuelled, assigned ground and recalled as a
+  --- unit, and a button that moved one of them was a way to put the fleet into a
+  --- state the server had no name for.
+  ---
+  --- The selection still does something - it drives the detail panel - so a row
+  --- is a thing you look at rather than a thing you command.
   local actions = {}
-  if options.onDeploy then
+  local function action(text, variant, handler)
+    if not handler then
+      return
+    end
     actions[#actions + 1] = scope:Button({
-      Text = "Deploy all",
-      Variant = "primary",
-      OnClick = options.onDeploy,
-    })
-  end
-  if options.onRecall then
-    actions[#actions + 1] = scope:Button({ Text = "Recall", OnClick = options.onRecall })
-  end
-  if options.onStop then
-    actions[#actions + 1] = scope:Button({
-      Text = "Stop",
-      Variant = "destructive",
-      -- Disabled is derived, never toggled. There is no code path that can leave
-      -- this button enabled while nothing is selected, because there is no code
-      -- path that sets it at all.
-      Disabled = nothingSelected,
-      OnClick = options.onStop,
+      Text = text,
+      Variant = variant,
+      Disabled = scope:Computed(function(use)
+        return #use(roster) == 0
+      end),
+      OnClick = handler,
     })
   end
 
+  action("Deploy all", "primary", options.onDeploy)
+  action("Recall all", nil, options.onRecall)
+  action("Stop all", "destructive", options.onStop)
+
   return scope:Page({
     Title = options.title or "Fleet",
-    Status = status,
-    Children = { table },
+    Status = scope:Computed(function(use)
+      return ("%d known"):format(#use(roster))
+    end),
+    Children = {
+      scope:Row({
+        Grow = 1,
+        Gap = 2,
+        Children = { list, detail },
+      }),
+    },
     Actions = actions,
   })
 end
 
-return fleet
+return devices

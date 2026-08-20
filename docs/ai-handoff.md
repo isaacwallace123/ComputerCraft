@@ -80,7 +80,7 @@ marked, because changing the wrong one produces a passing build and no change in
 | a text input on any page | `Field` in `src/ui/components/controls.lua` |
 | what a turtle is doing, and changing its settings | `src/apps/job/app.lua` |
 | validating a job's settings, and rendering them as a form | `src/domain/turtle/settings.lua` |
-| device list/detail/configuration | `src/apps/devices/app.lua`, `src/apps/devices/view.lua` |
+| device list/detail/configuration | `src/apps/fleet/app.lua`, `src/apps/fleet/view.lua` |
 | console command | `src/apps/console/app.lua` |
 | Rednet transport | `src/ports/transport.lua`, `src/adapters/cc/transport.lua`, `src/domain/protocol/message.lua` |
 | a message shape, the protocol name, the wire version | `src/domain/protocol/message.lua` |

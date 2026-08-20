@@ -4,7 +4,7 @@ local expect = require("support.expect")
 local fleet = require("support.fleet")
 local it = require("support.spec").it
 
-local devicesApp = require("apps.devices.app")
+local devicesApp = require("apps.fleet.app")
 local discovery = require("os.server.services.discovery")
 local registry = require("domain.fleet.registry")
 

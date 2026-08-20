@@ -2,8 +2,8 @@ local expect = require("support.expect")
 local it = require("support.spec").it
 local fleet = require("support.fleet")
 
-local devicesApp = require("apps.devices.app")
-local devicesView = require("apps.devices.view")
+local devicesApp = require("apps.fleet.app")
+local devicesView = require("apps.fleet.view")
 local discovery = require("os.server.services.discovery")
 local jobs = require("domain.turtle.jobs")
 local registry = require("domain.fleet.registry")
@@ -45,17 +45,32 @@ it("a device that has gone quiet does not claim to still be mining", function()
   expect.falsy(row.online, "with the flag agreeing")
 end)
 
-it("a button press sets a goal rather than sending an order", function()
-  -- The difference Â§5 exists to make: a press dropped by a radio is retried by
-  -- reconcile, and the page has no "sent" state because "sent" was never the
-  -- honest word for it.
+it("a button press sets a goal for the whole fleet rather than sending an order", function()
+  -- The difference section 5 exists to make: a press dropped by a radio is
+  -- retried by reconcile, and the page has no "sent" state because "sent" was
+  -- never the honest word for it.
   local ctx = serverContext()
   discovery.handle(ctx, 7, heartbeat())
+  discovery.handle(ctx, 8, heartbeat({ snapshot = { label = "miner-8" } }))
 
-  local reply = assert(discovery.handle(ctx, 1, devicesApp.intent({ id = 7 }, "recall")))
+  local reply = assert(discovery.handle(ctx, 1, devicesApp.intent("recall")))
   expect.truthy(reply.ok, "accepted")
-  expect.truthy(reply.changed, "and it changed something")
-  expect.equal(registry.get(ctx.state.fleet, 7).desired.mode, "recall", "the goal is set")
+  expect.equal(reply.changed, 2, "and it changed both of them")
+  expect.equal(registry.get(ctx.state.fleet, 7).desired.mode, "recall")
+  expect.equal(registry.get(ctx.state.fleet, 8).desired.mode, "recall", "as a unit")
+end)
+
+it("a device that registers afterwards is told what everybody else was told", function()
+  -- The reason the server keeps the goal instead of fanning it out once. A
+  -- turtle that boots a minute after somebody pressed Deploy used to sit parked
+  -- forever, and nothing on any screen said why - the order it missed lived only
+  -- in the goals of the devices that happened to be listening.
+  local ctx = serverContext()
+  discovery.handle(ctx, 7, heartbeat())
+  discovery.handle(ctx, 1, devicesApp.intent("recall"))
+
+  discovery.handle(ctx, 9, heartbeat({ snapshot = { label = "miner-9" } }))
+  expect.equal(registry.get(ctx.state.fleet, 9).desired.mode, "recall", "it caught up on arrival")
 end)
 
 it("pressing the same button twice is not a failure", function()
@@ -64,42 +79,33 @@ it("pressing the same button twice is not a failure", function()
   local ctx = serverContext()
   discovery.handle(ctx, 7, heartbeat())
 
-  discovery.handle(ctx, 1, devicesApp.intent({ id = 7 }, "recall"))
-  local again = assert(discovery.handle(ctx, 1, devicesApp.intent({ id = 7 }, "recall")))
+  discovery.handle(ctx, 1, devicesApp.intent("recall"))
+  local again = assert(discovery.handle(ctx, 1, devicesApp.intent("recall")))
 
   expect.truthy(again.ok, "still ok")
-  expect.falsy(again.changed, "but nothing changed")
+  expect.equal(again.changed, 0, "but nothing changed")
   expect.equal(registry.get(ctx.state.fleet, 7).desired.generation, 1, "and no new generation")
 end)
 
-it("a device the server has never heard of is refused, not invented", function()
-  -- The whole point of Â§6 is telling "there is no miner-7" from "we do not know
-  -- where miner-7 is". Creating a record from a click destroys that.
+it("an order to an empty fleet changes nothing and invents nobody", function()
+  -- The whole point of section 6 is telling "there is no miner-7" from "we do
+  -- not know where miner-7 is". A goal is kept for whoever turns up; it never
+  -- creates a record, because a device on the roster that does not exist is the
+  -- one thing a fleet dashboard must not show.
   local ctx = serverContext()
-  local reply = assert(discovery.handle(ctx, 1, devicesApp.intent({ id = 99 }, "recall")))
+  local reply = assert(discovery.handle(ctx, 1, devicesApp.intent("recall")))
 
-  expect.falsy(reply.ok, "refused")
-  expect.contains(reply.message, "no such device", "and it says why")
-  expect.falsy(registry.get(ctx.state.fleet, 99), "with nothing invented")
+  expect.truthy(reply.ok, "accepted - there is simply nobody yet")
+  expect.equal(reply.changed, 0)
+  expect.equal(#registry.list(ctx.state.fleet, ctx.clock.now()), 0, "with nothing invented")
 end)
 
 it("a nonsense mode is refused loudly", function()
   local ctx = serverContext()
   discovery.handle(ctx, 7, heartbeat())
 
-  expect.falsy(devicesApp.intent({ id = 7 }, "explode"), "not even built")
-  expect.falsy(devicesApp.intent(nil, "recall"), "nor with nothing selected")
+  expect.falsy(devicesApp.intent("explode"), "not even built")
 
-  local reply = assert(discovery.handle(ctx, 1, { kind = "want", id = 7, mode = "explode" }))
+  local reply = assert(discovery.handle(ctx, 1, { kind = "want", mode = "explode" }))
   expect.falsy(reply.ok, "and the server refuses it too")
-end)
-
-it("the job picker offers what the catalogue lists, not a copy of it", function()
-  -- It used to be a hard-coded list with a comment admitting it was a copy. A
-  -- picker offering a job no turtle has produces a refusal somebody has to
-  -- interpret, and it happened every time a job was added and the copy was not.
-  expect.equal(#devicesView.JOBS, #jobs.list(), "same length")
-  for index, entry in ipairs(jobs.list()) do
-    expect.equal(devicesView.JOBS[index], entry.id, "same order: " .. entry.id)
-  end
 end)

@@ -405,7 +405,7 @@ it("the Fleet screen renders, and a heartbeat costs one blit per changed cell", 
   root:render()
 
   expect.contains(screen.rowText(2), "Fleet", "the title")
-  expect.contains(screen.rowText(2), "3 of 4 online", "and the derived count")
+  expect.contains(screen.rowText(2), "4 known", "and the derived count")
   expect.contains(screen.rowText(19), "Deploy all", "actions at the foot")
 
   -- Rows 1-2 are the header, 3 the separator, 4 the body's top padding, 5 the
@@ -420,17 +420,29 @@ it("the Fleet screen renders, and a heartbeat costs one blit per changed cell", 
 
   -- One turtle burns fuel and another finishes unloading. Everything else on the
   -- page recomputes to exactly what it held before.
+  --
+  -- One blit, not two. The fuel meter used to be a column and is now in the
+  -- detail panel, which shows the selected device - and nothing is selected
+  -- here, so a fuel reading changing is a value nothing on screen is displaying.
+  -- The property is unchanged and is the point: a heartbeat costs one blit per
+  -- run of cells that actually moved, however many values arrived.
   screen.forget()
   devices:set(roster(12300, "mining"))
   local blits = root:render()
-  expect.equal(blits, 2, "two cells moved, so two blits")
+  expect.equal(blits, 1, "one run moved, so one blit")
 
-  -- Selecting a row is a highlight, not a relayout: the gutter cell and the row
-  -- background change and nothing moves.
+  -- Selecting a row is a highlight and a panel, not a relayout. The row's own
+  -- runs change and the detail beside it fills in - which is more cells than the
+  -- old Fleet page touched, because that page had nothing to fill.
+  --
+  -- What is being pinned is that it stays proportional to what changed rather
+  -- than repainting the screen: a 51x19 page is 969 cells, and this is a
+  -- fraction of one column plus one row.
   screen.forget()
   selected:set(3)
   root:render()
-  expect.truthy(#screen.calls <= 2, "selecting a row touches at most its own two runs")
+  expect.truthy(#screen.calls > 0, "something was drawn")
+  expect.truthy(#screen.calls < 20, "and it was the row and its panel, not the page")
 
   root:destroy()
 end)

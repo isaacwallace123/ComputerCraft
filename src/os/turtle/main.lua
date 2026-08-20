@@ -200,6 +200,19 @@ turtleOs.heartbeat = service.define({
 --- anything worth testing that lives inside a `while true` is something that
 --- cannot be tested.
 function turtleOs.orders(context, message)
+  -- Who this turtle works with, kept whether or not there is an order attached.
+  --
+  -- Derived on the server from the chunk claims and sent down rather than worked
+  -- out here, because working it out here would mean every turtle holding a copy
+  -- of the coverage state to answer a question about itself. Stored before the
+  -- order is read: a heartbeat reply with nothing to carry out still tells a
+  -- general who its crew is, and dropping it would leave a general that has
+  -- converged showing "nobody yet" forever.
+  if type(message) == "table" then
+    context.state.general = message.general
+    context.state.crew = message.crew
+  end
+
   local intent = agent.receive(context.state, message)
   if intent == nil then
     return nil

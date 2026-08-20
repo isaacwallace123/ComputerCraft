@@ -226,3 +226,20 @@ it("a machine with no world clock draws no time rather than midnight", function(
   expect.equal(format.clock(13.999), "14:00")
   expect.equal(format.clock(24), "00:00", "the day wraps rather than clamping")
 end)
+
+it("the tab strip gives up its oldest rather than pushing the clock off", function()
+  -- The bar used to grow until it ran off the right edge, taking the time with
+  -- it - so the machine's own chrome became the one thing on screen that could
+  -- not fit on screen. The newest tabs are kept, because the one you just opened
+  -- is the one you are about to go back to.
+  local entries = {}
+  local tabs = {}
+  for index = 1, 10 do
+    entries[index] = page.fake("app" .. index, "App" .. index, { "client" }, { "desktop" })
+    tabs[index] = index
+  end
+
+  -- It either draws inside its own width or it throws; a bar that overflowed
+  -- silently is what this is here to catch.
+  draw(nil, entries, { tabs = tabs })
+end)

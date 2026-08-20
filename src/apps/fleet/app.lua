@@ -1,35 +1,39 @@
---- Fleet, wired: the composition root that turns the view into an app.
+--- Devices, wired: the composition root that turns the view into an app.
 ---
---- `view.lua` has existed since phase 2 of the UI framework and **nothing has
---- ever mounted it** - its own header says the `app.lua` beside it is "a later
---- phase, because that one touches a running fleet". This is that file. It is
---- late enough that the thing it was waiting for already exists: the client's
---- mirror, the desired-state path, and a shell that hosts pages.
+--- `view.lua` is a function from state to a node tree and touches nothing. This
+--- is the file that touches a running fleet - it reads the client's mirror,
+--- turns records into the rows the view draws, and turns a button press into a
+--- goal on the server.
 ---
---- ## Fleet and Devices are not the same page
+--- ## The split is the point
 ---
---- They read the same registry and they answer different questions, which is why
---- both exist rather than one with a toggle.
+--- §4: **services own state, apps read it.** This app holds no roster of its
+--- own, opens no radio of its own, and coordinates nothing. It reads
+--- `context.state.fleet`, which `os/client/main.lua`'s `sync` service keeps
+--- fresh, and it writes by asking the server - never by deciding.
 ---
---- **Devices** is "what is each machine doing, and what should it be doing" -
---- sorted by staleness so the one that stopped reporting is first, with
---- per-device actions. It is the page you open when something is wrong.
+--- D018 is the reason. Sector leasing used to live inside the Fleet page, so
+--- closing the page stopped two turtles being kept out of the same shaft. An app
+--- that is closed, crashed, or was never opened must change nothing about what
+--- the fleet is doing, and the only way to guarantee that is for it to own
+--- nothing that matters.
 ---
---- **Fleet** is "is the fleet working" - sorted by label so the same turtle is
---- in the same row every time you glance at it, with fuel meters and
---- fleet-wide actions. It is the page you leave open on a monitor.
+--- ## Sorted by staleness, which is the whole of §6
 ---
---- That difference decides the sort order, and the sort order is the whole
---- distinction. A dashboard somebody watches must be stable: rows that reorder
---- themselves as turtles go quiet make a wall display unreadable, which is the
---- opposite of what §6 asks of the Devices page.
+--- *"Three miners vanished and nothing knew where."* A roster sorted by name
+--- buries the one device that has stopped reporting among nine that are fine -
+--- the healthy ones need no attention at all. So the quietest device is first,
+--- and the row carries how long it has been quiet rather than a green dot that
+--- means "was fine at some point".
 ---
---- ## It owns nothing, like every app
+--- ## Actions are goals, not commands
 ---
---- D018: sector leasing once lived inside the ICOS 1 Fleet page, so closing the
---- dashboard stopped two turtles being kept out of the same shaft. This app
---- reads `context.state.fleet` and asks the server for goals. Closing it changes
---- nothing about what the fleet is doing.
+--- Deploy does not send "deploy". It asks the server to *want* the device
+--- deployed, and `reconcile` keeps saying so until the device agrees. A button
+--- press that is dropped by a radio is therefore retried without the person who
+--- pressed it having to know, which is the difference §5 exists to make - and
+--- the reason the page has no "sent" state to display, because "sent" was never
+--- the honest word for it.
 
 local desired = require("domain.fleet.desired")
 local registry = require("domain.fleet.registry")
@@ -40,124 +44,162 @@ local app = {}
 
 --- Turn one registry record into a row the view can draw.
 ---
---- The snapshot is the device's own account of itself and every field in it is
---- optional - a turtle mid-reboot, one on an older build, and one that has never
---- been given a job all report less than a working one. So every read has a
---- floor, and the floor is chosen to be honest rather than flattering: no fuel
---- reading is `0`, which shows an empty meter, because a meter that defaulted to
---- full would hide the one turtle that is about to strand itself.
+--- The view asks for `label`, `phase`, `fuel`, `job`, `since` and `settings`,
+--- and none of those are what a record holds - a record holds a snapshot the
+--- device sent and a time the server heard it. Doing the translation here rather
+--- than in the view is what lets the view be rendered into a buffer and asserted
+--- cell by cell with no fleet anywhere.
+---
+--- `phase` is where the honesty lives. A device that has gone quiet reports the
+--- phase it was in when it went quiet, which is *not* what it is doing now, and
+--- showing that unqualified is how a dashboard tells somebody a turtle is mining
+--- twenty minutes after it stopped. So an offline device says so instead.
 function app.row(record, now)
   local snap = record.snap or {}
+  local age = registry.age(record, now)
   local health = registry.health(record, now)
+
+  local phase = snap.phase or snap.status or "idle"
+  if health == "off" then
+    -- Switched off on purpose, which is not the same as gone quiet. Saying so
+    -- is the whole point of the farewell: a planned shutdown that read
+    -- "offline" would raise the same alarm as a turtle that fell in lava, and
+    -- an alarm raised for both is an alarm somebody learns to ignore.
+    phase = "shut down"
+  elseif health == "offline" then
+    -- Not the last known phase. "mining" on a device nobody has heard from in
+    -- twenty minutes is a claim the server cannot support.
+    phase = "offline"
+  elseif snap.parked then
+    phase = snap.parkKind and ("parked: " .. snap.parkKind) or "parked"
+  end
 
   return {
     id = record.id,
-    label = snap.label or ("#" .. tostring(record.id)),
+    label = snap.label or ("device-" .. tostring(record.id)),
+    phase = phase,
+    job = snap.job,
 
-    -- Offline overrides whatever the device last claimed to be doing. A turtle
-    -- that says "mining" and has not been heard from in five minutes is not
-    -- mining, and showing its last word as though it were current is how three
-    -- missing miners looked like three busy ones.
-    phase = health == "offline" and "offline" or (snap.phase or "unknown"),
-
+    -- Zero rather than nil when a device has not said. The floor is chosen to be
+    -- honest rather than flattering: a meter that defaulted to full would hide
+    -- the turtle that is about to strand itself, which is the one thing anybody
+    -- checks a fuel column for.
     fuel = tonumber(snap.fuel) or 0,
-    fuelLimit = tonumber(snap.fuelLimit) or nil,
+    fuelLimit = tonumber(snap.fuelLimit),
+    since = age,
+    online = health == "online",
 
-    online = health ~= "offline",
+    -- An order the device has not acknowledged, on a device that has since gone
+    -- quiet. Only the base can know this: a turtle cannot report that it has
+    -- stopped talking to you, so nothing in the snapshot could ever say it.
+    alert = health ~= "online" and record.desired ~= nil and not desired.converged(record),
 
-    -- What turns a row red. `stuck` is the device's own word for it; `alert` is
-    -- this app's, for a device that has an order it has not applied and has
-    -- stopped talking - which the device itself cannot report, because it is the
-    -- not-talking that is the problem.
-    stuck = snap.phase == "stuck",
-    alert = desired.status(record, now) == "unreachable",
+    -- Kept alongside rather than folded into `phase`, because the table shows
+    -- one and the detail panel shows the other, and a page that had to
+    -- re-derive convergence from a string would be a page that could disagree
+    -- with the server about whether an order had landed.
+    goal = record.desired and record.desired.mode or nil,
+    converged = desired.converged(record),
   }
 end
 
---- Every device, in a stable order.
+--- Every device, quietest first.
 ---
---- By label, not by staleness. Devices sorts by staleness because it is the page
---- you open when something is wrong; this is the page you leave open, and a list
---- that reorders itself while somebody is looking at it is a list nobody can
---- read at a glance. `naturalLess` so that `miner-10` comes after `miner-9`.
+--- The sort is `registry.byStaleness` rather than a local comparator, so the
+--- Fleet page, the console and this one cannot disagree about what "worst first"
+--- means - and so §6's rule is stated once.
 function app.rows(state, now)
+  local records = registry.records(state.fleet)
   local rows = {}
-  for _, record in ipairs(registry.records(state.fleet)) do
-    rows[#rows + 1] = app.row(record, now)
+  for index, record in ipairs(records) do
+    rows[index] = app.row(record, now)
   end
   table.sort(rows, function(a, b)
-    return require("lib.util").naturalLess(tostring(a.label), tostring(b.label))
+    if a.since ~= b.since then
+      return a.since > b.since
+    end
+    return tostring(a.id) < tostring(b.id)
   end)
   return rows
 end
 
---- The message that asks the server to want something of a device.
+--- Ask the server to want something.
 ---
---- Identical in shape to the Devices app's, because it is the same request. An
---- app never sends an order to a device: it asks the server to hold a goal, and
---- `reconcile` carries it - so a press dropped by a radio is retried by
---- machinery that already exists.
-function app.intent(id, mode)
-  if id == nil or not desired.MODES[mode] then
+--- Returns the message rather than sending it, for the same reason every service
+--- separates its decision from its loop: a spec drives this with a table, and
+--- the one line that touches a radio is in `mount` where it can be read at a
+--- glance.
+---
+--- `nil` for no device, which happens when somebody presses Deploy with nothing
+--- selected. Silently doing nothing is right here: the alternative is an error
+--- dialog for a mis-click.
+--- The message that asks the server to want something of the fleet.
+---
+--- **No `id`.** That absence is the whole design change: a `want` without one
+--- is an order for every device the server knows about *and* for every device
+--- that registers afterwards, because the server keeps it rather than fanning it
+--- out once. See `os/server/services/discovery.lua`.
+---
+--- Refuses a mode that does not exist rather than sending it, so a typo is
+--- caught where it was typed instead of arriving as a refusal somebody has to
+--- interpret.
+function app.intent(mode)
+  if not desired.MODES[mode] then
     return nil
   end
-  return { kind = "want", id = id, mode = mode }
+  return { kind = "want", mode = mode }
 end
 
---- Mount the page.
+--- Wire the view to a client context.
 ---
---- `options.readOnly` is how a monitor gets the same screen with no actions:
---- the callbacks are simply not passed, and the view builds no buttons for
---- callbacks it does not have.
+--- `context` is what `os/client/main.lua` built: ports, and a mirror that `sync`
+--- keeps fresh. `scope` is the UI scope the host mounted.
+---
+--- The roster is a `Computed` over the mirror rather than a `Value` this app
+--- updates, which is what makes it impossible for the page to be showing a fleet
+--- the client no longer believes in. Nothing here calls redraw; handing the
+--- state a new list is the entire update path.
 function app.mount(scope, context, options)
   options = options or {}
   local tick = options.tick or scope:Value(0)
 
-  local devices = scope:Computed(function(use)
-    -- `tick` is what makes ages advance. Without it the list would recompute
-    -- only when a device appeared or vanished, and a page whose whole job is
-    -- showing how long something has been quiet would show the same number
-    -- forever.
+  local rows = scope:Computed(function(use)
+    -- `tick` is the dependency that makes ages advance. Without it the list
+    -- would only recompute when a device appeared or vanished, and a page whose
+    -- whole point is showing how long something has been quiet would show the
+    -- same number forever.
     use(tick)
     return app.rows(context.state, context.clock.now())
   end)
 
   local selected = options.selected or scope:Value(nil)
 
-  -- Through the context rather than the transport, because on the base station
-  -- itself a broadcast reaches nobody: rednet does not loop back, so these
-  -- buttons worked from any other computer and did nothing on the machine that
-  -- owns the fleet. See `os/kernel/request.lua`.
+  --- Sending is the only thing in this file that talks to anything.
+  ---
+  --- One message for the whole fleet, not one per device. That is the shape of
+  --- the decision as well as a saving: turtles are dispatched, fuelled, assigned
+  --- ground and recalled as a unit, so "recall" is a fact about the fleet and
+  --- the server is where it belongs. Sending it per device would put the same
+  --- fact in ten places and let them disagree - which is what happened, and is
+  --- how a fleet ends up half recalled.
+  ---
+  --- It is also what makes a device that joins later behave: the server holds
+  --- the goal, so a turtle that boots after the button was pressed is told what
+  --- everybody else was told rather than sitting parked until somebody notices.
   local ask = request.of(context, options.protocol)
 
-  local function want(id, mode)
-    local message = app.intent(id, mode)
+  local function want(mode)
+    local message = app.intent(mode)
     if message then
       ask(message)
     end
     return message
   end
 
-  --- Ask for something of every device on the page.
-  ---
-  --- One message each rather than a broadcast the server fans out, because the
-  --- server's job is to hold goals and a "want this of everybody" message would
-  --- be a second way to set them - one that a device joining a second later
-  --- would miss, and that nothing would retry.
-  local function wantAll(mode)
-    local sent = 0
-    for _, row in ipairs(app.rows(context.state, context.clock.now())) do
-      if want(row.id, mode) then
-        sent = sent + 1
-      end
-    end
-    return sent
-  end
-
   local page = {
-    devices = devices,
+    devices = rows,
     selected = selected,
-    capacity = options.capacity or 10,
+    capacity = options.capacity or 8,
     title = "Fleet",
 
     onSelect = function(device)
@@ -165,22 +207,24 @@ function app.mount(scope, context, options)
     end,
   }
 
-  -- A block, not `readOnly and nil or fn`. That idiom always yields the
-  -- function - `true and nil` is nil and `nil or fn` is fn - so the guard did
-  -- nothing wherever it was written. This is the page most likely to be left on
-  -- a monitor, which makes it the one where that mattered most.
+  -- Absent on a display-only surface, which is D020 expressed as an argument
+  -- that is not passed rather than as a branch inside the view.
+  --
+  -- Written as a block rather than `readOnly and nil or fn` on each line, and
+  -- that is not style. **`x and nil or y` always evaluates to `y`** - `and`
+  -- yields nil, and `nil or y` is y - so the guard did nothing and every
+  -- callback was passed on every surface. D020 calls this a safety boundary and
+  -- it had been open since the page was written; this shape cannot be wrong,
+  -- because there is nothing to get subtly right.
   if not options.readOnly then
     page.onDeploy = function()
-      return wantAll("deploy")
+      return want("deploy")
     end
     page.onRecall = function()
-      return wantAll("recall")
+      return want("recall")
     end
-    -- Stop is per-device and the view disables it with nothing selected, which
-    -- is derived rather than toggled - there is no code path that leaves it
-    -- enabled with no target.
     page.onStop = function()
-      return want(require("ui.state.reactive").peek(selected), "stop")
+      return want("stop")
     end
   end
 

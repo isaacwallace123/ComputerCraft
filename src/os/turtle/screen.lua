@@ -117,10 +117,12 @@ function screen.miner(snapshot, state)
   row("job", snapshot.job or "none")
   row("phase", snapshot.phase or "idle", phaseTone(snapshot.phase))
 
-  -- Which general this turtle is working under. The one fact a miner knows that
-  -- the base cannot infer: coverage is assigned per chunk, and a miner that has
-  -- been reassigned knows before anybody else does.
-  row("general", snapshot.general and tostring(snapshot.general) or "none")
+  -- Which general this turtle is working under, from the last heartbeat reply.
+  -- The server derives it from the chunk claims - a miner is assigned a chunk
+  -- and a general holds it - so reassigning ground moves the crew without
+  -- anybody updating a list.
+  local general = state.general or snapshot.general
+  row("general", general and tostring(general) or "none")
 
   local sector = tonumber(snapshot.sector)
   row("sector", sector and sector > 0 and tostring(sector) or "none")
