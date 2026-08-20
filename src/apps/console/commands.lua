@@ -40,6 +40,114 @@ commands.HELP = {
   { name = "help", usage = "help", about = "this list" },
 }
 
+--- Every word that can start a line, in the order `help` lists them.
+---
+--- Separate from `HELP` because two entries there share the name `mine` - the
+--- usage list wants both forms and a completer wants the word once.
+commands.NAMES = {
+  "mine",
+  "recall",
+  "deploy",
+  "park",
+  "devices",
+  "clear",
+  "help",
+}
+
+--- What can follow each command, for completing the second word.
+---
+--- Only where there is a fixed word to offer. `park` takes a device id and
+--- nothing else, so it is absent rather than listed with an empty table - a
+--- completer that offered nothing would still eat the Tab key.
+commands.FOLLOWS = {
+  mine = { "at" },
+  recall = { "all" },
+  deploy = { "all" },
+}
+
+--- The rest of the word somebody is part-way through typing.
+---
+--- Returns the characters to append, or nil when there is nothing to add. Nil
+--- rather than an empty string so a caller can tell "nothing to complete" from
+--- "already complete" without measuring a string.
+---
+--- ## It completes only when the answer is certain
+---
+--- `d` matches both `deploy` and `devices`, and guessing between them would put
+--- a word somebody did not type in front of a fleet command. So an ambiguous
+--- prefix completes to the part they share - `de` - which is what a shell does
+--- and is the behaviour that never surprises anybody.
+---
+--- ## Empty completes to nothing
+---
+--- A blank prompt offering `mine` would mean Tab on an empty line places a mine
+--- at whatever it parsed. The prompt is where the fleet is controlled from and
+--- an accident there moves turtles.
+function commands.complete(line)
+  local text = tostring(line or "")
+  if text == "" then
+    return nil
+  end
+
+  local head, rest = text:match("^(%S+)(.*)$")
+  if head == nil then
+    return nil
+  end
+
+  -- Still on the first word: no space has been typed yet.
+  if rest == "" then
+    return commands.shared(commands.NAMES, head:lower())
+  end
+
+  -- Past the first word, and only the second is completable. Beyond that the
+  -- arguments are coordinates and device ids, which are numbers nobody has a
+  -- list of.
+  local options = commands.FOLLOWS[head:lower()]
+  if options == nil then
+    return nil
+  end
+
+  local second = rest:match("^%s+(%S*)$")
+  if second == nil then
+    return nil
+  end
+  return commands.shared(options, second:lower())
+end
+
+--- The longest ending shared by every option starting with `prefix`.
+---
+--- The shell rule, and the reason it is worth having: completing an ambiguous
+--- prefix to one arbitrary match is how somebody ends up running `devices` when
+--- they meant `deploy`.
+function commands.shared(options, prefix)
+  local matched = {}
+  for _, name in ipairs(options) do
+    if name:sub(1, #prefix) == prefix then
+      matched[#matched + 1] = name
+    end
+  end
+
+  if #matched == 0 then
+    return nil
+  end
+
+  local answer = matched[1]
+  for index = 2, #matched do
+    local other = matched[index]
+    local keep = 0
+    while keep < #answer and answer:sub(keep + 1, keep + 1) == other:sub(keep + 1, keep + 1) do
+      keep = keep + 1
+    end
+    answer = answer:sub(1, keep)
+  end
+
+  local addition = answer:sub(#prefix + 1)
+  if addition == "" then
+    return nil
+  end
+  return addition
+end
+
 --- Split a line into lowercase words, preserving the original for arguments
 --- that are case-sensitive. Nothing here is, today; the split is separate
 --- anyway so that adding one does not mean rewriting the parser.

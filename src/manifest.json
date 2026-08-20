@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-20T15:18:22-04:00",
+    "generated":  "2026-08-20T15:36:40-04:00",
     "bootstrap":  [
                       "adapters/cc/config.lua",
                       "adapters/cc/screen.lua",
@@ -43,7 +43,6 @@
                                  "apps/gps/app.lua",
                                  "apps/hardware/app.lua",
                                  "apps/job/app.lua",
-                                 "apps/logs/app.lua",
                                  "apps/operations/app.lua",
                                  "apps/registry.lua",
                                  "apps/services/app.lua",
@@ -495,7 +494,6 @@
                   "apps/gps/app.lua",
                   "apps/hardware/app.lua",
                   "apps/job/app.lua",
-                  "apps/logs/app.lua",
                   "apps/operations/app.lua",
                   "apps/registry.lua",
                   "apps/services/app.lua",

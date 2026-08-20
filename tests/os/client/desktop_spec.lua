@@ -243,3 +243,64 @@ it("the tab strip gives up its oldest rather than pushing the clock off", functi
   -- silently is what this is here to catch.
   draw(nil, entries, { tabs = tabs })
 end)
+
+---------------------------------------------------------------------------
+-- Sections
+---------------------------------------------------------------------------
+
+it("fleet, mine, automation and job are one app with four sections", function()
+  -- They were four icons, and setting up a mine meant crossing the home screen
+  -- four times to do one thing. One is on the wall; the rest are reachable from
+  -- a bar across the top of it.
+  local appRegistry = require("apps.registry")
+
+  local wall = appRegistry.available("server", "desktop")
+  local names = {}
+  for _, entry in ipairs(wall) do
+    names[entry.id] = true
+  end
+
+  expect.truthy(names.fleet, "the section leader is on the wall")
+  expect.falsy(names.operations, "and the other three are not")
+  expect.falsy(names.automation)
+  expect.falsy(names.job)
+
+  local family = appRegistry.family("operations", "server", "desktop")
+  expect.equal(#family, 4, "but all four are reachable from the bar")
+  expect.equal(family[1].id, "fleet", "with the leader first")
+
+  for _, entry in ipairs(family) do
+    expect.truthy(entry.sectionName ~= nil, entry.id .. " needs a short name for the bar")
+    expect.truthy(#entry.sectionName <= 6, entry.id .. "'s bar label must fit beside three others")
+  end
+end)
+
+it("a hidden section page is still reachable by id", function()
+  -- The bar names its siblings by id because a hidden entry has no index on the
+  -- wall - an index could never reach it.
+  local appRegistry = require("apps.registry")
+
+  expect.truthy(appRegistry.byId("automation"), "found by id")
+  expect.equal(appRegistry.byId("automation").id, "automation")
+  expect.equal(appRegistry.byId("nonesuch"), nil)
+
+  local entries = appRegistry.available("server", "desktop")
+  expect.equal(desktop.entryAt(entries, "automation").id, "automation", "resolved for the page body")
+  expect.equal(desktop.entryAt(entries, 1), entries[1], "and an index still means the wall")
+  expect.equal(desktop.entryAt(entries, nil), nil, "nil is the wall itself")
+  expect.equal(desktop.entryAt(entries, "nonesuch"), nil, "a retired id is not a crash")
+end)
+
+it("every hidden app still ships, because the bar can open it", function()
+  -- A page reachable from a bar and absent from the manifest is a page that
+  -- opens into "could not load" on a real machine and never fails here.
+  local appRegistry = require("apps.registry")
+  local modules = {}
+  for _, module in ipairs(appRegistry.modules()) do
+    modules[module] = true
+  end
+
+  for _, entry in ipairs(appRegistry.family("operations", "server", "desktop")) do
+    expect.truthy(modules[entry.module], entry.id .. " is in a section but not in modules()")
+  end
+end)

@@ -64,12 +64,31 @@ function hotplug.changed(context, event, side)
 
   local kinds = hotplug.kindsOf(context, side)
 
+  -- Anything arriving is grounds to try the services that gave up.
+  --
+  -- `revive` is documented as the operator's "I have fixed it, try again", and
+  -- deliberately not on a timer - a supervisor that reset its own counter would
+  -- turn "gave up" into "retries forever, slowly". Hardware being plugged in is
+  -- not a timer. It is the evidence that the thing the service was failing for
+  -- has arrived, which is exactly the judgement a person makes before pressing
+  -- it, and the alternative is a base whose radio is open and whose bridge quit
+  -- four minutes ago.
+  local revived = hotplug.revive(context)
+
   if kinds.modem and context.transport and context.transport.open then
     -- Idempotent, so a second modem on a machine that already has one open is
     -- a no-op rather than a swap. Which modem is the radio is `transport`'s
     -- decision and it made it at boot; re-deciding here would move a fleet's
     -- radio because somebody hung a wired modem on the back.
     local opened = context.transport.open()
+    if revived > 0 then
+      return ("modem attached on %s - radio %s, %d service%s restarted"):format(
+        side,
+        opened and "open" or "not open",
+        revived,
+        revived == 1 and "" or "s"
+      )
+    end
     return ("modem attached on %s - radio %s"):format(side, opened and "open" or "not open")
   end
 
@@ -105,6 +124,30 @@ function hotplug.kindsOf(context, side)
   end
 
   return out
+end
+
+--- Start the services that had given up, and say how many.
+---
+--- Every one of them, not only the ones that named a radio. A service does not
+--- record what it was waiting for, and the failures that hardware fixes are not
+--- limited to the obvious: GPS needs a modem, the bridge needs a modem, and a
+--- page needs a monitor that a person has just walked over and replaced.
+---
+--- Costs nothing when nothing has failed, which is the normal case.
+function hotplug.revive(context)
+  local supervisor = context.supervisor
+  if supervisor == nil or type(supervisor.health) ~= "function" then
+    return 0
+  end
+
+  local now = context.clock and context.clock.now() or 0
+  local count = 0
+  for _, row in ipairs(supervisor:health(now) or {}) do
+    if row.gaveUp and supervisor:revive(row.id) then
+      count = count + 1
+    end
+  end
+  return count
 end
 
 hotplug.service = service.define({

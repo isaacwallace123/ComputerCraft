@@ -53,7 +53,9 @@ registry.APPS = {
 
   {
     id = "fleet",
-    name = "Fleet",
+    name = "Operations",
+    section = "operations",
+    sectionName = "Fleet",
     glyph = "\4", -- diamond: the fleet as a whole
     module = "apps.fleet.app",
     roles = { "server", "mobile" },
@@ -62,6 +64,9 @@ registry.APPS = {
   {
     id = "operations",
     name = "Mine",
+    section = "operations",
+    sectionName = "Mine",
+    hidden = true,
     glyph = "\30", -- triangle: a shaft head
     module = "apps.operations.app",
     roles = { "server" },
@@ -70,6 +75,9 @@ registry.APPS = {
   {
     id = "automation",
     name = "Automation",
+    section = "operations",
+    sectionName = "Auto",
+    hidden = true,
     glyph = "\24", -- up arrow: something acting on its own
     module = "apps.automation.app",
     roles = { "server" },
@@ -121,14 +129,6 @@ registry.APPS = {
     surfaces = { "desktop", "monitor", "handheld" },
   },
   {
-    id = "logs",
-    name = "Logs",
-    glyph = "\29", -- lines: a record
-    module = "apps.logs.app",
-    roles = { "server" },
-    surfaces = { "desktop", "monitor" },
-  },
-  {
     id = "hardware",
     name = "Hardware",
     glyph = "\247", -- plug: what is attached
@@ -144,6 +144,9 @@ registry.APPS = {
   {
     id = "job",
     name = "Job",
+    section = "operations",
+    sectionName = "Job",
+    hidden = true,
     glyph = "\18", -- up-down arrow: a shaft being worked
     module = "apps.job.app",
     roles = { "server" },
@@ -180,11 +183,55 @@ end
 function registry.available(role, surface)
   local out = {}
   for _, entry in ipairs(registry.APPS) do
-    if lists(entry, "roles", role) and lists(entry, "surfaces", surface) then
+    if not entry.hidden and lists(entry, "roles", role) and lists(entry, "surfaces", surface) then
       out[#out + 1] = entry
     end
   end
   return out
+end
+
+--- Every page in one section, in registry order.
+---
+--- Fleet, Mine, Automation and Job are four views of one activity: what the
+--- turtles are doing, where they are digging, what runs on its own, and what
+--- job is loaded. They were four icons, and moving between them meant going out
+--- to the desktop and back in - so a person setting up a mine crossed the home
+--- screen four times to do one thing.
+---
+--- Now one of them is on the wall and the rest are reachable from a bar across
+--- the top of it. The section leader is the entry that is not `hidden`; the
+--- others exist in the registry, ship in the manifest, and are simply not
+--- offered as icons.
+---
+--- Returns an empty list for an entry in no section, which is most of them.
+function registry.family(section, role, surface)
+  local out = {}
+  if type(section) ~= "string" then
+    return out
+  end
+  for _, entry in ipairs(registry.APPS) do
+    if
+      entry.section == section
+      and lists(entry, "roles", role)
+      and lists(entry, "surfaces", surface)
+    then
+      out[#out + 1] = entry
+    end
+  end
+  return out
+end
+
+--- One entry by id, or nil.
+---
+--- Needed because a section bar names its siblings by id: a hidden entry is not
+--- in the list the desktop built its icons from, so an index cannot reach it.
+function registry.byId(id)
+  for _, entry in ipairs(registry.APPS) do
+    if entry.id == id then
+      return entry
+    end
+  end
+  return nil
 end
 
 --- Load one app's module.

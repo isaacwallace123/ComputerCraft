@@ -261,6 +261,24 @@ function desktop.closed(list, index)
   return out
 end
 
+--- The entry behind whatever `state.open` holds.
+---
+--- An index into the wall, or an app id. Two kinds because a section bar names
+--- its siblings by id: Mine, Automation and Job are hidden from the wall, so
+--- they have no index there and an index could never reach them.
+---
+--- Nil for the wall itself and for an id that no longer exists, which is what a
+--- saved arrangement naming a retired app looks like.
+function desktop.entryAt(entries, open)
+  if type(open) == "number" then
+    return entries[open]
+  end
+  if type(open) == "string" then
+    return registry.byId(open)
+  end
+  return nil
+end
+
 ---------------------------------------------------------------------------
 -- Chrome
 ---------------------------------------------------------------------------
@@ -313,7 +331,7 @@ local function bar(scope, context, state, entries, options)
   end
 
   for _, index in ipairs(shown) do
-    local manifest = entries[index]
+    local manifest = desktop.entryAt(entries, index) or { id = "?" }
     children[#children + 1] = tab(
       scope,
       format.ellipsis(manifest.name or manifest.id, 6),
@@ -351,6 +369,47 @@ local function bar(scope, context, state, entries, options)
     Background = T.chrome,
     Children = children,
   })
+end
+
+--- The row of sections across the top of a page that belongs to one.
+---
+--- Fleet, Mine, Automation and Job are four views of one activity, and they used
+--- to be four icons: setting up a mine meant crossing the home screen four times
+--- to do one thing. This makes them one app with four sections, using the same
+--- machinery the tab bar uses - picking one ends the session and the next is
+--- built showing that page, so exactly one section is ever built.
+---
+--- That last point is why this is a bar and not four `Hidden` subtrees. Building
+--- all of them and showing one is how twelve pages came to be live at once on a
+--- machine that could afford one.
+---
+--- Nil when the open page is in no section, which is most of them.
+local function sections(scope, state, entry, options)
+  if entry == nil or entry.section == nil then
+    return nil
+  end
+
+  local family =
+    registry.family(entry.section, options.role or "client", options.surface or "desktop")
+  if #family < 2 then
+    return nil
+  end
+
+  local children = {}
+  for _, sibling in ipairs(family) do
+    local active = sibling.id == entry.id
+    children[#children + 1] = scope:Text({
+      Text = " " .. (sibling.sectionName or sibling.name or sibling.id) .. " ",
+      Background = active and T.accent or T.muted,
+      Color = active and T.accentFg or T.mutedFg,
+      OnClick = (options.readOnly or active) and nil or function()
+        state.wanted:set(sibling.id)
+      end,
+    })
+    children[#children + 1] = scope:Spacer({ Width = 1 })
+  end
+
+  return scope:Row({ Height = 1, Children = children })
 end
 
 ---------------------------------------------------------------------------
@@ -425,14 +484,19 @@ function desktop.build(scope, context, state, entries, options)
   options = options or {}
 
   local body
+  local section = nil
   local index = reactive.peek(state.open)
+  local entry = desktop.entryAt(entries, index)
+
   if index == nil then
     body = wall(scope, state, entries, options)
   else
+    section = sections(scope, state, entry, options)
+
     -- Read off disk here, not at boot. `registry.available` hands back names;
     -- the module behind one is loaded the first time somebody opens it, which is
     -- why a machine that never opens the console never pays for it.
-    local app, why = registry.load(entries[index])
+    local app, why = registry.load(entry)
     body = scope:Column({
       Grow = 1,
       Children = {
@@ -459,6 +523,9 @@ function desktop.build(scope, context, state, entries, options)
   -- its own top padding and a second one would push its last row off the screen.
   if index == nil then
     children[#children + 1] = scope:Spacer({ Height = 1 })
+  end
+  if section ~= nil then
+    children[#children + 1] = section
   end
   children[#children + 1] = body
 

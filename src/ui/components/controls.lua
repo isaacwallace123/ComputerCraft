@@ -125,6 +125,15 @@ runtime.define({
 --- Enter reaches `OnSubmit`, never `OnClick`. The runtime fires `OnClick` on the
 --- focused node for enter **and space**, so a field that submitted through it
 --- would be a field that cannot type a space.
+---
+--- ## Completion is shown, not applied
+---
+--- `Suggestion` is the *rest* of what the caller thinks is being typed. It is
+--- painted after the text in the muted colour and is not part of `Value`, so a
+--- field showing a suggestion and a field that has had one accepted are
+--- different states - which matters because Enter must submit what somebody
+--- typed and not what was offered to them. Tab is what accepts it, through
+--- `OnComplete`, and the caller decides what accepting means.
 runtime.define({
   kind = "Field",
   defaults = {
@@ -166,6 +175,21 @@ runtime.define({
         return true
       end
 
+      -- Tab accepts the suggestion. Swallowed even when there is nothing to
+      -- accept, because the alternative is Tab moving focus out of a field
+      -- somebody is typing in - which on a console loses the line.
+      if event.key == inputModel.KEY.tab then
+        local suggestion = node.Suggestion
+        if
+          type(suggestion) == "string"
+          and suggestion ~= ""
+          and type(node.OnComplete) == "function"
+        then
+          node.OnComplete(text .. suggestion)
+        end
+        return true
+      end
+
       return false
     end,
   },
@@ -201,6 +225,24 @@ runtime.define({
     end
 
     frame:write(x, y, format.pad(shown, width, "left"), colour, background)
+
+    -- The completion, past the caret, in the muted colour. Painted over the
+    -- padding rather than concatenated into `shown`, so a suggestion that does
+    -- not fit is simply not drawn instead of pushing the typed text off the
+    -- left-hand side of its own field.
+    local suggestion = node.Suggestion
+    if
+      node.Focused
+      and not node.Disabled
+      and type(suggestion) == "string"
+      and suggestion ~= ""
+      and #text == #tostring(node.Value or "")
+    then
+      local spare = width - #text - 1
+      if spare > 0 then
+        frame:write(x + #text + 1, y, suggestion:sub(1, spare), T.mutedFg, background)
+      end
+    end
 
     -- The caret is a filled cell rather than a character, so it reads the same
     -- on a monitor that cannot blink and in a screenshot.

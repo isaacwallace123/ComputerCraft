@@ -227,3 +227,99 @@ it("an empty fleet is reported as empty rather than as a blank screen", function
   expect.equal(out[1].level, "warn", "said something")
   expect.contains(out[1].text, "nothing", "and what")
 end)
+
+---------------------------------------------------------------------------
+-- Completion
+---------------------------------------------------------------------------
+
+it("a part-typed command completes to the rest of it", function()
+  expect.equal(commands.complete("mi"), "ne")
+  expect.equal(commands.complete("rec"), "all")
+  expect.equal(commands.complete("h"), "elp")
+end)
+
+it("an ambiguous prefix completes only as far as the options agree", function()
+  -- `d` is both `deploy` and `devices`. Guessing between them would put a word
+  -- somebody did not type in front of a fleet command - and `devices` when you
+  -- meant `deploy` is a mistake you only notice by the turtles not moving.
+  expect.equal(commands.complete("d"), "e", "as far as they agree, and no further")
+  expect.equal(commands.complete("dep"), "loy", "and all the way once they do not")
+  expect.equal(commands.complete("dev"), "ices")
+end)
+
+it("an empty prompt offers nothing", function()
+  -- Tab on a blank line completing to `mine` would mean the next Enter places
+  -- a mine. The prompt is where the fleet is controlled from.
+  expect.equal(commands.complete(""), nil)
+  expect.equal(commands.complete(nil), nil)
+end)
+
+it("a finished word is not completed again", function()
+  expect.equal(commands.complete("mine"), nil, "there is nothing left to add")
+  expect.equal(commands.complete("zzz"), nil, "and nothing matches this at all")
+end)
+
+it("the second word completes where there is a fixed one to offer", function()
+  expect.equal(commands.complete("mine "), "at")
+  expect.equal(commands.complete("mine a"), "t")
+  expect.equal(commands.complete("recall a"), "ll")
+  expect.equal(commands.complete("park "), nil, "park takes an id, and ids are not a list")
+  expect.equal(commands.complete("mine at 10 "), nil, "and neither are coordinates")
+end)
+
+it("every command in help can be reached by completing", function()
+  -- The two lists drifting apart would give a console that completes to
+  -- commands it cannot run, or refuses to complete ones it can.
+  for _, entry in ipairs(commands.HELP) do
+    local name = entry.name
+    local partial = name:sub(1, 1)
+    local completion = commands.complete(partial)
+    expect.truthy(
+      completion ~= nil or name == partial,
+      ("`%s` is in help but nothing completes towards it"):format(name)
+    )
+  end
+end)
+
+---------------------------------------------------------------------------
+-- The log is the history
+---------------------------------------------------------------------------
+
+it("what was typed and what the base said end up in one scrollback", function()
+  -- There used to be two pages: a console with its own in-memory list, and a
+  -- Logs page reading the machine log. Neither had both halves, and closing
+  -- the console destroyed the half you had just made.
+  local port = require("ports.log").memory(50)
+  port.info("gps: hosting")
+  console.record(port, "info", console.ECHO .. "recall 7")
+  console.record(port, "info", "asked the base to recall 7")
+  port.warn("miner-7 has not answered")
+
+  local history = console.history(port, 20, false)
+  expect.equal(#history, 4, "service output and console output, in order")
+  expect.equal(history[1].level, "info", "the service line first, because it happened first")
+  expect.equal(history[2].level, "echo", "the typed line is recovered from its prefix")
+  expect.equal(history[4].level, "warn")
+
+  -- The whole point of merging them: a command sits next to the thing it caused.
+  expect.contains(history[2].text, "recall 7")
+  expect.contains(history[4].text, "miner-7")
+end)
+
+it("warnings only keeps the two levels that mean something", function()
+  local port = require("ports.log").memory(50)
+  port.info("routine")
+  port.warn("odd")
+  port.error("bad")
+  console.record(port, "info", console.ECHO .. "help")
+
+  local filtered = console.history(port, 20, true)
+  expect.equal(#filtered, 2, "the warning and the error")
+  expect.equal(filtered[1].level, "warn")
+  expect.equal(filtered[2].level, "error")
+end)
+
+it("a machine with no log shows an empty console rather than erroring", function()
+  expect.equal(#console.history(nil, 10, false), 0)
+  expect.falsy(console.record(nil, "info", "nowhere"))
+end)

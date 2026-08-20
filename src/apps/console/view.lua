@@ -7,14 +7,21 @@
 ---
 --- ## It shows the tail, and only the tail
 ---
---- No scrollback. A console on a 51x19 terminal shows the last dozen lines, and
---- the thing somebody wants after typing a command is the answer to *that*
---- command, which is the last line. Scrolling back through a session belongs to
---- the Logs page, which reads the same log from disk and is built for it.
+--- A console on a 51x19 terminal shows the last dozen lines, and the thing
+--- somebody wants after typing a command is the answer to *that* command, which
+--- is the last one. The older half is still there - the lines come from the
+--- machine log now, not a list this page keeps - and `Warnings only` is how you
+--- narrow it without a search box nobody can type into.
 ---
---- That is why the history is handed in already trimmed: the view does not
---- decide how much to keep, because how much fits is a layout answer and how
---- much is worth keeping is not.
+--- The history is handed in already filtered: the view does not decide how much
+--- to keep, because how much fits is a layout answer and how much is worth
+--- keeping is not.
+---
+--- ## The prompt is optional
+---
+--- `readOnly` drops it, which is what a monitor gets. D020: a surface with no
+--- keyboard must not be shown a control, and a field nobody can focus is worse
+--- than no field because it looks like the page is waiting for something.
 
 local theme = require("ui.theme")
 
@@ -75,29 +82,33 @@ function console.build(scope, options)
     })
   end
 
-  local prompt = scope:Row({
-    Height = 1,
-    Children = {
-      scope:Text({ Text = ">", Color = T.accent }),
-      scope:Spacer({ Width = 1 }),
-      scope:Field({
-        Grow = 1,
-        Value = options.input,
-        Placeholder = options.placeholder or "type help",
-        OnChange = options.onChange,
-        OnSubmit = options.onSubmit,
-      }),
-    },
-  })
+  local children = { scope:Column({ Grow = 1, Children = rows }) }
+
+  if not options.readOnly then
+    children[#children + 1] = scope:Separator({})
+    children[#children + 1] = scope:Row({
+      Height = 1,
+      Children = {
+        scope:Text({ Text = ">", Color = T.accent }),
+        scope:Spacer({ Width = 1 }),
+        scope:Field({
+          Grow = 1,
+          Value = options.input,
+          Suggestion = options.suggestion,
+          Placeholder = options.placeholder or "type help",
+          OnChange = options.onChange,
+          OnComplete = options.onComplete,
+          OnSubmit = options.onSubmit,
+        }),
+      },
+    })
+  end
 
   return scope:Page({
     Title = options.title or "Console",
     Status = options.status,
-    Children = {
-      scope:Column({ Grow = 1, Children = rows }),
-      scope:Separator({}),
-      prompt,
-    },
+    Actions = options.actions,
+    Children = children,
   })
 end
 

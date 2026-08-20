@@ -115,7 +115,7 @@ marked, because changing the wrong one produces a passing build and no change in
 | a turtle finding its own position and heading | `src/domain/gps/fix.lua`, `src/os/turtle/calibrate.lua` |
 | switching a service off, and it staying off | `src/os/kernel/switches.lua`, `src/apps/services/app.lua` |
 | running services, restarts, health | `src/os/kernel/supervisor.lua`, `src/os/kernel/service.lua`, `src/apps/services/app.lua` |
-| the log, and what reads it | `src/ports/log.lua`, `src/adapters/cc/log.lua`, `src/apps/logs/app.lua` |
+| the log, and what reads it | `src/ports/log.lua`, `src/adapters/cc/log.lua`, `src/apps/console/app.lua` |
 | a new port, or a CC implementation of one | `src/ports/`, `src/adapters/cc/` |
 | simulated-world tests | `tests/`, `tools/spec.ps1` |
 | the simulated world itself | `src/adapters/sim/world.lua` |

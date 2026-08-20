@@ -116,3 +116,65 @@ it("a machine with no peripheral access still survives an attach", function()
   local said = hotplug.changed({}, hotplug.ATTACH, "back")
   expect.truthy(said ~= nil)
 end)
+
+it("plugging a modem back in restarts the services that gave up on it", function()
+  -- Read off a real base: `bridge: no modem is open`, four times, then silence.
+  -- The bridge is what turtles talk to, so a server whose modem was reattached
+  -- had an open radio and a dead bridge - and every turtle in the fleet showed
+  -- offline with nothing anywhere explaining why.
+  local base = machine({})
+  base.attach("back", { "modem" })
+
+  local revived = {}
+  base.context.clock = {
+    now = function()
+      return 0
+    end,
+  }
+  base.context.supervisor = {
+    health = function()
+      return {
+        { id = "bridge", gaveUp = true },
+        { id = "gps", gaveUp = true },
+        { id = "ticker", gaveUp = false },
+      }
+    end,
+    revive = function(_, id)
+      revived[#revived + 1] = id
+      return true
+    end,
+  }
+
+  local said = hotplug.changed(base.context, hotplug.ATTACH, "back")
+  expect.equal(#revived, 2, "the two that had given up, not the one still running")
+  expect.equal(revived[1], "bridge")
+  expect.contains(said, "2 service", "and it says so, because nothing else would")
+end)
+
+it("nothing to revive costs nothing and says nothing extra", function()
+  local base = machine({})
+  base.attach("back", { "modem" })
+  base.context.clock = {
+    now = function()
+      return 0
+    end,
+  }
+  base.context.supervisor = {
+    health = function()
+      return { { id = "ticker", gaveUp = false } }
+    end,
+    revive = function()
+      error("nothing here had given up")
+    end,
+  }
+
+  local said = hotplug.changed(base.context, hotplug.ATTACH, "back") or ""
+  expect.falsy(said:find("service"), "no restart count on a healthy machine")
+end)
+
+it("a machine with no supervisor still handles an attach", function()
+  local base = machine({})
+  base.attach("back", { "modem" })
+  expect.equal(hotplug.revive(base.context), 0, "nothing to ask")
+  expect.truthy(hotplug.changed(base.context, hotplug.ATTACH, "back") ~= nil)
+end)

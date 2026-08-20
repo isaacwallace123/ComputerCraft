@@ -16,6 +16,24 @@
 --- Placing the mine is the same shape: a `mine` message answered by `leases`,
 --- which crosses the bridge unaltered and so works against an ICOS 1 base too.
 ---
+--- ## The log *is* the history
+---
+--- There used to be two pages. Console kept its own list of the last forty
+--- lines in memory and threw it away when the page closed; Logs read the
+--- machine's log and had no prompt. So the answer to "what did I run, and what
+--- did the base say about it" lived in two places, neither of which had both
+--- halves, and closing the console destroyed the half you had just made.
+---
+--- Now a command writes to the log like anything else does, and this page is
+--- the log with a prompt on the bottom of it. Three things fall out of that and
+--- all three were asked for: console history survives a reboot, a command sits
+--- in sequence with the service output it caused, and there is one page rather
+--- than two.
+---
+--- It also means the console is readable on a monitor, where there is no
+--- keyboard: `readOnly` drops the prompt, and what is left is exactly the Logs
+--- page that used to be a separate file.
+---
 --- ## Everything it says is best-effort, and it says so
 ---
 --- D004: a send that reports false is an ordinary outcome. The console reports
@@ -25,6 +43,7 @@
 --- "asked the base to recall 7".
 
 local commands = require("apps.console.commands")
+local logPort = require("ports.log")
 local plan = require("domain.mine.plan")
 local registry = require("domain.fleet.registry")
 local request = require("os.kernel.request")
@@ -45,6 +64,59 @@ function app.say(lines, level, text)
     table.remove(lines, 1)
   end
   return lines
+end
+
+--- What a typed line is prefixed with in the log.
+---
+--- So an echo is findable among service output, and so `history` can colour it
+--- differently without the log port needing a fourth level for something only
+--- one page produces.
+app.ECHO = "> "
+
+--- Write one of `execute`'s lines into the machine log.
+---
+--- `echo` is not a log level - the port has three and they mean severity. A
+--- command somebody typed is information, so it goes in as `info` and is
+--- recognised again on the way out by its prefix.
+function app.record(port, level, text)
+  if port == nil then
+    return false
+  end
+  local write = port[level] or port.info
+  if type(write) ~= "function" then
+    return false
+  end
+  write(tostring(text))
+  return true
+end
+
+--- The scrollback: the machine log, tagged so echoes can be drawn differently.
+---
+--- `filter` keeps only warnings and errors, which is what somebody opening this
+--- after something went wrong wants, and is one keypress rather than a search
+--- box nobody can type into.
+function app.history(port, count, filter)
+  local out = {}
+  if port == nil then
+    return out
+  end
+
+  for _, entry in ipairs(port.recent(count) or {}) do
+    local level = logPort.level(entry.level)
+    local text = tostring(entry.text or "")
+
+    -- Recovered from the prefix rather than stored, because the log is also
+    -- written by services that know nothing about this page.
+    if level == "info" and text:sub(1, #app.ECHO) == app.ECHO then
+      level = "echo"
+    end
+
+    if not filter or (level == "warn" or level == "error") then
+      out[#out + 1] = { level = level, text = text, at = entry.at }
+    end
+  end
+
+  return out
 end
 
 --- Carry out one intent. Returns the lines to add.
@@ -177,21 +249,52 @@ function app.execute(context, intent)
 end
 
 --- Mount the page.
+---
+--- `readOnly` is what a monitor gets: the scrollback with no prompt, because
+--- D020 says a surface nobody can type on must not be handed a control. That
+--- one flag is the whole difference between this and the page that used to be
+--- called Logs.
 function app.mount(scope, context, options)
   options = options or {}
-  local lines = scope:Value({})
+  local port = context.log
+  local tick = options.tick or scope:Value(0)
   local input = scope:Value("")
+  local filter = options.filter or scope:Value(false)
+  local capacity = options.capacity or 10
+
+  --- Everything in the log, newest last.
+  ---
+  --- Asked for more than fits so that filtering to warnings still fills the
+  --- screen rather than showing two lines out of ten.
+  local lines = scope:Computed(function(use)
+    use(tick)
+    return app.history(port, capacity * 4, use(filter))
+  end)
+
+  local status = scope:Computed(function(use)
+    if port == nil then
+      return "no log on this machine"
+    end
+    local count = #use(lines)
+    if use(filter) then
+      return ("%d warning%s and errors"):format(count, count == 1 and "" or "s")
+    end
+    return ("%d lines"):format(count)
+  end)
+
+  --- The rest of the word being typed, or nil.
+  local suggestion = scope:Computed(function(use)
+    return commands.complete(use(input))
+  end)
 
   local function push(level, text)
-    local next_ = {}
-    for _, line in ipairs(lines:get()) do
-      next_[#next_ + 1] = line
-    end
-    app.say(next_, level, text)
-    lines:set(next_)
+    app.record(port, level == "echo" and "info" or level, text)
+    -- Advanced by hand rather than waiting for the ticker, so the answer to a
+    -- command appears when Enter is pressed instead of up to a second later.
+    -- A console that lags behind the keyboard reads as a console that missed
+    -- the command.
+    tick:set(tick:get() + 1)
   end
-
-  push("info", "ICOS 2 console - type help")
 
   local function submit(text)
     input:set("")
@@ -201,16 +304,19 @@ function app.mount(scope, context, options)
       -- An empty line is neither an intent nor an error. Telling somebody off
       -- for pressing enter is how a console becomes annoying to use.
       if why then
-        push("echo", "> " .. text)
+        push("echo", app.ECHO .. text)
         push("error", why)
       end
       return
     end
 
-    push("echo", "> " .. text)
+    push("echo", app.ECHO .. text)
 
     if intent.kind == "clear" then
-      lines:set({})
+      -- The log is the history now, and a page cannot truncate the machine's
+      -- log without also deleting what the services wrote. Filtering is the
+      -- honest version of what `clear` was for.
+      push("info", "the console keeps the machine log now - use Warnings only to narrow it")
       return
     end
 
@@ -219,12 +325,32 @@ function app.mount(scope, context, options)
     end
   end
 
+  local actions = nil
+  if not options.readOnly then
+    actions = {
+      scope:Button({
+        Text = "Warnings only",
+        Variant = "ghost",
+        OnClick = function()
+          filter:set(not filter:get())
+        end,
+      }),
+    }
+  end
+
   return view.build(scope, {
     lines = lines,
     input = input,
-    capacity = options.capacity or 10,
+    suggestion = suggestion,
+    capacity = capacity,
     title = "Console",
+    status = status,
+    actions = actions,
+    readOnly = options.readOnly,
     onChange = function(text)
+      input:set(text)
+    end,
+    onComplete = function(text)
       input:set(text)
     end,
     onSubmit = submit,

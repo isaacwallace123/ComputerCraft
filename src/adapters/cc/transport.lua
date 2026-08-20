@@ -107,6 +107,19 @@ function adapter.new()
   --- A service may be restarted by the supervisor, so this has to be safe to
   --- call again. It is.
   function impl.host(name, protocol)
+    -- Opened here rather than assumed, because this is the first thing the
+    -- bridge does and it is where a machine that booted without a modem gets
+    -- stuck. It asserts on the result, so a closed radio killed the service
+    -- outright - and the service is what turtles talk to. A modem plugged in
+    -- afterwards then did nothing at all until somebody rebooted the base,
+    -- which from the outside looks exactly like a fleet that has gone quiet.
+    --
+    -- `open` is idempotent and answers false rather than raising, so this costs
+    -- one boolean on the path where the radio is already up.
+    if not rednet.isOpen() then
+      impl.open()
+    end
+
     if not rednet.isOpen() then
       return false, "no modem is open"
     end
