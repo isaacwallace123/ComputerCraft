@@ -9,8 +9,18 @@
 
 package.path = "/?.lua;/?/init.lua;" .. package.path
 
-local ui = require("core.ui")
-local config = require("core.config")
+-- Every require this program will ever make, at the top.
+---
+--- Not a style preference. `prune()` below deletes files while this is running,
+--- and a `require` after that point would be a require of something that may
+--- have just been removed and not yet downloaded. Loading them here puts them in
+--- `package.loaded`, where the disk cannot reach them.
+local console = require("os.kernel.console")
+local config = require("adapters.cc.config")
+local sound = require("adapters.cc.sound")
+local ccScreen = require("adapters.cc.screen")
+local prune = require("lib.prune")
+local roles = require("os.kernel.roles")
 
 local CONFIG_PATH = ".update"
 local RESULT_PATH = ".update-result"
@@ -42,7 +52,8 @@ local cfg = config.load(CONFIG_PATH, defaults)
 config.save(RESULT_PATH, { ok = false, message = "update interrupted" })
 
 if firstRun then
-  ui.clear()
+  term.clear()
+  term.setCursorPos(1, 1)
   print("Update source - enter to accept each default.\n")
 
   local function ask(prompt, current)
@@ -148,6 +159,50 @@ local function urlFor(ref, name)
   )
 end
 
+--- Blank every comment-only line, keeping the line count.
+---
+--- **The tree in the repository does not fit on a CC computer.** It is about
+--- 1.2 MB and `computer_space_limit` is 1,000,000 bytes by default, which is
+--- not something you can raise on somebody else's server. Roughly half of it is
+--- comments, and the comments are for the repository rather than for the
+--- device: stripped, it is around 550 KB.
+---
+--- `tools\build.ps1` does this for a world you can reach with a file copy. This
+--- does it for every machine that updates over the network, which is the only
+--- route a real server has - and without it an update downloads sixty files,
+--- fills the disk part-way through, and leaves a machine that boots into a
+--- half-written tree.
+---
+--- Blanked rather than deleted, and the reason is worth keeping: an error that
+--- says `apps/fleet/app.lua:207` is the most useful thing this system produces in
+--- a world, and it is only useful while line 207 here is line 207 there. One
+--- byte instead of sixty, and the line numbers still match the source somebody
+--- opens to fix it.
+---
+--- The rule is exactly `build.ps1`'s - leading whitespace, then two dashes - so
+--- a machine that was updated over the network and one that was copied from a
+--- build hold byte-identical files, and the fingerprint below can still be
+--- compared between them.
+local function strip(name, body)
+  if not name:match("%.lua$") then
+    return body
+  end
+
+  local out = {}
+  local position = 1
+  while true do
+    local stop = body:find("\n", position, true)
+    local line = stop and body:sub(position, stop - 1) or body:sub(position)
+    out[#out + 1] = line:match("^%s*%-%-") and "" or line
+    if not stop then
+      break
+    end
+    position = stop + 1
+  end
+
+  return table.concat(out, "\n")
+end
+
 local function readLocal(path)
   local handle = fs.exists(path) and fs.open(path, "r")
   if not handle then
@@ -185,47 +240,58 @@ local function remember(name, note, color)
   end
 end
 
+--- The screen, built once.
+---
+--- `os/kernel/console.lua` rather than the component tree, because an updater
+--- that could not draw its own failure would be the worst possible thing to be
+--- unable to draw - it runs at the moment the files it is drawing with are
+--- being replaced.
+local screen = console.new(ccScreen.new(term))
+local T = console.TOKENS
+
 --- Repaint the whole screen. Cheap enough to call per file, and redrawing
---- everything avoids the stale-artifact bugs that partial updates invite.
+--- everything avoids the stale-artifact bugs that partial updates invite - the
+--- buffer turns a full repaint into one blit per row that actually differs, so
+--- "redraw everything" costs what "redraw what changed" used to.
 local function draw(stage, done, total, current)
-  local width, height = ui.size()
+  local _, height = screen:size()
   frame = frame + 1
 
-  ui.clear()
-  ui.header("ICOS update", stage)
-
-  ui.text(2, 3, ui.pad(cfg.user .. "/" .. cfg.repo, width - 3), ui.theme.dim)
-
-  local barWidth = width - 12
-  ui.bar(2, 5, barWidth, total > 0 and done / total or 0, ui.theme.accent)
-  ui.text(barWidth + 3, 5, ui.pad(("%d/%d"):format(done, total), 8, "right"), ui.theme.fg)
+  screen:clear()
+  screen:header("ICOS update", stage)
+  screen:line(3, cfg.user .. "/" .. cfg.repo, T.mutedFg)
+  screen:bar(5, done, total)
 
   local spin = done < total and SPINNER[(frame % #SPINNER) + 1] .. " " or "  "
-  ui.text(2, 6, ui.pad(spin .. (current or ""), width - 3), ui.theme.fg)
+  screen:line(6, spin .. (current or ""), T.foreground)
 
-  local line = 8
+  local row = 8
   for _, entry in ipairs(recent) do
-    if line >= height then
+    if row >= height then
       break
     end
-    local note = entry.note
-    ui.text(2, line, ui.pad(entry.name, width - #note - 4), entry.color)
-    ui.text(width - #note - 1, line, note, entry.color)
-    line = line + 1
+    screen:line(row, entry.name, entry.color)
+    screen:right(row, entry.note, entry.color)
+    row = row + 1
   end
 
-  ui.footer(stage)
+  screen:present()
 end
 
 local function fail(message, detail)
   config.save(RESULT_PATH, { ok = false, message = message, detail = detail })
-  ui.clear()
-  ui.header("ICOS update", "failed")
-  ui.text(2, 3, message, ui.theme.bad)
+
+  screen:clear()
+  screen:header("ICOS update", "failed")
+  screen:line(3, message, T.destructive)
   if detail then
-    ui.text(2, 5, ui.pad(detail, (ui.size()) - 3), ui.theme.dim)
+    screen:line(5, detail, T.mutedFg)
   end
-  local _, height = ui.size()
+  screen:present()
+
+  -- The cursor goes below whatever was drawn, so anything printed after this -
+  -- a stack trace, a shell prompt - does not land on top of the reason.
+  local _, height = screen:size()
   term.setCursorPos(1, height - 1)
 end
 
@@ -255,18 +321,107 @@ if not manifest or type(manifest.files) ~= "table" then
   return
 end
 
+--- What this machine downloads: its own role's files, not the whole tree.
+---
+--- The tree is about 554 KB and a CC computer holds 1,000,000 bytes. Most of
+--- what a given machine would fetch is code it will never run - a client has no
+--- mine, no sector leases and no turtle jobs; a turtle has no console and no
+--- disk manager. `tools/make-manifest.ps1` works out the closure for each role
+--- and writes it into the manifest; this picks the one that applies.
+---
+--- Falls back to everything in two cases, both correct. A manifest from a build
+--- before this existed has no `roles`, and a machine with no `.node` has not been
+--- set up yet - so it takes the lot, `setup` chooses what it is, and the next
+--- update trims to that.
+---
+--- `roles.roleOf` is deliberately not asked about a missing node. It answers
+--- `client` for anything it cannot read, which is the right default for booting
+--- - a machine that is wrong about itself should hold no authority - and the
+--- wrong one for downloading, because a fresh computer that fetched the client
+--- set would be missing the server it is about to be told to be.
+local role = nil
+if fs.exists(".node") then
+  role = roles.roleOf(config.load(".node", {}))
+end
+
 local files = manifest.files
+if role and type(manifest.roles) == "table" and type(manifest.roles[role]) == "table" then
+  files = manifest.roles[role]
+end
 local total = #files
 local expected = {}
 local changed, unchanged, failed = 0, 0, 0
 local bytes = 0
 
+-- ------------------------------------------------------------------ pruning
+
+--- Every file under a directory, skipping anything ICOS persists.
+local function walk(dir, into)
+  for _, name in ipairs(fs.list(dir)) do
+    local path = dir == "" and name or (dir .. "/" .. name)
+    if not prune.persisted(path) then
+      if fs.isDir(path) then
+        walk(path, into)
+      else
+        into[#into + 1] = path
+      end
+    end
+  end
+end
+
+--- Delete what this build does not have, before downloading what it does.
+---
+--- Before rather than after, and the order is the point: pruning afterwards
+--- cannot help a disk that filled up during the download. The cost is that an
+--- update which then fails over the network leaves a partial old tree - but that
+--- machine was going to end up with a partial *new* tree anyway, and this one is
+--- fixed by running `update` again.
+---
+--- Safe to do while running, because everything this program needs is already
+--- required and therefore already in `package.loaded`. That is why every require
+--- in this file is at the top of it.
+---
+--- The decision is `lib/prune.lua`'s and the filesystem is this function's. Only
+--- one of those two can be a spec, and it is the one that decides.
+local function sweep()
+  local found = {}
+  for _, root in ipairs(prune.roots(files)) do
+    if fs.exists(root) and fs.isDir(root) then
+      walk(root, found)
+    end
+  end
+  for _, name in ipairs(prune.RETIRED_FILES) do
+    if fs.exists(name) and not fs.isDir(name) then
+      found[#found + 1] = name
+    end
+  end
+
+  local removed = 0
+  for _, path in ipairs(prune.stale(files, found)) do
+    if not fs.isReadOnly(path) and pcall(fs.delete, path) then
+      removed = removed + 1
+    end
+  end
+  return removed
+end
+
+draw("cleaning", 0, 1, "removing files this build does not have")
+local pruned = sweep()
+
 for index, name in ipairs(files) do
   draw("downloading", index - 1, total, name)
 
   local body, err = get(urlFor(ref, name))
+  if body then
+    -- Stripped once, here, so everything downstream - the unchanged check, the
+    -- checksum, the write and the verify pass - is talking about the same bytes.
+    -- Checksumming what was downloaded and writing something else would make the
+    -- verify pass report every file as broken.
+    body = strip(name, body)
+  end
+
   if not body then
-    remember(name, tostring(err):sub(1, 12), ui.theme.bad)
+    remember(name, tostring(err):sub(1, 12), T.destructive)
     failed = failed + 1
   else
     bytes = bytes + #body
@@ -275,10 +430,10 @@ for index, name in ipairs(files) do
     if body == readLocal(name) then
       unchanged = unchanged + 1
     elseif writeLocal(name, body) then
-      remember(name, "updated", ui.theme.good)
+      remember(name, "updated", T.good)
       changed = changed + 1
     else
-      remember(name, "UNWRITABLE", ui.theme.bad)
+      remember(name, "UNWRITABLE", T.destructive)
       failed = failed + 1
     end
   end
@@ -313,62 +468,76 @@ end
 -- ----------------------------------------------------------------- summary
 
 local ok = failed == 0 and #broken == 0
-local width, height = ui.size()
+local _, height = screen:size()
 config.save(RESULT_PATH, {
   ok = ok,
   message = ok and "update verified" or "update verification failed",
   changed = changed,
   unchanged = unchanged,
+  removed = pruned,
   failed = failed,
   commit = ref,
 })
 
-ui.clear()
-ui.header("ICOS update", ok and "verified" or "PROBLEMS")
+screen:clear()
+screen:header("ICOS update", ok and "verified" or "PROBLEMS")
 
-ui.text(2, 3, ui.pad(cfg.user .. "/" .. cfg.repo, width - 3), ui.theme.dim)
-ui.text(2, 4, "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (branch)"), ui.theme.dim)
-
-ui.text(
-  2,
-  6,
-  ("%-10s %d"):format("updated", changed),
-  changed > 0 and ui.theme.good or ui.theme.dim
+screen:line(3, cfg.user .. "/" .. cfg.repo, T.mutedFg)
+screen:line(
+  4,
+  "commit  " .. tostring(ref):sub(1, 7) .. (pinned and "" or " (branch)") .. "  " .. (role or "all"),
+  T.mutedFg
 )
-ui.text(2, 7, ("%-10s %d"):format("unchanged", unchanged), ui.theme.dim)
-ui.text(2, 8, ("%-10s %d"):format("failed", failed), failed > 0 and ui.theme.bad or ui.theme.dim)
 
-ui.text(
-  2,
-  10,
+screen:line(6, ("%-10s %d"):format("updated", changed), changed > 0 and T.good or T.mutedFg)
+screen:line(7, ("%-10s %d"):format("unchanged", unchanged), T.mutedFg)
+-- Reported rather than done quietly. A machine coming from a build with a
+-- different shape deletes a few hundred files here, and somebody watching an
+-- update remove most of a fleet OS is owed the number.
+screen:line(8, ("%-10s %d"):format("removed", pruned), pruned > 0 and T.warn or T.mutedFg)
+screen:line(9, ("%-10s %d"):format("failed", failed), failed > 0 and T.destructive or T.mutedFg)
+
+screen:line(
+  11,
   ("%-10s %d/%d files, %dkB"):format("verified", verified, total, math.floor(bytes / 1024)),
-  ok and ui.theme.good or ui.theme.bad
+  ok and T.good or T.destructive
 )
-ui.text(2, 11, ("%-10s %s"):format("fingerprint", hex(fingerprint)), ui.theme.accent)
+screen:line(12, ("%-10s %s"):format("fingerprint", hex(fingerprint)), T.accent)
 
-local line = 13
+local row = 14
 for _, problem in ipairs(broken) do
-  if line >= height - 1 then
+  if row >= height - 1 then
     break
   end
-  ui.text(2, line, ui.pad(problem, width - 3), ui.theme.bad)
-  line = line + 1
+  screen:line(row, problem, T.destructive)
+  row = row + 1
 end
 
+-- The last line says what to do next rather than what happened, because what
+-- happened is the six lines above it and somebody reading a summary is deciding
+-- whether they still have to do something.
+local footer
 if ok and rebootAfter then
-  ui.footer("Update verified - rebooting")
+  footer = "Update verified - rebooting"
 elseif ok and changed > 0 then
-  ui.footer("Updated - reboot to run the new code")
+  footer = "Updated - reboot to run the new code"
 elseif ok then
-  ui.footer("Already up to date")
+  footer = "Already up to date"
 else
-  ui.footer("Update incomplete - see above")
+  footer = "Update incomplete - see above"
 end
+
+screen:line(height, footer, ok and T.mutedFg or T.warn)
+screen:present()
+
+-- A tone, because an automatic update runs unattended and the thing somebody
+-- wants to know from across the room is whether it worked.
+sound.play(ok and "confirm" or "error")
 
 -- Sound is optional: a machine with no speaker just updates quietly, and a
 -- missing module must never be able to break updating itself.
 pcall(function()
-  require("core.sound").play(ok and "ready" or "error")
+  sound.play(ok and "ready" or "error")
 end)
 
 if ok and rebootAfter then

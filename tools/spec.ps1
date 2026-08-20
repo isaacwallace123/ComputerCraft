@@ -1,17 +1,22 @@
 <#
 .SYNOPSIS
-  Run the ICOS turtle logic specs against a simulated world.
+  Run the ICOS specs.
 
 .DESCRIPTION
   There is no Lua interpreter installed on the development machine, but the Lua
   language server binary that tools\check.ps1 already locates is one. This runs
-  the spec suite through it, so the tests need nothing new installed.
+  the suite through it, so the tests need nothing new installed.
 
-  Pass a substring to run only matching specs.
+  Spec files live in `tests\`, mirroring `src\`, and are discovered rather than
+  listed - a new one runs the moment it exists. They are deliberately outside
+  `src\` because the updater deploys everything in `src\manifest.json` to every
+  machine in the fleet, and a turtle has no use for a spec.
+
+  Pass a substring to run only matching cases.
 
 .EXAMPLE
   .\tools\spec.ps1
-  .\tools\spec.ps1 cap
+  .\tools\spec.ps1 chunk
 #>
 [CmdletBinding()]
 param([string]$Filter)
@@ -43,12 +48,31 @@ if (-not $lua) {
 }
 
 Push-Location $repo
+
+# Discovered, not listed. A spec file that nobody remembered to register is a
+# spec file that reports green by never running, which is the one failure a test
+# suite must not have.
+$specs = Get-ChildItem "tests" -Recurse -File -Filter *_spec.lua |
+  ForEach-Object { $_.FullName.Substring($repo.Length + 1).Replace("\", "/") } |
+  Sort-Object
+
+if ($specs.Count -eq 0) {
+  Pop-Location
+  Write-Host "No spec files found under tests\" -ForegroundColor Red
+  exit 1
+}
+
+# `*` rather than an empty string for "no filter". PowerShell drops an empty
+# argument when invoking a native executable, so the first spec path slid into
+# the filter slot - the suite loaded one file fewer, matched no case names, and
+# reported "0 passed" as a success.
+$token = if ([string]::IsNullOrWhiteSpace($Filter)) { "*" } else { $Filter }
+$arguments = @("tests/run.lua", $token) + $specs
 if ($lua -match "lua-language-server") {
-  & $lua -E "tools/spec/runner.lua" $Filter
+  $arguments = @("-E") + $arguments
 }
-else {
-  & $lua "tools/spec/runner.lua" $Filter
-}
+
+& $lua @arguments
 $code = $LASTEXITCODE
 Pop-Location
 

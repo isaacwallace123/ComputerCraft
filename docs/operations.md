@@ -12,6 +12,14 @@ Leave the token blank for the public repository. The configured default branch i
 `master`, not `main`. After download, choose a role and label; setup reboots the
 machine automatically.
 
+`bootstrap.lua` fetches `src/manifest.json`, installs the handful of files listed there as
+`bootstrap` - the transitive requires of `update.lua`, computed by
+`tools\make-manifest.ps1` - and hands over to `update.lua` for the rest. That list used to
+be four literal filenames in `bootstrap.lua`, and the D039 restructure deleted three of
+them: every check passed, every machine that already had ICOS kept updating, and only a
+fresh install was broken. `tools\check.ps1` now compares the manifest against the tree on
+every run.
+
 For a private repository, use `tools\print-bootstrap.ps1` on the development computer
 and paste its generated Lua command into the in-game `lua` prompt. Do not publish the
 token-bearing command.
@@ -119,6 +127,211 @@ apply. Mine Control actions on the handheld execute at the base, so mine plans, 
 leases, and coordinated quarry assignments remain authoritative rather than becoming
 a second local copy.
 
+## Running a machine by hand
+
+`startup.lua` boots ICOS on power-up, so these are for starting a machine deliberately,
+forcing a role onto one that has not been set up, or asking a running server what it thinks
+is happening:
+
+    icos status      build the machine, print which services start, stop
+    icos             boot the role in .node and run it until Ctrl-T
+    icos server      force a role, for a machine that has not been set up
+
+The roles are `server`, `client`, `turtle` and `mobile` - form factors, not jobs. A mining
+turtle and a farming turtle are both `turtle`; what they do is the job in `.node`.
+
+Nothing is written that ICOS 1 reads, so a reboot puts the machine back exactly as it was.
+`.mine` is shared with ICOS 1 deliberately - the shape is identical, so leases and surveyed
+shaft heads survive in both directions. `.fleet2`, `.desired` and `.policy2` are new names
+precisely so that a rollback never reads them.
+
+Start with `status`. The failures worth finding first are all in the wiring - no wireless
+modem, no saved position, a role with no operating system - and they are discovered when
+the ports are built and the services registered, which is what `status` does and what
+reading a config file would not.
+
+    icos watch       run a server and show the fleet while it does
+
+A running server prints nothing: services return what they did rather than drawing, and the
+Devices page belongs to the *client* role on another machine. `watch` is the diagnostic
+view - the registry as plain text, repainted every second - and it sets goals, because
+otherwise there is no way to ask a server for a recall and therefore no way to test that
+recall works. A digit selects a device, `r`/`d`/`p` set recall/deploy/park, and each goes
+through `discovery.want`, the same function a client's button press arrives at.
+
+The `wire` column is the one to read: `icos1` means that device was heard through
+`os/server/services/bridge.lua`, on the old protocol.
+
+### Testing the ICOS 1 bridge in a world
+
+This is the test D042 exists for, and the one thing that cannot be checked without a world:
+whether an unupgraded fleet survives its base being switched to ICOS 2.
+
+**You need two machines.** An Advanced Computer with a wireless or Ender modem, and a
+Mining Turtle with a wireless or Ender modem, a pickaxe, and some coal. Place both, run
+`id` on each to note their computer IDs, then from the repository:
+
+```powershell
+.\tools\link-world.ps1 -List
+.\tools\link-world.ps1 -World "<your world>" -Id <computer id>
+```
+
+Link **only the computer**. The turtle needs its own copy, because a junction points both
+machines at the same directory and they would share one `.node`, one `.nav`, and one job
+file:
+
+```powershell
+$turtle = "<instance>\saves\<world>\computercraft\computer\<turtle id>"
+New-Item -ItemType Directory -Force $turtle | Out-Null
+Copy-Item -Recurse -Force .\src\* $turtle
+```
+
+Reboot both. Each has no `.node`, so each runs setup.
+
+**1. Set the turtle up as ICOS 1.** Role `miner`, any job. Let it boot to its launcher and
+leave it running - it now broadcasts a heartbeat on `ccfleet` every two seconds. This is a
+genuinely unupgraded device; nothing about it knows ICOS 2 exists.
+
+**2. Set the computer up as ICOS 1 first, and confirm the fleet works.** Role `fleet`. The
+turtle should appear in Devices within a few seconds. This is the control: it proves the
+modems, the world, and the turtle are fine *before* anything changes, so a later failure
+has only one possible cause.
+
+While you are here, run `mine here` on the console if you want to test sector leasing. It
+writes `.mine`, which ICOS 2 reads unchanged.
+
+**3. Switch the computer to ICOS 2.** Exit ICOS 1 to CraftOS (hold a key during the splash
+for system tools, then Exit), then:
+
+```text
+icos status
+```
+
+Expect `ok radio` and eight services running, `healthy`. **If the radio line says FAIL, stop
+there** - nothing else in the test can pass, and the answer is a modem that is not attached
+or not wireless.
+
+**4. Watch the fleet come back.**
+
+```text
+icos watch
+```
+
+Within about two seconds the turtle should appear, with `wire` reading `icos1`. That single
+line is the whole of D042: the server heard a device that has never spoken its protocol.
+An empty table here means the bridge is not receiving, and `.log` on the computer is the
+next place to look.
+
+**5. Recall it.** Press `1` to select the turtle, then `r`. The notice line reports the
+generation. Watch for two things, in order:
+
+- the turtle physically returns home and parks - the order crossed the protocol boundary;
+- the goal column changes from `recall pending` to `recall converged` - its ICOS 1
+  `command_result` came back and was credited.
+
+Converged is the assertion that matters. Pending forever means the command went out and the
+acknowledgement did not come back, which is a different bug from silence.
+
+**6. Deploy it again.** Press `d`. The turtle should leave. If you configured a mine at
+step 2, it will ask for a sector over `ccfleet` and should be granted one - the `mine`
+translation, which is the half of the outage that would never have shown on a dashboard.
+
+**7. Optional, and it should do nothing.** Press `p`. `park` has no ICOS 1 command, so the
+goal is set and nothing is sent; the device stays `park pending` forever. That is correct
+and deliberate - inventing a command for a build that would not understand it is a message
+into the void that looks like delivery.
+
+Reboot the computer at any point to get ICOS 1 back. Nothing ICOS 2 writes is read by
+ICOS 1, and `.mine` is shared on purpose.
+
+## Testing in a local world
+
+The fastest loop by a wide margin: point a singleplayer computer's filesystem at the
+build and skip publishing entirely. Save in the editor, build, reboot the computer in
+game, and it is running the new code. No commit, no push, no `update`.
+
+```powershell
+.\tools\link-world.ps1 -List
+.\tools\link-world.ps1 -World "CC Testing" -Id 0
+
+# after every edit
+.\tools\build.ps1
+```
+
+That replaces `<instance>\saves\<world>\computercraft\computer\0\` with a directory
+junction to `build\`. Junctions need no administrator rights. Place a computer in the
+world first — the first one placed gets ID 0 — and re-run with `-Id n` for a second
+machine, or after making a new world.
+
+### Why there is a build step at all
+
+The junction used to point at `src\` directly, which was one command shorter and put a
+1.2 MB tree on a 1 MB disk. `computer_space_limit` is 1,000,000 bytes by default and is
+not something you can raise on somebody else's server, so the ceiling is real.
+
+The machine drew perfectly and could not write a single file: its log stayed empty, its
+saved desktop arrangement vanished on every reboot, and nothing anywhere reported an
+error. A linked computer that is over the limit is the most misleading test rig there is,
+because it looks exactly like a working one.
+
+`tools\build.ps1` blanks every comment-only line — one byte instead of sixty — which takes
+the tree to about 550 KB. Blanked rather than deleted, because `apps/fleet/app.lua:207` in
+an error message is only useful while line 207 is still line 207. `tools\check.ps1`
+measures it on every run and fails if it stops fitting.
+
+`-Instance` defaults to the Valhelsia 6 CurseForge path; pass it explicitly for any other
+launcher or pack.
+
+Undo it before zipping or sharing the world, because a junction is not portable and the
+receiving machine sees an empty computer:
+
+```powershell
+.\tools\unlink-world.ps1 -World "CC Testing" -CopyBack
+```
+
+**This is for a singleplayer world on your own machine only.** On a server the computer's
+files live on the host, so use the normal route: `make-manifest`, push, then `update` in
+game.
+
+### What a linked computer writes into your working tree
+
+The junction goes both ways. Everything the OS persists — `.node`, `.nav`, `.mine`,
+`.log`, a job file, and a `.tmp` beside each during a save — is written into `build\`,
+which is ignored wholesale. The build leaves dotfiles alone when it runs, so the linked
+computer keeps its identity, its position and its log across a rebuild.
+
+That is also why they no longer land in `src\`. The individual dotfile entries remain in
+`.gitignore` for anyone whose world is still linked the old way, and a turtle that gets as
+far as mining writes six of them within a minute.
+
+`.settings` is CC's own, written when you use the `set` program.
+
+### Seeing the ICOS 2 UI framework
+
+The framework is built but deliberately not wired into the desktop — the running fleet
+still uses `legacy/shell/ui.lua`, and putting a framework screen on the desktop is a change that
+touches live machines. To look at it, run it by hand on a linked computer:
+
+```text
+apps/showcase
+```
+
+It mounts the rebuilt Fleet and Devices pages plus a motion page against a fake roster,
+using the real `adapters/cc` screen and input ports, and **reports the frame cost along the
+bottom**: frames, mean blit count, and milliseconds per frame. Keys are `1`–`3` to switch
+page, `tab` to move focus, `enter`/`space` to press, and `q` to quit.
+
+Those numbers are the point. Every figure in `docs/ui-framework.md` section 12 was measured
+on desktop Lua with a conservative 10× margin assumed for Cobalt, and that section says to
+re-measure on hardware before trusting the margin. This is how. It is also the gate on two
+pieces of work: wiring the framework into the desktop, and building the Blackjack showcase,
+which is a full-screen animated canvas — the one workload D037 says does not fit a
+contended scheduling slice.
+
+An advanced (gold) computer shows the palette properly. A standard one is worth a look too,
+since it renders the same theme flattened to greyscale, which is the case
+`docs/ui-design.md` designs the semantic colours around.
+
 ## Normal deployment workflow
 
 From the repository root:
@@ -138,6 +351,33 @@ manifest generation, checks, commit, and push, so do not run it merely to verify
 
 Installed machines check for updates on boot when `.node.autoUpdate` is enabled. You
 can also use Update on the base or update/update-all in Devices.
+
+### What an update does to the disk
+
+Two things worth knowing, because both are new and both are about the 1 MB limit.
+
+**Comments are stripped on the way in.** The tree in the repository is about 1.2 MB and
+`computer_space_limit` is 1,000,000 bytes, which is not something you can raise on
+somebody else's server. `update.lua` blanks every comment-only line as each file arrives,
+which takes it to around 550 KB. Blanked rather than deleted, so `apps/fleet/app.lua:207` in
+an error still points at line 207 of the file you open here. It is the same rule
+`tools\build.ps1` applies, and the two produce byte-identical files - which is what keeps
+the fingerprint on the update screen comparable between a machine that updated over the
+network and one that was copied from a build.
+
+**Files this build does not have are deleted, before the download.** An updater that only
+wrote would leave a machine holding both trees, and a machine coming from ICOS 1 would
+hold `core/`, `fleet/`, `miner/`, `mine/`, `jobs/` and `turtle/` on top of the 550 KB it
+just fetched. That does not fit, so the download fills the disk part-way and the machine
+boots into half a tree.
+
+Only directories ICOS has ever shipped are considered, and nothing beginning with a dot is
+ever touched - so a program you wrote on the computer is safe, and so is every file the OS
+persists. The rules are `src/lib/prune.lua`; the update screen reports the count as
+`removed`.
+
+Updating a live ICOS 1 machine to a current build removes 59 files and keeps its `.node`,
+`.nav`, `.mine`, `.log` and saved position.
 
 ## Starting a coordinated quarry
 

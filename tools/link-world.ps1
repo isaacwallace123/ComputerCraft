@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Wires a LOCAL singleplayer world's computer straight to .\src\ so edits apply
-  instantly with no push and no update step.
+  Wires a LOCAL singleplayer world's computer at .\build\ so edits apply after
+  one build command, with no push and no update step.
 
 .DESCRIPTION
   This is for a throwaway test world on your own machine, not for the server -
@@ -10,9 +10,17 @@
 
   CC: Tweaked stores computer <id> at
     <instance>\saves\<world>\computercraft\computer\<id>\
-  This replaces that folder with a directory junction pointing at .\src\, so the
-  files VS Code edits ARE the files the in-game computer runs. Save, then reboot
-  the computer in game - that is the whole loop.
+  This replaces that folder with a directory junction pointing at .\build\.
+  Save, run `tools\build.ps1`, reboot the computer in game - that is the loop.
+
+  It used to point at `src\` directly, which was one command shorter and put a
+  1.2 MB tree on a 1 MB disk. The machine drew perfectly and could not write a
+  single file: its log stayed empty and its saved desktop arrangement vanished on
+  every reboot, with nothing anywhere reporting an error. See `tools\build.ps1`.
+
+  The junction survives a rebuild, because the build replaces the files inside
+  the directory rather than the directory itself - and it leaves dotfiles alone,
+  so the linked computer keeps its own `.node`, `.log` and position.
 
   Junctions do not require administrator rights.
 
@@ -30,7 +38,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
-$source = Join-Path $repo "src"
+$source = Join-Path $repo "build"
 
 if (-not (Test-Path $Instance)) { throw "Instance not found: $Instance" }
 $savesDir = Join-Path $Instance "saves"
@@ -63,12 +71,17 @@ if ($existing) {
   }
 }
 
+# Built first, so linking a fresh clone does not produce a junction pointing at
+# a directory that does not exist yet.
+& (Join-Path $PSScriptRoot "build.ps1") | Out-Null
+
 & cmd.exe /c mklink /J "`"$target`"" "`"$source`"" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "mklink failed with exit code $LASTEXITCODE" }
 
 Write-Host ""
-Write-Host "Linked computer $Id in '$World' -> src\" -ForegroundColor Green
+Write-Host "Linked computer $Id in '$World' -> build\" -ForegroundColor Green
 Write-Host "  $target"
 Write-Host ""
 Write-Host "Place a computer in that world; the first one you place gets ID 0." -ForegroundColor Cyan
 Write-Host "Re-run this after making a new world, or with -Id n for another computer."
+Write-Host "After editing: .\tools\build.ps1, then reboot the computer in game." -ForegroundColor Cyan

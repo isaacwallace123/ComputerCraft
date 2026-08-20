@@ -11,8 +11,10 @@
 ---   2. Put ONLY this file in a secret Gist and `wget run` that. It will prompt
 ---      for a token and pull everything else from the private repo.
 ---
---- Either way it grabs the two files needed to self-update, then hands off to
---- update.lua which pulls everything in src/manifest.json.
+--- Either way it grabs the handful of files update.lua needs to run - named in
+--- the manifest's `bootstrap` list rather than here - and hands off to
+--- update.lua, which pulls everything in src/manifest.json and removes anything
+--- the build no longer has.
 
 local USER = "isaacwallace123" -- safe to commit; never commit a token
 local REPO = "ComputerCraft"
@@ -68,12 +70,25 @@ local function urlFor(name)
   return ("https://raw.githubusercontent.com/%s/%s/%s/%s/%s"):format(user, repo, ref, PATH, name)
 end
 
-local function grab(name)
+local function fetch(name)
   local response, err = http.get(urlFor(name), headers)
   if not response then
     printError("Failed to download " .. name .. ": " .. tostring(err))
     error("bootstrap aborted", 0)
   end
+  local body = response.readAll()
+  response.close()
+  return body
+end
+
+--- Fetch one file and write it, comments and all.
+---
+--- Unstripped on purpose. `update.lua` runs immediately after this and rewrites
+--- every one of these files with the comment lines blanked, so doing it here
+--- would be the same work twice. Ten files of source is under 100 KB, which fits
+--- on any computer that has room for the tree that follows.
+local function grab(name)
+  local body = fetch(name)
   local dir = fs.getDir(name)
   if dir ~= "" and not fs.exists(dir) then
     fs.makeDir(dir)
@@ -82,19 +97,36 @@ local function grab(name)
   if not handle then
     error("could not write " .. name, 0)
   end
-  handle.write(response.readAll())
+  handle.write(body)
   handle.close()
-  response.close()
   print("  got " .. name)
 end
 
--- The minimum update.lua needs to run and draw itself. Everything else comes
--- down in the update pass immediately after.
+--- The minimum update.lua needs to run and draw itself, read from the manifest.
+---
+--- Named there rather than here, and that is the whole point of this block. It
+--- used to be four literal calls - `core/config.lua`, `core/ui.lua`,
+--- `core/sound.lua`, `update.lua` - and the restructure that dismantled `core/`
+--- deleted three of them.
+---
+--- Nothing caught it. Every check passed, every machine that already had ICOS
+--- kept updating fine, and the only broken path was installing onto a **fresh**
+--- computer: three 404s and an aborted bootstrap. That is the one path nobody
+--- exercises until they are standing in front of a new server.
+---
+--- `tools\make-manifest.ps1` walks `update.lua`'s requires transitively and
+--- writes the answer as `bootstrap`, so this list is derived from the tree it
+--- describes and cannot be left behind by a move.
 print("\nBootstrapping from " .. user .. "/" .. repo)
-grab("core/config.lua")
-grab("core/ui.lua")
-grab("core/sound.lua")
-grab("update.lua")
+
+local manifest = textutils.unserialiseJSON((fetch("manifest.json"):gsub("^\239\187\191", "")))
+if type(manifest) ~= "table" or type(manifest.bootstrap) ~= "table" then
+  error("manifest.json has no bootstrap list - re-run tools\\make-manifest.ps1 and push", 0)
+end
+
+for _, name in ipairs(manifest.bootstrap) do
+  grab(name)
+end
 
 -- Seed update.lua's config so it does not ask again.
 local handle = fs.open(".update", "w")

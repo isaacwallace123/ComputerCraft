@@ -1,0 +1,169 @@
+--- Hosting a screen: mount it against a pair of ports, then pull, dispatch,
+--- render, repeat.
+---
+--- Named `host` rather than `shell` for two reasons, and the second is the one
+--- that matters. CC already has a `shell` global, so a local of that name shadows
+--- it and reads as a mistake even where it is not; and docs/icos-2.md section 4
+--- reserves `src/shell/` for the thing that hosts *apps* - the desktop, the
+--- handheld - which is a layer above this and would have been confused with it
+--- forever.
+---
+--- Small on purpose. Everything interesting already happened - the bindings
+--- decided what is dirty, the diff decided what to send - so this is the twenty
+--- lines that join them to a pair of ports.
+---
+--- ## Why it renders after every event and that is still cheap
+---
+--- `Root:render` returns immediately when nothing is dirty, so an event that
+--- changed nothing costs a table lookup. That is what makes "render every time
+--- round the loop" the right shape rather than a waste: there is no need for the
+--- loop to reason about whether a repaint is due, because the thing that knows
+--- already knows.
+---
+--- Contrast Basalt, which also renders after every event and has no cheap
+--- answer, so it grew a render throttle to stop a busy machine from repainting
+--- constantly. A throttle trades latency for cost; a dirty check costs nothing
+--- and adds no latency, so there is nothing to trade.
+---
+--- ## It does not own the machine
+---
+--- `run` returns when `stop` is called or the input port is exhausted, and it
+--- does not install a signal handler, clear the screen, or reset the palette on
+--- the way out. A shell that tidied up after itself would be wrong on the base
+--- station, where this is one of several coroutines sharing a terminal and the
+--- desktop owns what happens next.
+
+local anim = require("ui.state.anim")
+
+local host = {}
+
+--- Run `root` against an input port until it stops.
+---
+--- `options.onEvent` sees every raw event before the tree does, which is how a
+--- host - the desktop, a supervisor - keeps its own bookkeeping without the
+--- screen having to forward anything. Returning `true` from it consumes the
+--- event.
+--- What `onEvent` returns to end the session.
+---
+--- A sentinel rather than `true`, because "I handled this" and "stop drawing"
+--- are different answers and every existing handler already returns the first.
+host.STOP = "stop"
+
+function host.run(root, input, options)
+  options = options or {}
+  local running = true
+
+  local function stop()
+    running = false
+  end
+
+  -- The first frame happens before the first event, because a screen that
+  -- appeared only once somebody pressed something would look broken for as long
+  -- as nobody did.
+  root:render()
+
+  local clock = options.clock
+
+  while running do
+    -- The frame rate is a consequence, not a setting. A screen with nothing
+    -- moving blocks on the next event and costs nothing; one with a spring in
+    -- flight wakes every tick until it settles and then goes back to costing
+    -- nothing. §8 of docs/ui-framework.md calls this a hard requirement rather
+    -- than an optimisation, because the machine this runs on is also
+    -- reconciling ten turtles.
+    local timeout = options.timeout
+    if clock and root:animating() then
+      timeout = anim.FRAME
+    end
+
+    local event = { input.pull(timeout) }
+    local name = event[1]
+
+    if name == nil then
+      -- A timeout while something is animating is the animation frame, not the
+      -- end of the session.
+      if clock and root:animating() then
+        root:advance(clock.now())
+      elseif options.timeout == nil then
+        -- The port timed out with nothing pending, or a scripted input ran out.
+        -- Both mean nothing more is coming; a loop that kept spinning on nil
+        -- would be a busy-wait in production and a hang in a test.
+        break
+      elseif options.onIdle and options.onIdle(root) == false then
+        break
+      end
+    else
+      if name == "terminate" then
+        break
+      end
+      local consumed = options.onEvent and options.onEvent(name, table.unpack(event, 2))
+
+      -- A handler that wants the session over says so, rather than setting a
+      -- flag the loop cannot see. `os/client/shell.lua` did set such a flag, and
+      -- read it only after `host.run` returned - so switching apps with a number
+      -- key recorded the choice and then carried on drawing the old one, for as
+      -- long as the machine was up.
+      if consumed == host.STOP then
+        break
+      end
+      if not consumed then
+        root:handle(table.unpack(event))
+      end
+      -- An event may have re-targeted a spring, so advance before rendering or
+      -- the first frame of every animation would be a frame late.
+      if clock then
+        root:advance(clock.now())
+      end
+    end
+
+    -- Asked once per pass, after the tree has had the event. A click reaches a
+    -- component's `OnClick`, not `onEvent`, so a handler inside the tree has no
+    -- way to end the session - and without this the desktop's icons and tabs
+    -- recorded what you clicked and went on drawing the old view until the next
+    -- keypress, which is exactly what "clicking does nothing" looks like.
+    if options.onFrame and options.onFrame(root) == host.STOP then
+      break
+    end
+
+    root:render()
+  end
+
+  return stop
+end
+
+--- Everything a screen needs, wired from ports, in one call.
+---
+--- This is the composition root for a page, and it is deliberately the only
+--- place in the framework that knows a screen and an input belong together.
+--- Below it nothing takes both; above it an app hands over two ports and a
+--- builder and gets something it can run.
+function host.mount(options)
+  local ui = require("ui.init")
+  local theme = require("ui.theme")
+
+  local palette = options.palette or theme.dark
+  if options.applyPalette ~= false then
+    theme.apply(options.screen, palette)
+  end
+
+  local scope = options.scope or ui.scoped()
+  local root = ui.mount({
+    scope = scope,
+    screen = options.screen,
+    build = options.build,
+    onError = options.onError,
+    background = theme.TOKENS.background,
+  })
+  root.palette = palette
+
+  -- Focus starts on the first focusable control rather than nowhere, so that a
+  -- keyboard-only surface - a turtle - can act without a mouse click it has no
+  -- way to make.
+  if options.autoFocus ~= false then
+    root:focus(root:focusRing()[1])
+  end
+
+  return root
+end
+
+return host
