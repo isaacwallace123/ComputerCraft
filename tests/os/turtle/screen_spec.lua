@@ -164,6 +164,42 @@ it("every write covers its whole box, so nothing leaves a tail behind", function
   end
 end)
 
+it("the palette is uploaded, because nothing else does it here", function()
+  -- Every other surface gets this from `ui/host.lua` when it mounts. A turtle
+  -- mounts nothing, so the theme's slot numbers were being drawn in CC's default
+  -- colours - slot 14 is red there rather than indigo, slot 3 light blue rather
+  -- than grey. The screen looked wrong in a way that reads as a design choice
+  -- rather than as a missing call.
+  local uploaded = {}
+  local rec = recorder()
+  rec.port.setPalette = function(index)
+    uploaded[index] = true
+  end
+
+  local slept = 0
+  local ok = pcall(screen.run, {
+    screen = rec.port,
+    node = { label = "miner-6" },
+    snapshot = function()
+      return { job = "rare" }
+    end,
+    state = {},
+    clock = {
+      now = function()
+        return 0
+      end,
+      sleep = function()
+        slept = slept + 1
+        error("parked", 0)
+      end,
+    },
+  })
+
+  expect.falsy(ok, "stopped by the spec, not by itself")
+  expect.truthy(uploaded[0], "the whole palette")
+  expect.truthy(uploaded[15])
+end)
+
 it("the loop waits on the clock, never on the input port", function()
   -- `ports/input.lua`'s null implementation returns immediately, which is what
   -- a spec has, what a machine with no keyboard has, and what a computer whose

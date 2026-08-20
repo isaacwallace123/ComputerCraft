@@ -215,10 +215,19 @@ function screen.draw(port, rows, label, last)
   local width, height = port.size()
   port.clear(T.background)
 
+  -- A quiet header, not the desktop's chrome bar.
+  --
+  -- The desktop's bar is window management - tabs, a clock, a way home - and
+  -- earns a saturated block across the top. A turtle has none of that: this line
+  -- is a name. On a 39-cell screen a full-width block of colour for one word is
+  -- most of what you see, so it is `muted` with the name in `accent` and a rule
+  -- under it, which is the restraint `docs/ui-design.md` argues for at this
+  -- resolution.
   local title = format.pad(" " .. tostring(label or "turtle"), width, "left")
-  port.blit(1, 1, title, digit(T.chromeFg):rep(width), digit(T.chrome):rep(width))
+  port.blit(1, 1, title, digit(T.accent):rep(width), digit(T.muted):rep(width))
+  port.blit(1, 2, (" "):rep(width), digit(T.border):rep(width), digit(T.border):rep(width))
 
-  local y = 3
+  local y = 4
   for _, row in ipairs(rows) do
     if y > height then
       break
@@ -253,6 +262,21 @@ function screen.run(context)
   local port = context.screen
   local label = context.node and context.node.label or "turtle"
   local last = nil
+
+  -- The palette, once.
+  --
+  -- Every other surface gets this from `ui/host.lua` when it mounts. A turtle
+  -- does not mount anything any more, so nothing was uploading it - and the
+  -- theme's slot numbers were being drawn in CC's *default* colours, where slot
+  -- 14 is red rather than indigo and slot 3 is light blue rather than grey. The
+  -- screen looked wrong in a way that reads as a design choice rather than as a
+  -- missing call.
+  --
+  -- Sixteen calls at boot and never again, which is what `theme.apply`'s own
+  -- header says it is for.
+  if port ~= nil then
+    theme.apply(port, theme.dark)
+  end
 
   while true do
     if port ~= nil then
