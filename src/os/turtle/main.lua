@@ -334,7 +334,7 @@ turtleOs.locate = service.define({
               heading = found.heading,
             })
           end
-          context.state.locateWhy = nil
+          context.locateWhy = nil
           if context.log then
             context.log.info(
               ("located at %d, %d, %d facing %s"):format(
@@ -353,7 +353,11 @@ turtleOs.locate = service.define({
           -- - and "no position" with no explanation is exactly the state the
           -- whole fleet was found in. The turtle's own screen is where somebody
           -- is looking when they want to know.
-          context.state.locateWhy = why
+          -- On the context, not on `context.state`. That table is the applied
+          -- generation and is written to disk on every order; a transient
+          -- diagnostic in it would be persisted, and a stale one would survive a
+          -- reboot to describe an attempt that never happened.
+          context.locateWhy = why
 
           if context.log then
             -- Once per attempt, and the attempts are a minute apart. A turtle

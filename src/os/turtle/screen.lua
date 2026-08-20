@@ -100,6 +100,32 @@ local function phaseTone(phase)
   return T.warn
 end
 
+--- Where a machine is, as a row.
+---
+--- Shared, because a general needs it for the same reason a miner does: chunk
+--- coverage is worked out from world positions, so a general with no position
+--- holds no ground and a general that holds no ground has no crew. "nobody yet"
+--- and "no position" are the same fact reported twice.
+local function placeRow(snapshot, state)
+  local world = snapshot.world
+  if type(world) == "table" and world.x then
+    return { label = "at", value = ("%d %d %d"):format(world.x, world.y or 0, world.z or 0) }
+  end
+
+  if state.locateWhy then
+    -- Why, not just that. "no position" on a turtle standing under a working
+    -- constellation is a fact with no next step attached, and the reason was
+    -- going to the log - which a turtle no longer has a page for.
+    return {
+      label = "at",
+      value = format.ellipsis(tostring(state.locateWhy), 30),
+      colour = T.warn,
+    }
+  end
+
+  return { label = "at", value = "locating...", colour = T.warn }
+end
+
 --- The lines a miner's screen shows, as data.
 ---
 --- Separated from the drawing so a spec can assert on the sentences without a
@@ -130,17 +156,8 @@ function screen.miner(snapshot, state)
   local fuel = tonumber(snapshot.fuel)
   row("fuel", fuel and format.count(fuel) or "?", fuel and fuel < 1000 and T.destructive or nil)
 
-  local world = snapshot.world
-  if type(world) == "table" and world.x then
-    row("at", ("%d %d %d"):format(world.x, world.y or 0, world.z or 0))
-  elseif state.locateWhy then
-    -- Why, not just that. "no position" on a turtle standing under a working
-    -- constellation is a fact with no next step attached, and the reason was
-    -- going to the log - which a turtle no longer has a page for.
-    row("at", format.ellipsis(tostring(state.locateWhy), 30), T.warn)
-  else
-    row("at", "locating...", T.warn)
-  end
+  local place = placeRow(snapshot, state)
+  row(place.label, place.value, place.colour)
 
   local goal = state.desired and state.desired.mode
   if goal then
@@ -170,6 +187,10 @@ function screen.general(snapshot, state)
     colour = fuel and fuel < 1000 and T.destructive or nil,
   }
 
+  -- A general with no position holds no chunk, and a general that holds no chunk
+  -- has no crew - so this row is the explanation for the one under it.
+  rows[#rows + 1] = placeRow(snapshot, state)
+
   local crew = state.crew or {}
   rows[#rows + 1] = {
     label = "crew",
@@ -188,14 +209,60 @@ function screen.general(snapshot, state)
   return rows
 end
 
+--- A service that has stopped, if any has.
+---
+--- A turtle has no Services page - taking the framework off it was the point -
+--- so a service that fails and backs off is invisible on the one machine
+--- somebody has walked to. That is how "locating..." forever looked identical to
+--- "the locate service died on its first attempt".
+---
+--- Only the worst one, and only when there is one. A row that said "5 services"
+--- every time would be a row nobody reads.
+function screen.fault(supervisor)
+  if supervisor == nil then
+    return nil
+  end
+
+  for _, row in ipairs(supervisor:health()) do
+    if row.gaveUp or (row.state ~= "running" and not row.disabled) then
+      return {
+        label = row.id,
+        value = format.ellipsis(tostring(row.lastError or row.state), 30),
+        colour = row.gaveUp and T.destructive or T.warn,
+      }
+    end
+  end
+  return nil
+end
+
 --- Everything the screen should say right now.
 function screen.rows(context)
   local snapshot = context.snapshot and context.snapshot() or {}
-  local state = context.state or {}
+
+  -- What the screen reads, gathered from the two places it lives: the applied
+  -- state the base wrote, and the machine's own transient notes. Assembled here
+  -- so the drawing functions take one table and can be handed a literal in a
+  -- spec.
+  local state = {
+    crew = (context.state or {}).crew,
+    general = (context.state or {}).general,
+    locateWhy = context.locateWhy,
+  }
+
+  local rows
   if (snapshot.job or "") == "general" then
-    return screen.general(snapshot, state), snapshot
+    rows = screen.general(snapshot, state)
+  else
+    rows = screen.miner(snapshot, state)
   end
-  return screen.miner(snapshot, state), snapshot
+
+  local fault = screen.fault(context.supervisor)
+  if fault then
+    rows[#rows + 1] = { label = "", value = "" }
+    rows[#rows + 1] = fault
+  end
+
+  return rows, snapshot
 end
 
 --- One frame, as a single string, so two frames can be compared.

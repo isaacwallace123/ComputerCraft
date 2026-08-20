@@ -241,3 +241,60 @@ it("the loop waits on the clock, never on the input port", function()
   expect.truthy(slept > 1, "sleeping between frames")
   expect.equal(pulls, 0, "and never asking the input port for anything")
 end)
+
+it("a general shows where it is, because that is why it has no crew", function()
+  -- Chunk coverage is worked out from world positions, so a general with no
+  -- position holds no ground - and a general that holds no ground has no crew.
+  -- "nobody yet" and "no position" were the same fact reported twice, with only
+  -- one of them on screen.
+  local seen = values(screen.general({ world = { x = 43, y = 1, z = 425 } }, {}))
+  expect.equal(seen.at, "43 1 425")
+
+  local lost = values(screen.general({}, { locateWhy = "no GPS in range" }))
+  expect.contains(lost.at, "no GPS")
+end)
+
+it("a service that has stopped says so, because there is no page that would", function()
+  -- Taking the UI framework off turtles was the point, and it took the Services
+  -- page with it - so a service that failed and backed off was invisible on the
+  -- one machine somebody had walked to. "locating..." forever looked exactly
+  -- like "the locate service died on its first attempt".
+  local health = {
+    { id = "job", state = "running" },
+    { id = "locate", state = "waiting", gaveUp = true, lastError = "attempt to index a nil value" },
+  }
+
+  local fault = screen.fault({
+    health = function()
+      return health
+    end,
+  })
+  expect.truthy(fault ~= nil, "the failure is reported")
+  expect.equal((fault or {}).label, "locate")
+  expect.contains((fault or {}).value, "nil value")
+
+  -- And nothing is said when nothing is wrong. A row that appeared every time
+  -- would be a row nobody reads.
+  expect.equal(
+    screen.fault({
+      health = function()
+        return { { id = "job", state = "running" } }
+      end,
+    }),
+    nil
+  )
+  expect.equal(screen.fault(nil), nil)
+end)
+
+it("a service somebody switched off is not reported as a fault", function()
+  -- Switching one off is a choice, and telling somebody their machine is broken
+  -- because they turned something off is how a health report stops being read.
+  expect.equal(
+    screen.fault({
+      health = function()
+        return { { id = "sync", state = "disabled", disabled = true } }
+      end,
+    }),
+    nil
+  )
+end)
