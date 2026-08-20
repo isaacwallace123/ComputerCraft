@@ -26,12 +26,31 @@
 --- that the open app is always the focused app, which is the property a tiling
 --- window manager spends most of its code enforcing.
 ---
---- ## The state is two values
+--- ## The icons can be moved, and where they end up is remembered
 ---
---- Which icon is selected, and which app is open. Everything else on screen is
---- derived from those two and the machine's tick, so there is no arrangement of
---- them that can disagree with what is drawn.
+--- A grid whose order is fixed by a `require` list is a grid arranged by whoever
+--- wrote the list. Press `m` to pick an icon up, arrow it somewhere, press enter
+--- to put it down; the arrangement is written to `.desktop` as app **ids**, so
+--- an update that adds an app leaves everything else where it was.
+---
+--- A held modifier would be the obvious gesture and is not available: CC reports
+--- shift as an ordinary key event with no way to ask whether it is still down,
+--- so a drag would be a state machine guessing at a key it cannot observe. A
+--- mode you enter and leave is honest about that, and the tile says which it is
+--- in.
+---
+--- ## The state is four values
+---
+--- Which cell is selected, which app is open, which cell is being carried, and
+--- the permutation that says what is in each cell. Everything on screen is
+--- derived from those and the machine's tick, so there is no arrangement of them
+--- that can disagree with what is drawn.
+---
+--- The tiles are built per *cell* rather than per app, which is what makes a move
+--- one `Value` away from being drawn. Tiles built per app would have to be torn
+--- down and re-mounted to move one, inside a keypress handler.
 
+local appIcons = require("ui.icons")
 local host = require("ui.host")
 local reactive = require("ui.state.reactive")
 local shell = require("os.client.shell")
@@ -101,6 +120,120 @@ function desktop.move(index, count, columns, dx, dy)
   return math.max(1, math.min(count, moved))
 end
 
+---------------------------------------------------------------------------
+-- Arranging
+---------------------------------------------------------------------------
+
+--- Where the arrangement is kept.
+---
+--- Its own file rather than a section of anything, because it belongs to the
+--- person sitting at this machine and to nothing else - a base and the pocket
+--- computer in their inventory should not have to agree about where Bank sits.
+desktop.ORDER_PATH = ".desktop"
+
+--- Put the apps in the order somebody arranged them.
+---
+--- Pure, and it has to be: the two things that can go wrong here are an app that
+--- was uninstalled still holding a cell, and an app that was added never getting
+--- one. Both are silent - the first draws a hole and the second draws nothing at
+--- all - so both are specs rather than something noticed in a screenshot.
+---
+--- Unknown ids are dropped and unplaced apps are appended in their declared
+--- order, which means a fleet that updates into a new app finds it at the end of
+--- the wall rather than not at all.
+function desktop.arrange(entries, order)
+  if type(order) ~= "table" then
+    return entries
+  end
+
+  local byId = {}
+  for _, entry in ipairs(entries) do
+    local manifest = entry.manifest or entry
+    byId[manifest.id] = entry
+  end
+
+  local out = {}
+  local placed = {}
+  for _, id in ipairs(order) do
+    local entry = byId[id]
+    if entry and not placed[id] then
+      placed[id] = true
+      out[#out + 1] = entry
+    end
+  end
+
+  for _, entry in ipairs(entries) do
+    local manifest = entry.manifest or entry
+    if not placed[manifest.id] then
+      out[#out + 1] = entry
+    end
+  end
+
+  return out
+end
+
+--- Exchange two cells, returning a new list.
+---
+--- A swap rather than an insert-and-shift. On a grid, shifting means every icon
+--- after the one being moved slides to a new cell, so putting Bank next to Fleet
+--- rearranges eight other things - and the person who moved one icon now has to
+--- find the rest. A swap changes exactly the two cells somebody was looking at.
+---
+--- A copy rather than a mutation, because the result is handed to a `Value` and
+--- `reactive` compares by identity: a list mutated in place is the same table it
+--- was, so nothing would redraw and the icon would appear not to have moved.
+function desktop.swap(layout, from, to)
+  local out = {}
+  for index, value in ipairs(layout) do
+    out[index] = value
+  end
+  if from ~= to and out[from] ~= nil and out[to] ~= nil then
+    out[from], out[to] = out[to], out[from]
+  end
+  return out
+end
+
+--- Read the arrangement somebody saved, or nil.
+---
+--- Every failure is nil, which the caller reads as "not arranged yet". A desktop
+--- that refused to draw because its layout file was corrupt would be a desktop
+--- nobody could use to fix it.
+function desktop.load(context)
+  if context.storage == nil or context.serialise == nil then
+    return nil
+  end
+  local text = context.storage.read(desktop.ORDER_PATH)
+  if text == nil then
+    return nil
+  end
+  local ok, saved = pcall(context.serialise.decode, text)
+  if not ok or type(saved) ~= "table" then
+    return nil
+  end
+  return saved
+end
+
+--- Write the arrangement, as app ids rather than positions.
+---
+--- Ids, so that an update that adds or removes an app leaves the rest where they
+--- were. A file of numbers would silently rearrange the whole wall the first
+--- time the app list changed length, which is exactly when somebody is least
+--- expecting their desktop to move.
+function desktop.persist(context, entries, layout)
+  if context.storage == nil or context.serialise == nil then
+    return false
+  end
+  local ids = {}
+  for _, index in ipairs(layout) do
+    local entry = entries[index]
+    if entry then
+      local manifest = entry.manifest or entry
+      ids[#ids + 1] = manifest.id
+    end
+  end
+  return context.storage.write(desktop.ORDER_PATH, context.serialise.encode(ids)) and true or false
+end
+
 --- The bar along the top: what this machine is, and how it is doing.
 local function statusBar(scope, context, state)
   return scope:Row({
@@ -142,27 +275,68 @@ local function statusBar(scope, context, state)
 end
 
 --- The wall of icons.
+---
+--- One tile per **cell**, not per app, and everything on it is bound to
+--- `state.layout`. That indirection is what makes icons movable: the tiles never
+--- change, the permutation under them does, and a swap is one `Value` away from
+--- being drawn. Tiles built per app would have to be rebuilt to move one, which
+--- means tearing down and re-mounting a subtree inside a keypress handler.
 local function icons(scope, state, entries, columns, tile)
+  --- Which app sits in this cell right now.
+  local function appAt(use, cell)
+    local entry = entries[use(state.layout)[cell]]
+    if entry == nil then
+      return nil
+    end
+    return entry.manifest or entry
+  end
+
   -- Tiles are collected into plain lists first and turned into rows after.
   -- Building the Row as we go meant appending to `row.Children` after the node
   -- had been made, which works and reads as if it might not - and left the
   -- checker unable to prove `row` was ever assigned.
   local grouped = {}
-  for index, entry in ipairs(entries) do
-    local at = math.floor((index - 1) / columns) + 1
+  for cell = 1, #entries do
+    local at = math.floor((cell - 1) / columns) + 1
     grouped[at] = grouped[at] or {}
 
-    local manifest = entry.manifest or entry
     grouped[at][#grouped[at] + 1] = scope:Icon({
       Width = tile,
-      Glyph = desktop.GLYPHS[manifest.id] or "\7",
-      Label = manifest.name or manifest.id,
-      Selected = scope:Computed(function(use)
-        return use(state.selected) == index
+
+      -- Four rows: two of picture, one of name, one that says whether this tile
+      -- is being carried. The component's default is five, which is a row of
+      -- padding this screen does not have to spare - eleven apps at four columns
+      -- is three rows of tiles, and a nineteen-row terminal has room for exactly
+      -- that plus the bar and the hint.
+      Height = 4,
+
+      -- A picture rather than a letter. `ui/icons.lua` has existed for a while
+      -- and nothing passed one, so a desktop built to show objects was showing
+      -- punctuation - the exact thing its own header says it replaced.
+      Sprite = scope:Computed(function(use)
+        local manifest = appAt(use, cell)
+        return manifest and appIcons.forApp(manifest.id) or appIcons.app
       end),
+
+      Label = scope:Computed(function(use)
+        local manifest = appAt(use, cell)
+        return manifest and (manifest.name or manifest.id) or ""
+      end),
+
+      -- The cell being carried says so, because a selection highlight alone
+      -- would leave "moving" and "selected" looking identical - and the arrow
+      -- keys do completely different things in the two states.
+      Detail = scope:Computed(function(use)
+        return use(state.holding) == cell and "moving" or ""
+      end),
+
+      Selected = scope:Computed(function(use)
+        return use(state.selected) == cell
+      end),
+
       OnOpen = function()
-        state.selected:set(index)
-        state.open:set(index)
+        state.selected:set(cell)
+        state.open:set(reactive.peek(state.layout)[cell])
       end,
     })
   end
@@ -174,27 +348,57 @@ local function icons(scope, state, entries, columns, tile)
   return rows
 end
 
+--- Whether there is room for a blank line between rows of icons.
+---
+--- The wall grows every time an app is added and the terminal does not, so the
+--- gap is the first thing to give up. Without this the twelfth app pushed the
+--- bottom row off a 19-row screen, which reads as the app not existing - the
+--- worst possible way for a desktop to run out of space.
+function desktop.spacing(height, count, columns)
+  local rows = math.ceil(count / math.max(1, columns))
+  -- The bar, the line under it, and the hint at the bottom.
+  local chrome = 3
+  return (height - chrome - rows * 4) >= rows and 1 or 0
+end
+
 --- Build the whole surface: wallpaper, bar, icons, and a window when one is open.
 function desktop.build(scope, context, state, entries, options)
   options = options or {}
   local width = options.width or 51
   local columns, tile = desktop.grid(width)
+  local gap = desktop.spacing(options.height or 19, #entries, columns)
 
   local children = {
     statusBar(scope, context, state),
-    scope:Spacer({ Height = 1 }),
   }
+  if gap > 0 then
+    children[#children + 1] = scope:Spacer({ Height = gap })
+  end
 
   for _, row in ipairs(icons(scope, state, entries, columns, tile)) do
     children[#children + 1] = row
-    children[#children + 1] = scope:Spacer({ Height = 1 })
+    if gap > 0 then
+      children[#children + 1] = scope:Spacer({ Height = gap })
+    end
   end
 
   children[#children + 1] = scope:Spacer({ Grow = 1 })
   children[#children + 1] = scope:Muted({
     Height = 1,
     Padding = { left = 1, right = 1, top = 0, bottom = 0 },
-    Text = "arrows or click   enter opens",
+
+    -- The hint changes with the mode, because in move mode the arrow keys do
+    -- something else entirely and a line that said "enter opens" would be
+    -- telling somebody the opposite of what is about to happen.
+    Text = scope:Computed(function(use)
+      if use(state.holding) ~= nil then
+        return "arrows place it   enter drops it"
+      end
+      if options.readOnly then
+        return ""
+      end
+      return "arrows or click   enter opens   m moves"
+    end),
   })
 
   local surface = scope:Column({
@@ -250,14 +454,32 @@ function desktop.run(context, options)
     return
   end
 
+  -- Whatever arrangement the person at this machine last left. Applied to the
+  -- entries themselves rather than kept as an indirection, so a session that
+  -- moves nothing carries no permutation at all.
+  entries = desktop.arrange(entries, desktop.load(context))
+
   local scope = ui.scoped()
+  local layout = {}
+  for index = 1, #entries do
+    layout[index] = index
+  end
+
   local state = {
     selected = scope:Value(1),
     open = scope:Value(nil),
     tick = context.tick or scope:Value(0),
+
+    -- Which app is in which cell. Identity until somebody moves something, and
+    -- the reason every tile is bound rather than built per app.
+    layout = scope:Value(layout),
+
+    -- The cell being carried, or nil. One value, because carrying two icons is
+    -- not a thing a grid can show.
+    holding = scope:Value(nil),
   }
 
-  local width = select(1, context.screen.size())
+  local width, height = context.screen.size()
   local columns = desktop.grid(width)
 
   local root = host.mount({
@@ -267,6 +489,7 @@ function desktop.run(context, options)
     build = function(inner)
       return desktop.build(inner, context, state, entries, {
         width = width,
+        height = height,
         readOnly = options.readOnly,
         capacity = options.capacity,
       })
@@ -278,6 +501,29 @@ function desktop.run(context, options)
     timeout = options.timeout,
     onEvent = function(name, a, b, c)
       local KEY = require("ui.input").KEY
+
+      --- Put the carried icon down, and remember where.
+      ---
+      --- Written on drop rather than on every arrow press, because each move is
+      --- a real filesystem write on the host and somebody arranging a desktop
+      --- presses a lot of arrows.
+      local function drop()
+        state.holding:set(nil)
+        desktop.persist(context, entries, reactive.peek(state.layout))
+      end
+
+      --- Move the selection, carrying an icon with it when one is held.
+      local function step(dx, dy)
+        local count = #entries
+        local from = reactive.peek(state.selected)
+        local to = desktop.move(from, count, columns, dx, dy)
+
+        if reactive.peek(state.holding) ~= nil and to ~= from then
+          state.layout:set(desktop.swap(reactive.peek(state.layout), from, to))
+          state.holding:set(to)
+        end
+        state.selected:set(to)
+      end
 
       if name == "key" then
         local open = reactive.peek(state.open)
@@ -292,22 +538,31 @@ function desktop.run(context, options)
           return false
         end
 
-        local count = #entries
         local index = reactive.peek(state.selected)
         if a == KEY.left then
-          state.selected:set(desktop.move(index, count, columns, -1, 0))
+          step(-1, 0)
           return true
         elseif a == KEY.right then
-          state.selected:set(desktop.move(index, count, columns, 1, 0))
+          step(1, 0)
           return true
         elseif a == KEY.up then
-          state.selected:set(desktop.move(index, count, columns, 0, -1))
+          step(0, -1)
           return true
         elseif a == KEY.down then
-          state.selected:set(desktop.move(index, count, columns, 0, 1))
+          step(0, 1)
           return true
         elseif a == KEY.enter then
-          state.open:set(index)
+          -- Enter drops what is being carried rather than opening it. Opening an
+          -- app at the end of a move would mean the key that finishes arranging
+          -- the desktop also leaves it.
+          if reactive.peek(state.holding) ~= nil then
+            drop()
+          else
+            state.open:set(reactive.peek(state.layout)[index])
+          end
+          return true
+        elseif a == KEY.escape and reactive.peek(state.holding) ~= nil then
+          drop()
           return true
         end
         return false
@@ -320,13 +575,27 @@ function desktop.run(context, options)
         end
       end
 
-      -- Numbers open directly from the desktop, which is the one habit worth
-      -- keeping from the taskbar this replaced.
       if name == "char" and not reactive.peek(state.open) then
+        -- Pick an icon up, or put it down. A held modifier would be the obvious
+        -- gesture and is not available: CC reports shift as an ordinary key
+        -- event with no way to ask whether it is still down, so a drag would be
+        -- a state machine guessing at a key it cannot observe. A mode you enter
+        -- and leave is honest about that, and it says so on the tile.
+        if (a == "m" or a == "M") and not options.readOnly then
+          if reactive.peek(state.holding) ~= nil then
+            drop()
+          else
+            state.holding:set(reactive.peek(state.selected))
+          end
+          return true
+        end
+
+        -- Numbers open directly from the desktop, which is the one habit worth
+        -- keeping from the taskbar this replaced.
         local picked = tonumber(a)
-        if picked and entries[picked] then
+        if picked and reactive.peek(state.layout)[picked] then
           state.selected:set(picked)
-          state.open:set(picked)
+          state.open:set(reactive.peek(state.layout)[picked])
           return true
         end
       end

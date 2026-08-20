@@ -125,6 +125,21 @@ icons.gps = sprite.new({
   "...77...",
 })
 
+--- An app with no picture of its own: a window.
+---
+--- A default rather than a nil, because the desktop draws a sprite in every
+--- tile. `forBlock` deliberately returns nil for an ore it does not know, and
+--- the reason the two differ is what a wrong answer costs: a mislabelled ore is
+--- a miscount, and a generic app icon is a generic app icon.
+icons.app = sprite.new({
+  "00000000",
+  "07777770",
+  "00000000",
+  "0......0",
+  "0......0",
+  "00000000",
+})
+
 --- Hardware: a chip with legs.
 icons.hardware = sprite.new({
   "..3..3..",
