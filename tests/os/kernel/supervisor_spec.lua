@@ -434,3 +434,38 @@ it("a real failure is still reported after a shutdown has not happened", functio
   expect.equal(#reported, 1, "reported")
   expect.equal(reported[1], "breaks", "by name")
 end)
+
+it("a peak is forgotten after a minute, so boot costs do not sit in the column", function()
+  -- A service's first resume runs it from the top: the first modem open, the
+  -- first palette upload, the first require of everything it needs. On a base
+  -- station that showed `sync` at 147 ms forever - a true number about a moment
+  -- that will not happen again, in the column somebody reads to find out what is
+  -- slow *now*.
+  local clock = fakeClock()
+  local sup = supervisor.new({ clock = clock.port })
+
+  sup:add(service.define({
+    id = "slow",
+    run = function()
+      -- Expensive once, on the way in - a modem opening, a palette uploading,
+      -- a tree of modules being read off the disk - and cheap forever after.
+      clock.advance(0.2)
+      while true do
+        coroutine.yield()
+      end
+    end,
+  }))
+
+  sup:start({})
+  sup:step()
+  local peak = sup:health()[1].slowest
+  expect.truthy(peak >= 200, "the first resume was expensive and was recorded")
+
+  -- Every resume after it is cheap.
+  for _ = 1, 5 do
+    clock.advance(30)
+    sup:step({ "icos_tick" })
+  end
+
+  expect.truthy(sup:health()[1].slowest < peak, "and the peak stopped standing for it")
+end)

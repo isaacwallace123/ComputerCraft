@@ -150,17 +150,24 @@ sound.play("ready")
 -- and backing off - the display keeps showing a boot animation forever. Somebody
 -- looking at it reboots a healthy machine and learns nothing.
 --
--- One line, printed before the loop starts. A shell that mounts will paint over
--- it within a frame; a machine with no shell shows this instead of a lie.
+-- One line, printed before anything is resumed. A screen service will paint over
+-- it within a frame; a machine with no screen shows this instead of a lie.
+--
+-- **Before, not after.** This used to step the supervisor first and clear the
+-- terminal second, which wiped whatever the screen service had just drawn - and
+-- then, because a screen that caches what it last drew believes the display
+-- still shows it, nothing repainted. A turtle sat on this line for as long as it
+-- was up, which is the exact "looks hung and is not" failure the paragraph above
+-- is about, reintroduced by the code written to prevent it.
+term.clear()
+term.setCursorPos(1, 1)
+print(("ICOS %s - %s"):format(booted.role, node.label or ""))
+
 -- Resumed once before reporting, because `start` only *spawns* a coroutine -
 -- every service is "running" until something actually executes it, so a count
 -- taken here would be a count of services that have not had the chance to fail
 -- yet. `icos status` does the same, and for the same reason.
 booted.supervisor:step()
-
-term.clear()
-term.setCursorPos(1, 1)
-print(("ICOS %s - %s"):format(booted.role, node.label or ""))
 
 local running = booted.supervisor:running()
 local total = #booted.supervisor:health()

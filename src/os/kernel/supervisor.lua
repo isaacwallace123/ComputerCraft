@@ -57,6 +57,13 @@ Supervisor.__index = Supervisor
 
 --- `options.clock` is a clock port. `options.onError` is called with the service
 --- id and the error, for the log; the supervisor never prints.
+--- How long a peak stands before it is forgotten, in seconds.
+---
+--- Sixty. Long enough that a service which is slow every few seconds is still
+--- caught, short enough that boot costs are gone by the time anybody has walked
+--- to the machine to look.
+supervisor.PEAK_WINDOW = 60
+
 function supervisor.new(options)
   options = options or {}
   return setmetatable({
@@ -314,6 +321,20 @@ function Supervisor:step(event)
         local at = self.clock.now()
         local elapsed = at - cursor
         cursor = at
+
+        -- A peak over the last minute, not over all time.
+        --
+        -- All time sounds more useful and is not. The first resume of a service
+        -- runs it from the top: the first modem open, the first palette upload,
+        -- the first `require` of everything it needs. On a base station that
+        -- showed `sync` at 147 ms forever, which is a true number about a
+        -- moment that will not happen again - and it sits in the column
+        -- somebody reads to find out what is slow *now*, drowning out the
+        -- twenty-millisecond service that actually is.
+        if entry.peakAt == nil or (now - entry.peakAt) / 1000 >= supervisor.PEAK_WINDOW then
+          entry.slowest = 0
+          entry.peakAt = now
+        end
         if elapsed > entry.slowest then
           entry.slowest = elapsed
         end

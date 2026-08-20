@@ -152,13 +152,19 @@ function app.rows(supervisor, now)
   return rows
 end
 
---- The longest this service has ever held the machine, in milliseconds.
+--- The longest this service has held the machine in the last minute.
 ---
 --- The number that answers "why is everything slow", and it was being recorded
 --- and shown to nobody. CC gives all the computers in a world a shared budget -
 --- `max_main_global_time`, ten milliseconds a tick by default, across however
 --- many machines are running - so a service that takes twenty is not slightly
 --- expensive, it is the whole world's tick.
+---
+--- The last minute rather than all time, and the difference matters. A service's
+--- first resume runs it from the top - the first modem open, the first palette
+--- upload - and an all-time peak showed `sync` at 147 ms forever: a true number
+--- about a moment that will not happen again, sitting in the column somebody
+--- reads to find out what is slow now.
 ---
 --- Blank rather than zero when nothing has been measured. A service that has
 --- never been resumed has no peak, and printing `0` would claim it is free.
