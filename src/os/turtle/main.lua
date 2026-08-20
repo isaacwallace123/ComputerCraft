@@ -409,9 +409,20 @@ turtleOs.locate = service.define({
 
         -- Claim the turtle for the length of the attempt. See `turtleOs.snapshot`
         -- for what happens when two coroutines drive one turtle.
+        --
+        -- Released through `pcall`, and that is not defensiveness. The claim
+        -- freezes the snapshot every other service reads, so an attempt that
+        -- threw would leave the screen and the heartbeat reporting the same
+        -- picture for the life of the machine - a turtle frozen at the moment it
+        -- tried to find itself, which looks exactly like a turtle that has
+        -- crashed and is not one.
         context.busy = true
-        local found, why = calibrate.run(context.body, context.locator)
+        local ok, found, why = pcall(calibrate.run, context.body, context.locator)
         context.busy = nil
+
+        if not ok then
+          found, why = nil, tostring(found)
+        end
         if found then
           -- Both files in one call. Two that disagreed about which way home is
           -- would be a turtle mining confidently in the wrong direction.

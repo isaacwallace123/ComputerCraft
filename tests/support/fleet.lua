@@ -104,6 +104,16 @@ function fleet.ports(clock, options)
     screen = require("ports.screen").null(),
     input = require("ports.input").null(),
 
+    -- A body that refuses everything, which is what a computer without turtle
+    -- hardware honestly has - and is the difference between a spec that
+    -- exercises the turtle's services and one that silently does not.
+    --
+    -- The supervisor refuses to start a service whose ports are absent, so
+    -- leaving this out did not fail anything: it quietly skipped `locate` in
+    -- every turtle spec, and the tests written for that service passed by
+    -- driving its parts directly while the service itself never ran.
+    body = require("ports.body").null(),
+
     -- A constellation host that answers nobody, which is what a spec wants: the
     -- wire protocol belongs to CC and is exercised in the world, not here.
     beacon = {

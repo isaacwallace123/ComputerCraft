@@ -245,3 +245,32 @@ it("the ICOS 1 link also keeps its hands off a turtle in use", function()
   expect.equal(legacy.beat(context), nil, "it said nothing")
   expect.equal(reads, 0, "and read nothing")
 end)
+
+it("a claim on the turtle is always released, including when the attempt throws", function()
+  -- The claim freezes the snapshot every other service reads, so an attempt that
+  -- threw would leave the screen and the heartbeat reporting one picture for the
+  -- life of the machine - a turtle frozen at the moment it tried to find itself,
+  -- which looks exactly like a turtle that has crashed and is not one.
+  local calibrate = require("os.turtle.calibrate")
+  local real = calibrate.run
+
+  local machine = turtleContext({ node = { parked = true } })
+  local context = machine.context
+  context.nav = {
+    hasOrigin = function()
+      return false
+    end,
+    setOrigin = function() end,
+  }
+
+  calibrate.run = function()
+    error("the radio exploded", 0)
+  end
+
+  machine.supervisor:step()
+
+  expect.falsy(context.busy, "the turtle was handed back")
+  expect.contains(tostring(context.locateWhy), "exploded", "and the reason was kept")
+
+  calibrate.run = real
+end)
