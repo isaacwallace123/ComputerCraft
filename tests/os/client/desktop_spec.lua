@@ -256,10 +256,12 @@ end)
 -- Sections
 ---------------------------------------------------------------------------
 
-it("fleet, mine, automation and job are one app with four sections", function()
-  -- They were four icons, and setting up a mine meant crossing the home screen
-  -- four times to do one thing. One is on the wall; the rest are reachable from
-  -- a bar across the top of it.
+it("fleet, mine and automation are one app with three sections", function()
+  -- They were separate icons, and setting up a mine meant crossing the home
+  -- screen to do one thing. One is on the wall; the rest are reachable from a
+  -- bar across the top of it. Job is not among them any more: a page whose only
+  -- control was "pick a job" could leave the fleet configured and not sent, so
+  -- it is a picker beside Deploy on Fleet instead.
   local appRegistry = require("apps.registry")
 
   local wall = appRegistry.available("server", "desktop")
@@ -271,10 +273,10 @@ it("fleet, mine, automation and job are one app with four sections", function()
   expect.truthy(names.fleet, "the section leader is on the wall")
   expect.falsy(names.operations, "and the other three are not")
   expect.falsy(names.automation)
-  expect.falsy(names.job)
+  expect.equal(appRegistry.byId("job"), nil, "and Job is gone entirely")
 
   local family = appRegistry.family("operations", "server", "desktop")
-  expect.equal(#family, 4, "but all four are reachable from the bar")
+  expect.equal(#family, 3, "but all three are reachable from the bar")
   expect.equal(family[1].id, "fleet", "with the leader first")
 
   for _, entry in ipairs(family) do

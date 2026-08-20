@@ -36,6 +36,7 @@
 --- the honest word for it.
 
 local desired = require("domain.fleet.desired")
+local jobs = require("domain.turtle.jobs")
 local registry = require("domain.fleet.registry")
 local reactive = require("ui.state.reactive")
 local request = require("os.kernel.request")
@@ -94,6 +95,14 @@ function app.row(record, now)
     since = age,
     online = health == "online",
 
+    -- Where it is in the world, or nil for a device that has never said.
+    --
+    -- The *world* position, never the turtle's own x/y/z: those are relative to
+    -- each machine's own home block, so two turtles reporting `0,0,0` are in
+    -- different places and neither is findable. `registry.locate` is the one
+    -- function that knows the difference and it already refuses the wrong one.
+    location = record.location,
+
     -- An order the device has not acknowledged, on a device that has since gone
     -- quiet. Only the base can know this: a turtle cannot report that it has
     -- stopped talking to you, so nothing in the snapshot could ever say it.
@@ -112,6 +121,19 @@ function app.row(record, now)
     goal = record.desired and record.desired.mode or nil,
     converged = desired.converged(record),
   }
+end
+
+--- The jobs a fleet can be put on, as rows for the picker.
+---
+--- Read from `domain/turtle/jobs.lua` rather than listed here, so a job added to
+--- the catalogue appears without this page being edited - and so the base cannot
+--- offer a job no turtle knows how to run.
+function app.jobs()
+  local out = {}
+  for _, entry in ipairs(jobs.list()) do
+    out[#out + 1] = { id = entry.id, label = entry.label, summary = entry.summary }
+  end
+  return out
 end
 
 --- Every device, quietest first.
@@ -199,11 +221,11 @@ end
 --- Refuses a mode that does not exist rather than sending it, so a typo is
 --- caught where it was typed instead of arriving as a refusal somebody has to
 --- interpret.
-function app.intent(mode)
+function app.intent(mode, job)
   if not desired.MODES[mode] then
     return nil
   end
-  return { kind = "want", mode = mode }
+  return { kind = "want", mode = mode, job = job }
 end
 
 --- Wire the view to a client context.
@@ -244,8 +266,8 @@ function app.mount(scope, context, options)
   --- everybody else was told rather than sitting parked until somebody notices.
   local ask = request.of(context, options.protocol)
 
-  local function want(mode)
-    local message = app.intent(mode)
+  local function want(mode, job)
+    local message = app.intent(mode, job)
     if message then
       ask(message)
     end
@@ -268,6 +290,13 @@ function app.mount(scope, context, options)
       local id = device and device.id or nil
       selected:set(reactive.peek(selected) == id and nil or id)
     end,
+
+    jobs = app.jobs(),
+    job = scope:Computed(function(use)
+      use(tick)
+      return context.state.fleet and context.state.fleet.goal and context.state.fleet.goal.job
+        or nil
+    end),
   }
 
   -- Absent on a display-only surface, which is D020 expressed as an argument
@@ -288,6 +317,19 @@ function app.mount(scope, context, options)
     end
     page.onStop = function()
       return want("stop")
+    end
+
+    --- Change what the fleet is working on.
+    ---
+    --- Deploy rather than a mode of its own, because a job change *is* a
+    --- deployment: `desired` carries both in one goal with one generation, so
+    --- they cannot half-arrive and no turtle ends up deployed on the job it had
+    --- before. That is the three-message set-job / configure / deploy dance
+    --- collapsed into one press, and it is why there is no separate Job page any
+    --- more - a page whose only control was "pick a job" was a page that could
+    --- leave the fleet configured and not sent.
+    page.onJob = function(id)
+      return want("deploy", id)
     end
   end
 

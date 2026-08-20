@@ -174,7 +174,7 @@ end
 --- half-written tree.
 ---
 --- Blanked rather than deleted, and the reason is worth keeping: an error that
---- says `apps/job/app.lua:207` is the most useful thing this system produces in
+--- says `apps/fleet/app.lua:207` is the most useful thing this system produces in
 --- a world, and it is only useful while line 207 here is line 207 there. One
 --- byte instead of sixty, and the line numbers still match the source somebody
 --- opens to fix it.

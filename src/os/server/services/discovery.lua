@@ -261,12 +261,16 @@ function discovery.want(context, message)
   -- down anywhere.
   local now = context.clock.now()
   local state = context.state.fleet
-  state.goal = { mode = message.mode, at = now }
+  state.goal = { mode = message.mode, job = message.job, at = now }
 
   local applied = 0
   for _, record in pairs(state.devices or {}) do
     if discovery.takesOrders(record) then
-      local _, changed = desired.want(record, message.mode, {}, now)
+      -- The job rides with the mode rather than as a second message. A job
+      -- change and a deployment are one goal with one generation, so they
+      -- cannot half-arrive and a turtle can never end up deployed on the job it
+      -- had before - which is the whole reason `desired` carries the field.
+      local _, changed = desired.want(record, message.mode, { job = message.job }, now)
       if changed then
         applied = applied + 1
       end

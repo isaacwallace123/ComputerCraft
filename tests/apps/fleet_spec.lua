@@ -204,3 +204,57 @@ it("the status column says parked, and why is a sentence for the panel", functio
   expect.equal(row.phase, "parked")
   expect.contains(row.parkReason, "commands/locate", "and the reason is kept for the panel")
 end)
+
+it("a device's world position reaches the page, and a device without one shows no zeros", function()
+  -- `0 0 0` is a real place in the world and has already cost this fleet a
+  -- night. A device that has never reported a position must show a dash.
+  local ctx = context()
+  discovery.handle(
+    ctx,
+    7,
+    heartbeat({ snapshot = { label = "miner-7", phase = "mining", world = { x = 53, y = 12, z = 426 } } })
+  )
+  discovery.handle(ctx, 4, heartbeat({ snapshot = { label = "miner-4", phase = "idle" } }))
+
+  local rows = {}
+  for _, row in ipairs(fleetApp.rows(ctx.state, ctx.clock.now())) do
+    rows[row.label] = row
+  end
+
+  expect.truthy(rows["miner-7"].location ~= nil, "the one that reported")
+  expect.equal(rows["miner-7"].location.x, 53)
+  expect.equal(rows["miner-4"].location, nil, "and nothing invented for the one that did not")
+end)
+
+it("choosing a job sends it with the deployment, not on its own", function()
+  -- A job change and a deployment are one goal with one generation, so they
+  -- cannot half-arrive and no turtle ends up deployed on the job it had before.
+  -- A page whose only control was "pick a job" could leave the fleet configured
+  -- and not sent, which is why the Job page is gone.
+  local message = assert(fleetApp.intent("deploy", "rare"), "deploy is a mode")
+  expect.equal(message.mode, "deploy")
+  expect.equal(message.job, "rare", "carried on the same message")
+
+  -- And the server puts it on the record rather than dropping it.
+  local ctx = context()
+  discovery.handle(ctx, 7, heartbeat())
+  discovery.handle(ctx, 0, { kind = "want", mode = "deploy", job = "rare" })
+
+  local record = assert(registry.get(ctx.state.fleet, 7), "the device is on the roster")
+  local goal = assert(record.desired, "and it has a goal")
+  expect.equal(goal.mode, "deploy")
+  expect.equal(goal.job, "rare", "the job survived the trip")
+end)
+
+it("every job in the catalogue can be picked", function()
+  -- Listed from the catalogue rather than typed here, so the base cannot offer
+  -- a job no turtle knows how to run.
+  local offered = {}
+  for _, entry in ipairs(fleetApp.jobs()) do
+    offered[entry.id] = entry.label
+  end
+
+  for _, entry in ipairs(require("domain.turtle.jobs").list()) do
+    expect.truthy(offered[entry.id], entry.id .. " is runnable but not offered")
+  end
+end)

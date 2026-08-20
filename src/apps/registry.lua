@@ -140,18 +140,6 @@ registry.APPS = {
   ---------------------------------------------------------------------------
   -- The turtle's own page
   ---------------------------------------------------------------------------
-
-  {
-    id = "job",
-    name = "Job",
-    section = "operations",
-    sectionName = "Job",
-    hidden = true,
-    glyph = "\18", -- up-down arrow: a shaft being worked
-    module = "apps.job.app",
-    roles = { "server" },
-    surfaces = { "desktop" },
-  },
 }
 
 --- Find one app by id, without loading it.

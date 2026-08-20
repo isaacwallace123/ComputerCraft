@@ -105,10 +105,36 @@ end
 --- The label is the only thing wide enough to matter at a glance; the status is
 --- the only thing coloured. Both decisions are the same one: on a page this
 --- dense, anything that is always visible has to earn its width.
+--- Where a device is, short enough for a column.
+---
+--- `x y z` with no punctuation, because commas cost three cells across a fleet
+--- and buy nothing - the numbers are already separated by being numbers. A
+--- device that has never reported a position gets a dash rather than zeros:
+--- `0 0 0` is a real place in the world and has already cost this fleet a night.
+local function place(device)
+  local at = device and device.location
+  if type(at) ~= "table" or tonumber(at.x) == nil then
+    return "-"
+  end
+  return ("%d %d %d"):format(at.x, at.y or 0, at.z or 0)
+end
+
 local function columns()
   return {
     { Title = "Device", Grow = 1, Key = "label" },
-    { Title = "Status", Width = 12, Key = "phase", Tone = devices.phaseTone },
+    { Title = "Status", Width = 10, Key = "phase", Tone = devices.phaseTone },
+
+    -- Third column, because "where is it" is the question a fleet page is opened
+    -- to answer as often as "what is it doing" - and until now the only way to
+    -- get it was to select a row and read a panel.
+    {
+      Title = "Position",
+      Width = 13,
+      Value = place,
+      Tone = function(device)
+        return (device and device.location) and T.mutedFg or T.border
+      end,
+    },
   }
 end
 
@@ -173,8 +199,13 @@ function devices.build(scope, options)
     end)
   end
 
+  local picking = scope:Value(false)
+
   local nothingSelected = scope:Computed(function(use)
-    return use(current) == nil
+    -- Also hidden while the picker is up. They occupy the same column and are
+    -- never wanted together: you are either looking at one turtle or choosing
+    -- what all of them do.
+    return use(current) == nil or use(picking)
   end)
 
   --- The panel, which is not there when there is nothing to put in it.
@@ -233,6 +264,13 @@ function devices.build(scope, options)
         "seen",
         about(function(device)
           return format.ago(device.since)
+        end, "-")
+      ),
+      field(
+        scope,
+        "at",
+        about(function(device)
+          return place(device)
         end, "-")
       ),
       scope:Spacer({ Height = 1 }),
@@ -294,6 +332,47 @@ function devices.build(scope, options)
   ---
   --- The selection still does something - it drives the detail panel - so a row
   --- is a thing you look at rather than a thing you command.
+  --- The job picker, which replaces the detail panel while it is open.
+  ---
+  --- A card in the page rather than a floating window: the framework has no
+  --- overlay, and inventing one for a list of six items would be a lot of
+  --- machinery for something that fits beside the table. It takes the panel's
+  --- place because the two are never wanted at once - you are either looking at
+  --- one turtle or choosing what all of them do.
+  local jobRows = {}
+  for _, entry in ipairs(options.jobs or {}) do
+    jobRows[#jobRows + 1] = scope:Text({
+      Height = 1,
+      Text = format.ellipsis(entry.label or entry.id, 20),
+      Color = scope:Computed(function(use)
+        return use(options.job) == entry.id and T.accent or T.foreground
+      end),
+      OnClick = options.onJob and function()
+        options.onJob(entry.id)
+        picking:set(false)
+      end or nil,
+    })
+  end
+
+  local picker = scope:Card({
+    Width = 22,
+    Padding = 1,
+    Gap = 0,
+    Hidden = scope:Computed(function(use)
+      return not use(picking)
+    end),
+    Children = (function()
+      local children = {
+        scope:Text({ Text = "Put the fleet on" }),
+        scope:Spacer({ Height = 1 }),
+      }
+      for _, row in ipairs(jobRows) do
+        children[#children + 1] = row
+      end
+      return children
+    end)(),
+  })
+
   local actions = {}
   local function action(text, variant, handler)
     if not handler then
@@ -315,6 +394,18 @@ function devices.build(scope, options)
   --
   -- The selection is for looking, not for commanding - it drives the panel and
   -- nothing else - so a button cannot mean two things depending on it.
+  -- Left of Deploy, because it is the thing you choose before you send them and
+  -- reading a row of buttons left to right should follow the order you use them.
+  if options.onJob then
+    actions[#actions + 1] = scope:Button({
+      Text = "Job",
+      Variant = "ghost",
+      OnClick = function()
+        picking:set(not picking:get())
+      end,
+    })
+  end
+
   action("Deploy", "primary", options.onDeploy)
   action("Recall", nil, options.onRecall)
   action("Stop", "destructive", options.onStop)
@@ -328,7 +419,7 @@ function devices.build(scope, options)
       scope:Row({
         Grow = 1,
         Gap = 2,
-        Children = { list, detail },
+        Children = { list, detail, picker },
       }),
     },
     Actions = actions,

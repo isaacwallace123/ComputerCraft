@@ -275,7 +275,7 @@ error. A linked computer that is over the limit is the most misleading test rig 
 because it looks exactly like a working one.
 
 `tools\build.ps1` blanks every comment-only line — one byte instead of sixty — which takes
-the tree to about 550 KB. Blanked rather than deleted, because `apps/job/app.lua:207` in
+the tree to about 550 KB. Blanked rather than deleted, because `apps/fleet/app.lua:207` in
 an error message is only useful while line 207 is still line 207. `tools\check.ps1`
 measures it on every run and fails if it stops fitting.
 
@@ -359,7 +359,7 @@ Two things worth knowing, because both are new and both are about the 1 MB limit
 **Comments are stripped on the way in.** The tree in the repository is about 1.2 MB and
 `computer_space_limit` is 1,000,000 bytes, which is not something you can raise on
 somebody else's server. `update.lua` blanks every comment-only line as each file arrives,
-which takes it to around 550 KB. Blanked rather than deleted, so `apps/job/app.lua:207` in
+which takes it to around 550 KB. Blanked rather than deleted, so `apps/fleet/app.lua:207` in
 an error still points at line 207 of the file you open here. It is the same rule
 `tools\build.ps1` applies, and the two produce byte-identical files - which is what keeps
 the fingerprint on the update screen comparable between a machine that updated over the

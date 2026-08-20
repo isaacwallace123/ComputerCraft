@@ -78,7 +78,7 @@ marked, because changing the wrong one produces a passing build and no change in
 | the Fleet dashboard | `src/apps/fleet/app.lua`, `src/apps/fleet/view.lua` |
 | the operator console, and placing a mine | `src/apps/console/commands.lua`, `src/apps/console/app.lua` |
 | a text input on any page | `Field` in `src/ui/components/controls.lua` |
-| what a turtle is doing, and changing its settings | `src/apps/job/app.lua` |
+| what a turtle is doing, and changing its settings | `src/apps/fleet/view.lua` |
 | validating a job's settings, and rendering them as a form | `src/domain/turtle/settings.lua` |
 | device list/detail/configuration | `src/apps/fleet/app.lua`, `src/apps/fleet/view.lua` |
 | console command | `src/apps/console/app.lua` |
@@ -412,7 +412,7 @@ large AFK run.
   `workerIndex`/`workerCount`, which the base assigns and nobody hand-picks. They were
   previously validated by a private table that listed the visible ranges a second time.
 - `setup(ui)` still exists because ICOS 1's runtime calls it. **Nothing in ICOS 2 does** -
-  `apps/job/app.lua` renders the same declaration - so it dies with `legacy/miner/`.
+  `apps/fleet/view.lua` renders the same declaration - so it dies with `legacy/miner/`.
 - **A logger may not take down its caller.** `adapters/cc/logfile.lua` trimmed once at
   require time, which is fine for a turtle that reboots daily and useless on a base
   station that never does - a live base filled its disk and threw `Out of space` out of

@@ -29,7 +29,6 @@
 --- which are behind. A broadcast would be one message, no record of who heard
 --- it, and no way to tell the difference an hour later.
 
-local desired = require("domain.fleet.desired")
 local plan = require("domain.mine.plan")
 local registry = require("domain.fleet.registry")
 local request = require("os.kernel.request")
@@ -46,9 +45,9 @@ local app = {}
 --- the ground means every shaft starts inside rock and every trip home ends in
 --- one.
 app.FIELDS = {
-  { key = "centreX", label = "Centre X", step = 16, min = -30000000, max = 30000000 },
-  { key = "centreZ", label = "Centre Z", step = 16, min = -30000000, max = 30000000 },
-  { key = "surfaceY", label = "Surface Y", step = 1, min = -63, max = 310 },
+  { key = "centreX", label = "World X", step = 16, min = -30000000, max = 30000000 },
+  { key = "centreZ", label = "World Z", step = 16, min = -30000000, max = 30000000 },
+  { key = "surfaceY", label = "World Y", step = 1, min = -63, max = 310 },
   { key = "cellSize", label = "Sector size", step = 8, min = 16, max = 128 },
   { key = "minRing", label = "Inner ring", step = 1, min = 0, max = 11 },
   { key = "maxRing", label = "Outer ring", step = 1, min = 1, max = 12 },
@@ -166,7 +165,7 @@ function app.mount(scope, context, options)
   rows[#rows + 1] = scope:Spacer({ Height = 1 })
   rows[#rows + 1] = scope:Muted({
     Height = 1,
-    Text = "Moving or resizing the mine clears every sector's progress.",
+    Text = "World coordinates, as F3 shows them. Moving the mine clears every sector.",
     Color = T.warn,
   })
 
@@ -175,50 +174,20 @@ function app.mount(scope, context, options)
     return (app.summary(context.state))
   end)
 
-  local actions = nil
-  if not options.readOnly then
-    local ready = scope:Computed(function(use)
-      use(tick)
-      return #app.deployable(context.state, context.clock.now())
-    end)
-
-    actions = {
-      scope:Button({
-        Text = scope:Computed(function(use)
-          return ("Deploy %d"):format(use(ready))
-        end),
-        Variant = "primary",
-        Disabled = scope:Computed(function(use)
-          local current = use(mine)
-          return use(ready) == 0 or current == nil or not current.plan.configured
-        end),
-        OnClick = function()
-          -- One goal per device. See the header: a broadcast would be one
-          -- message with no record of who heard it.
-          for _, record in ipairs(app.deployable(context.state, context.clock.now())) do
-            send({ kind = "want", id = record.id, mode = "deploy" })
-          end
-        end,
-      }),
-      scope:Button({
-        Text = "Recall all",
-        Variant = "destructive",
-        OnClick = function()
-          for _, record in ipairs(registry.records(context.state.fleet)) do
-            if desired.MODES.recall then
-              send({ kind = "want", id = record.id, mode = "recall" })
-            end
-          end
-        end,
-      }),
-    }
-  end
+  -- No Deploy and no Recall here.
+  --
+  -- They existed before Fleet and Mine were one app, when this was the only
+  -- page that knew how many turtles could be sent out. Now the section bar puts
+  -- Fleet one press away, and two pages carrying the same two buttons is two
+  -- places for the fleet to be commanded from - with different wording, and one
+  -- of them saying "all" while the other did not.
+  --
+  -- This page configures the ground. Fleet commands the turtles.
 
   return scope:Page({
     Title = "Mine",
     Status = status,
     Children = rows,
-    Actions = actions,
   })
 end
 
