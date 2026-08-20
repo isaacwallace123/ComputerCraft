@@ -40,6 +40,7 @@ local reactive = require("ui.state.reactive")
 local supervisor = require("os.kernel.supervisor")
 local switches = require("os.kernel.switches")
 local ticker = require("os.kernel.services.ticker")
+local hotplug = require("os.kernel.services.hotplug")
 
 --- The value every page recomputes from.
 ---
@@ -185,6 +186,7 @@ function server.services()
     coverageService.service,
     bank.service,
     ticker.service,
+    hotplug.service,
     logrotate.service,
   }
 end

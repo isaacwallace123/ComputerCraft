@@ -61,6 +61,15 @@ it("a machine whose services have all given up returns rather than spinning", fu
     error("no clock", 0)
   end
 
+  -- And hotplug, which is the fifth and cannot fail by itself either: it needs
+  -- only an event queue, and waiting for hardware that never arrives is a
+  -- service working correctly. Same reasoning as the ticker above - "everything
+  -- gave up" has to mean everything, including the services whose whole job is
+  -- to sit still.
+  machine.context.input.pull = function()
+    error("no input", 0)
+  end
+
   local index = 0
   local outcome = osBoot.run(machine, function()
     index = index + 1

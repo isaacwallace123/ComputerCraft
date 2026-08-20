@@ -20,6 +20,7 @@
 --- is the step nothing here could take before.
 
 local kinds = require("domain.hardware.kinds")
+local network = require("domain.hardware.network")
 local theme = require("ui.theme")
 
 local T = theme.TOKENS
@@ -31,17 +32,35 @@ local app = {}
 --- Flattened rather than nested, because a table is what draws well on a
 --- 51-column screen and a tree is what does not. The mod is a column, which
 --- sorts and reads the same way a heading would and costs no rows.
+--- One row per peripheral, from the whole survey rather than the side scan.
+---
+--- `network.survey` rather than `peripherals.list` is the difference between a
+--- base with four drives on a cable reporting one and reporting four. See
+--- `domain/hardware/network.lua` - the short version is that a wired modem
+--- publishes a block only once somebody has right-clicked it, and until this
+--- page could say so there was nothing anywhere to suggest that was the problem.
 function app.rows(peripherals)
-  local rows = {}
+  local found = network.survey(peripherals)
 
-  for _, group in ipairs(kinds.byMod(peripherals.list())) do
+  -- Where each thing was reached, kept aside because `kinds.byMod` regroups the
+  -- list and only carries the fields it knows about.
+  local reach = {}
+  for _, entry in ipairs(found) do
+    reach[entry.name] = entry
+  end
+
+  local rows = {}
+  for _, group in ipairs(kinds.byMod(found)) do
     for _, item in ipairs(group.items) do
+      local entry = reach[item.name] or {}
       rows[#rows + 1] = {
         name = item.name,
         mod = group.vanilla and "cc" or group.mod,
         kind = item.kind,
         label = item.label,
         vanilla = group.vanilla,
+        via = entry.via,
+        remote = entry.remote == true,
       }
     end
   end
@@ -63,10 +82,20 @@ function app.summary(rows)
   if #rows == 0 then
     return "nothing attached", T.mutedFg
   end
-  if count == 0 then
-    return ("%d attached"):format(#rows), T.foreground
+
+  -- Counted separately because "6 attached" on a base with a cable answers the
+  -- wrong question. What somebody wiring a network wants to know is whether the
+  -- cable is carrying anything, and that is this number.
+  local remote = network.reach(rows)
+  local head = ("%d attached"):format(#rows)
+  if remote > 0 then
+    head = ("%d attached, %d on the network"):format(#rows, remote)
   end
-  return ("%d attached, %d mod%s"):format(#rows, count, count == 1 and "" or "s"), T.good
+
+  if count == 0 then
+    return head, T.foreground
+  end
+  return ("%s, %d mod%s"):format(head, count, count == 1 and "" or "s"), T.good
 end
 
 function app.columns()
@@ -121,10 +150,29 @@ function app.mount(scope, context, options)
   --- does not recognise - and the thing somebody wiring up a new job needs
   --- first. It is also why the page is worth having on a turtle.
   local detail = scope:Computed(function(use)
+    use(tick)
     local name = use(selected)
     if name == nil or peripherals == nil then
       return "select something to see what it can do"
     end
+
+    -- A modem is asked what it reaches rather than what methods it has. Its
+    -- method list is the same eight names on every machine and tells nobody
+    -- anything; what it is connected to is the entire question, and it is the
+    -- one CC's flat name list cannot answer.
+    for _, row in ipairs(use(rows)) do
+      if row.name == name then
+        if row.kind == "radio" then
+          return network.explain(peripherals, name)
+        end
+        if row.via then
+          local names = peripherals.methods(name)
+          return ("through %s - %s"):format(row.via, table.concat(names or {}, " "))
+        end
+        break
+      end
+    end
+
     local names = peripherals.methods(name)
     if names == nil or #names == 0 then
       return "no methods - it may have been removed"

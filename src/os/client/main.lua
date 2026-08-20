@@ -39,6 +39,7 @@
 local gps = require("os.kernel.services.gps")
 local peer = require("domain.protocol.peer")
 local ticker = require("os.kernel.services.ticker")
+local hotplug = require("os.kernel.services.hotplug")
 local reactive = require("ui.state.reactive")
 local registry = require("domain.fleet.registry")
 local request = require("os.kernel.request")
@@ -231,7 +232,7 @@ client.screen = service.define({
 })
 
 function client.services()
-  return { client.sync, client.screen, gps.service, ticker.service }
+  return { client.sync, client.screen, gps.service, ticker.service, hotplug.service }
 end
 
 --- Build a supervised client, ready to be stepped.
