@@ -24,6 +24,7 @@ local bridge = require("os.server.services.bridge")
 local coverage = require("domain.fleet.coverage")
 local coverageService = require("os.server.services.coverage")
 local depotList = require("domain.depot.list")
+local depots = require("os.server.services.depots")
 local ledger = require("domain.bank.ledger")
 local discovery = require("os.server.services.discovery")
 local gps = require("os.kernel.services.gps")
@@ -199,7 +200,7 @@ end
 --- discovers, which keeps "what reads the radio" answerable by reading one
 --- function.
 function server.handlers()
-  return { leases.handle, bank.handle }
+  return { leases.handle, bank.handle, depots.handle }
 end
 
 --- The two screens a base station has, and why it has two.

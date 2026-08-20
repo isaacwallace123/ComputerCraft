@@ -1,5 +1,5 @@
 {
-    "generated":  "2026-08-20T16:31:24-04:00",
+    "generated":  "2026-08-20T16:42:34-04:00",
     "bootstrap":  [
                       "adapters/cc/config.lua",
                       "adapters/cc/screen.lua",
@@ -92,6 +92,7 @@
                                  "os/server/services/bank.lua",
                                  "os/server/services/bridge.lua",
                                  "os/server/services/coverage.lua",
+                                 "os/server/services/depots.lua",
                                  "os/server/services/discovery.lua",
                                  "os/server/services/leases.lua",
                                  "os/server/services/logrotate.lua",
@@ -493,6 +494,7 @@
                   "apps/console/app.lua",
                   "apps/console/commands.lua",
                   "apps/console/view.lua",
+                  "apps/depots/app.lua",
                   "apps/disks/app.lua",
                   "apps/fleet/app.lua",
                   "apps/fleet/view.lua",
@@ -557,6 +559,7 @@
                   "os/server/services/bank.lua",
                   "os/server/services/bridge.lua",
                   "os/server/services/coverage.lua",
+                  "os/server/services/depots.lua",
                   "os/server/services/discovery.lua",
                   "os/server/services/leases.lua",
                   "os/server/services/logrotate.lua",

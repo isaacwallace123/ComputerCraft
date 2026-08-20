@@ -73,6 +73,17 @@ registry.APPS = {
     surfaces = { "desktop", "monitor" },
   },
   {
+    id = "depots",
+    name = "Depots",
+    glyph = "", -- a crate
+    module = "apps.depots.app",
+    section = "operations",
+    sectionName = "Depot",
+    hidden = true,
+    roles = { "server" },
+    surfaces = { "desktop", "monitor" },
+  },
+  {
     id = "automation",
     name = "Automation",
     section = "operations",

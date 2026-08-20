@@ -256,7 +256,7 @@ end)
 -- Sections
 ---------------------------------------------------------------------------
 
-it("fleet, mine and automation are one app with three sections", function()
+it("the operations sections are one app behind one icon", function()
   -- They were separate icons, and setting up a mine meant crossing the home
   -- screen to do one thing. One is on the wall; the rest are reachable from a
   -- bar across the top of it. Job is not among them any more: a page whose only
@@ -276,7 +276,8 @@ it("fleet, mine and automation are one app with three sections", function()
   expect.equal(appRegistry.byId("job"), nil, "and Job is gone entirely")
 
   local family = appRegistry.family("operations", "server", "desktop")
-  expect.equal(#family, 3, "but all three are reachable from the bar")
+  expect.truthy(#family >= 3, "but every one of them is reachable from the bar")
+  expect.truthy(#family <= 5, "and the bar has room for them across 51 cells")
   expect.equal(family[1].id, "fleet", "with the leader first")
 
   for _, entry in ipairs(family) do
